@@ -216,7 +216,7 @@ create table if not exists reviews (
 create table if not exists conversions_uploaded (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references orgs(id) on delete cascade,
-  lead_id uuid references leads(id) on delete set null,
+  lead_id text references leads(id) on delete set null,
   conversion_value numeric,
   currency char(3) default 'AUD',
   status text not null default 'pending',
