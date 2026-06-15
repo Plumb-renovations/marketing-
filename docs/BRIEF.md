@@ -18,7 +18,7 @@ keys stay server-side; the browser never sees a key.
 | # | Milestone | Status |
 |---|-----------|--------|
 | 1 | Scaffold + port UI + Supabase + auth (email magic-link) + seed | ✅ done |
-| 2 | Server-side AI generation (Anthropic, `AD_PERSONA` verbatim, multimodal, JSON+retries+rate-limit) | next |
+| 2 | Server-side AI generation (Anthropic, `AD_PERSONA` verbatim, multimodal, JSON+retries+rate-limit) | ✅ done |
 | 3 | Google Ads reads + **Data Manager API** conversion upload (legacy Ads API upload path closed to new adopters since 15 Jun 2026) | |
 | 4 | Meta leads webhook + Page/IG insights + ad spend (NZD→AUD on ingest, store both); dev app until App Review + Business Verification | |
 | 5 | Google Business Profile reviews (gated access) | |

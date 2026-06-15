@@ -112,7 +112,7 @@ export function fallbackPost({ channels, goal, leads }: { channels: string[]; go
     hashtags: gbpOnly ? "" : "#goldcoastbathrooms #bathroomrenovation #goldcoastbuilder #bathroomdesign #qbcc #fixedprice #renovation #bathroominspo",
     cta: "Book your free quote — link in bio.",
     suggestedTime: "Thursday 7:00–8:00 pm AEST",
-    why: "(Offline template) Server-side AI copy arrives in Milestone 2.",
+    why: "(Offline template) Live AI was unavailable — using a proven template.",
   };
 }
 
