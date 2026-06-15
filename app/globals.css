@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---- Cockpit design system (ported verbatim from the prototype) ---- */
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #020617; /* slate-950 */
+}
+
+.font-display {
+  font-family: var(--font-display), "Space Grotesk", system-ui, -apple-system, sans-serif;
+}
+.font-body {
+  font-family: var(--font-body), "Inter", system-ui, -apple-system, sans-serif;
+}
+.font-data {
+  font-family: var(--font-data), "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+}
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+input[type="number"]::-webkit-inner-spin-button {
+  opacity: 0.35;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
