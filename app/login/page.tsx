@@ -17,10 +17,13 @@ export default function LoginPage() {
     setStatus("sending");
     setError("");
     const supabase = createClient();
+    // Email links are confirmed at /auth/confirm via token_hash + verifyOtp
+    // (SSR-safe; works across devices). The email template must point there.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${appUrl}/auth/confirm`,
       },
     });
     if (error) {
