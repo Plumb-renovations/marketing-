@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-// Exchanges the magic-link code for a session, then redirects into the app.
+// PKCE code-exchange — kept for OAuth (e.g. future Google sign-in). Email magic
+// links use /auth/confirm (token_hash + verifyOtp) instead, which is SSR-safe
+// and works across devices.
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
@@ -13,6 +15,9 @@ export async function GET(request: Request) {
     if (!error) {
       return NextResponse.redirect(`${origin}${next}`);
     }
+    console.error("[auth/callback] exchangeCodeForSession failed:", error.message);
+  } else {
+    console.error("[auth/callback] no code in callback");
   }
 
   return NextResponse.redirect(`${origin}/login?error=auth`);
