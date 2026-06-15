@@ -1,0 +1,2050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Plumb Renovations — Command Centre</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?external=react",
+    "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime?external=react",
+    "lucide-react": "https://esm.sh/lucide-react@0.383.0?external=react"
+  }
+}
+</script>
+<style> html,body,#root{height:100%} body{margin:0;background:#020617} </style>
+</head>
+<body>
+<div id="root"><div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#64748b;font-family:system-ui,sans-serif;font-size:14px">Loading Command Centre…</div></div>
+<script type="text/babel" data-type="module" data-presets="react">
+import React, { useState, useEffect } from "react";
+import {
+  Workflow, Banknote, Filter, Search, Facebook, Sparkles, TrendingUp, Star,
+  Swords, ListChecks, Bot, ArrowUp, ArrowDown, Check, X, ChevronDown, ChevronRight,
+  Zap, AlertTriangle, Plus, Trash2, Pencil, Send, ArrowRight, RotateCcw, Lightbulb,
+  MousePointerClick, Eye, Target, Clock, Trophy, FileText, Menu, MapPin, Phone,
+  Navigation, Gauge, Users, PlugZap, CalendarRange, CalendarDays, Settings, Hammer,
+  TrendingDown, ArrowUpRight, Scale, Coins, ImagePlus, Wand2, Copy, ChevronLeft, Loader2, List, Megaphone,
+} from "lucide-react";
+
+/* =========================================================================
+   PLUMB RENOVATIONS — COMMAND CENTRE
+   Leads board (New → Qualified → Quotes → Won / Lost) + quote builder + job
+   revenue, a forward-booking Pipeline (jobs scheduled per month vs capacity,
+   with ad-spend recommendations), on top of live-data ad/competitor dashboards.
+   Ad/funnel/competitor figures below are the client's real pulled data:
+     • Google Ads  — 12 months to Jun 2026 (AUD), currently paused
+     • Meta Ads    — 15 May–13 Jun 2026 (NZD)
+     • Funnel/leads— lead tracker, 30 Mar–21 Apr 2026 (AUD)
+   ========================================================================= */
+
+/* ----------------------------- HELPERS --------------------------------- */
+
+const audFmt = (n, cents = false) =>
+  "$" + Number(n || 0).toLocaleString("en-AU", {
+    minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0,
+  });
+const nzdFmt = (n, cents = false) =>
+  "NZ$" + Number(n || 0).toLocaleString("en-NZ", {
+    minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0,
+  });
+
+const quoteTotals = (q) => {
+  const sub = (q?.lineItems || []).reduce(
+    (s, li) => s + (Number(li.qty) || 0) * (Number(li.unitPrice) || 0), 0);
+  return { sub, gst: sub * 0.1, total: sub * 1.1 };
+};
+const leadQuote = (lead) => {
+  if (!lead.quotes || !lead.quotes.length) return null;
+  if (lead.wonQuoteId) return lead.quotes.find((q) => q.id === lead.wonQuoteId) || lead.quotes[lead.quotes.length - 1];
+  return lead.quotes[lead.quotes.length - 1];
+};
+const leadValue = (lead) => { const q = leadQuote(lead); return q ? quoteTotals(q).total : 0; };
+const monthKey = (iso) => { const d = new Date(iso); return isNaN(d) ? "—" : d.toLocaleDateString("en-AU", { month: "long", year: "numeric" }); };
+const uid = () => Math.random().toString(36).slice(2, 9);
+const firstOfNextMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 1).toISOString().slice(0, 10); };
+const next12 = () => { const n = new Date(); const b = new Date(n.getFullYear(), n.getMonth(), 1); return Array.from({ length: 12 }, (_, i) => new Date(b.getFullYear(), b.getMonth() + i, 1)); };
+const sameMonth = (iso, d) => { if (!iso) return false; const x = new Date(iso); return x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth(); };
+const monthShort = (d) => d.toLocaleDateString("en-AU", { month: "short", year: "numeric" });
+
+// Seeded quote: stored total stays GST-inclusive (matches the recorded amount).
+const seededQuote = (id, total, date) => ({
+  id, status: "sent", createdAt: date,
+  lineItems: [{ id: id + "-1", desc: "Renovation works (as previously quoted)", qty: 1, unitPrice: total / 1.1 }],
+});
+
+/* --------------------------- REAL SEED DATA ---------------------------- */
+
+const SEED_LEADS = [
+  { id: "l1", date: "2026-04-12", name: "Simpson", suburb: "—", source: "google_ads", project: "Bathroom", stage: "new", quotes: [] },
+  { id: "l2", date: "2026-04-12", name: "Cheryl", suburb: "—", source: "google_ads", project: "Bathroom", stage: "new", quotes: [] },
+
+  { id: "l3", date: "2026-04-05", name: "Jo Casey", suburb: "Tweed", source: "meta_ads", project: "Renovation", stage: "qualified", quotes: [] },
+  { id: "l4", date: "2026-04-12", name: "Elize", suburb: "Kingscliff", source: "meta_ads", project: "Bathroom", stage: "qualified", quotes: [] },
+  { id: "l5", date: "2026-04-20", name: "Reece", suburb: "Kingscliff", source: "meta_ads", project: "Bathroom", stage: "qualified", quotes: [] },
+  { id: "l6", date: "2026-04-20", name: "Julie", suburb: "Kingscliff", source: "meta_ads", project: "Bathroom", stage: "qualified", quotes: [] },
+  { id: "l7", date: "2026-04-21", name: "Anun", suburb: "Banora", source: "google_ads", project: "Rumpus", stage: "qualified", quotes: [] },
+
+  { id: "l8",  date: "2026-03-30", name: "Frances", suburb: "Evans Head",   source: "meta_ads",   project: "Bathroom",           stage: "quote", quotes: [seededQuote("q8", 36487, "2026-03-30")] },
+  { id: "l9",  date: "2026-03-31", name: "Lama",    suburb: "Mudgeeraba",   source: "google_ads", project: "Leaking bathroom",   stage: "quote", quotes: [seededQuote("q9", 29800, "2026-03-31")] },
+  { id: "l10", date: "2026-04-04", name: "Kelly",   suburb: "Nerang",       source: "google_ads", project: "2 bathrooms",        stage: "quote", quotes: [seededQuote("q10", 52429.3, "2026-04-04")] },
+  { id: "l11", date: "2026-04-09", name: "Nick",    suburb: "Tallebudgera", source: "meta_ads",   project: "Laundry & bathroom", stage: "quote", quotes: [seededQuote("q11", 60951, "2026-04-09")] },
+  { id: "l12", date: "2026-04-12", name: "Kaycee",  suburb: "Robina",       source: "meta_ads",   project: "Bathroom",           stage: "quote", quotes: [seededQuote("q12", 32766, "2026-04-12")] },
+
+  { id: "l13", date: "2026-04-01", name: "Joanne", suburb: "Burleigh",   source: "google_ads", project: "Bathroom", stage: "won", quotes: [seededQuote("q13", 30955.1, "2026-04-01")], wonQuoteId: "q13", tradify: "", startDate: "2026-07-07", durationWeeks: 3, jobStatus: "scheduled" },
+  { id: "l14", date: "2026-04-10", name: "Ron",    suburb: "Springwood", source: "google_ads", project: "Bathroom", stage: "won", quotes: [seededQuote("q14", 36156, "2026-04-10")], wonQuoteId: "q14", tradify: "", startDate: "2026-08-04", durationWeeks: 2, jobStatus: "scheduled" },
+
+  { id: "l15", date: "2026-03-31", name: "Frank", suburb: "Clear Island", source: "meta_ads",   project: "Renovation", stage: "lost", quotes: [seededQuote("q15", 148131.5, "2026-03-31")], lostReason: "Price" },
+  { id: "l16", date: "2026-04-03", name: "Hania", suburb: "Merrimac",     source: "google_ads", project: "Bathroom",   stage: "lost", quotes: [seededQuote("q16", 24464, "2026-04-03")], lostReason: "Price" },
+];
+
+const STAGES = [
+  { id: "new",       label: "New Leads",   accent: "slate" },
+  { id: "qualified", label: "Qualified",   accent: "cyan" },
+  { id: "quote",     label: "Quotes",      accent: "amber" },
+  { id: "won",       label: "Quotes Won",  accent: "emerald" },
+  { id: "lost",      label: "Lost",        accent: "red" },
+];
+const LOST_REASONS = ["Price", "Timing", "Went with competitor", "No response", "Other"];
+const JOB_STATUSES = [{ id: "scheduled", label: "Scheduled", c: "cyan" }, { id: "in_progress", label: "In progress", c: "amber" }, { id: "complete", label: "Complete", c: "emerald" }];
+
+/* ----------------------------- AD DATA --------------------------------- */
+
+const AI_RECS = [
+  { id: "r1", priority: true, confidence: 95, area: "Google Ads", impact: "high",
+    title: "Google recorded 0 conversions on $8,722 — yet it drove both jobs you won ($67,111). Fix tracking before you relaunch.",
+    body: "Across 12 months every keyword and search term shows 0.00 conversions, so bidding has been flying blind (and CPC roughly tripled). Your lead tracker shows Google produced both won jobs. Install call tracking, a lead-form conversion, and offline import from Tradify so Google can finally optimise toward revenue instead of cheap clicks.",
+    estimate: "Re-points spend at jobs, not clicks. Should pull CPC back and lift cost-per-won-job further." },
+  { id: "r2", confidence: 90, area: "Google Ads", impact: "high",
+    title: "Restructure the broad ‘bathroom renovation price’ keyword — it’s 26% of all spend.",
+    body: "$2,297 on a single broad-match price-shopper term is dragging in cheap/budget/out-of-area searches (Brisbane, Logan, Beenleigh). Tighten to phrase/exact and add negatives.",
+    estimate: "Reclaims $1,000+ of visible waste to redeploy on converting terms." },
+  { id: "r3", confidence: 78, area: "Meta Ads", impact: "medium",
+    title: "Meta leads aren’t closing — 8 leads, 0 won, 0.78% CTR, NZ$223/lead.",
+    body: "The active campaign uses on-Meta instant forms; leads qualify cleanly but none converted to a job in the tracked window, including a $148k quote lost on price. Test sending traffic to a website form, and lift creative CTR.",
+    estimate: "Higher-intent leads; better close rate by source." },
+  { id: "r4", confidence: 75, area: "Funnel", impact: "medium",
+    title: "Two deals lost on price. Build a price-justification story.",
+    body: "Rivals compete on premium-justified (Kuda) and transparent fixed pricing (Benco, Coastal). Surface QBCC licence, workmanship warranty and a fixed-price promise on quotes and the landing page.",
+    estimate: "Defends margin against price-only comparisons." },
+];
+
+const GOOGLE_TOTALS = { spend: 8722.22, clicks: 1385, ctr: "5.97%", cpc: "$6.30", conv: "0.00" };
+const GOOGLE_CAMPAIGNS = [
+  { name: "Visual Empathy | Water Plumb | GC | Renovation", spend: "$8,603.29", clicks: 1318, ctr: "5.96%", conv: "0.00", status: "paused" },
+  { name: "Visual Empathy | Water Plumb | Bathroom Reno | KW", spend: "$118.93", clicks: 67, ctr: "6.95%", conv: "0.00", status: "paused" },
+];
+const GOOGLE_KEYWORDS = [
+  { kw: "bathroom renovation price", type: "Broad", spend: "$2,296.68", clicks: 321, ctr: "5.49%", status: "red", action: "Restructure — price-shopper, broad" },
+  { kw: "bath renovation", type: "Phrase", spend: "$1,485.48", clicks: 216, ctr: "5.65%", status: "amber", action: "Loose term — tighten" },
+  { kw: "bathroom renovations", type: "Exact", spend: "$1,037.46", clicks: 151, ctr: "7.71%", status: "green", action: "Core — keep & scale" },
+  { kw: "bathroom renovations", type: "Phrase", spend: "$722.12", clicks: 184, ctr: "7.23%", status: "green", action: "Core" },
+  { kw: "bathroom renovation gold coast", type: "Exact", spend: "$710.61", clicks: 70, ctr: "6.19%", status: "green", action: "Geo core — scale" },
+  { kw: "bathroom renovation services", type: "Phrase", spend: "$543.21", clicks: 94, ctr: "5.30%", status: "green", action: "Keep" },
+  { kw: "bathroom renovations gold coast", type: "Phrase", spend: "$542.98", clicks: 40, ctr: "6.31%", status: "green", action: "Geo core — scale" },
+  { kw: "renovations gold coast", type: "Phrase", spend: "$460.47", clicks: 93, ctr: "7.03%", status: "amber", action: "Too broad (all renos)" },
+  { kw: "bathroom renovation cost", type: "Exact", spend: "$183.36", clicks: 40, ctr: "5.49%", status: "amber", action: "Cost-shopper — watch" },
+  { kw: "cheap bathroom renovations", type: "Phrase", spend: "$128.49", clicks: 27, ctr: "13.50%", status: "red", action: "Pause — bidding on ‘cheap’" },
+];
+const SEARCH_TERMS_GOOD = [
+  "bathroom renovations gold coast", "gold coast bathroom renovations", "bathroom renovations near me",
+  "laundry renovations gold coast", "bathroom renovations burleigh", "bathroom renovations currumbin",
+  "bathroom renovations southport", "bathroom renovations nerang",
+];
+const SEARCH_TERMS_BAD = [
+  "cheap / affordable / budget", "bathroom renovations under $5000", "how much to renovate a bathroom",
+  "bathroom remodeling", "tiler / tiling / bathroom tiler", "plumber / plumbing", "shower screens",
+  "resurfacing / microcement", "kitchen renovations", "brisbane / logan / beenleigh / browns plains",
+  "caboolture / capalaba / ipswich / redcliffe", "sunshine coast", "reece / highgrove / kuda / benco (brands)",
+];
+const GOOGLE_DEVICES = [
+  { d: "Mobile phones", spend: "$6,592.50", pct: 76 },
+  { d: "Computers", spend: "$2,125.22", pct: 24 },
+  { d: "Tablets", spend: "$4.50", pct: 0 },
+];
+const GOOGLE_MONTHLY = [747, 911, 911, 1029, 598, 592, 354, 841, 1003, 801, 936]; // Jul'25–May'26 spend, for sparkline
+
+const META = {
+  window: "15 May – 13 Jun 2026", currency: "NZD",
+  campaigns: [
+    { name: "New Leads Campaign", status: "active", spend: "NZ$1,781.91", leads: 8, cpl: "NZ$222.74", reach: "19,942", freq: "2.56", impr: "51,028", cpm: "NZ$34.92", clicks: 399, cpc: "NZ$4.47", ctr: "0.78%", lf: "On-Meta instant forms" },
+    { name: "Ongoing website promotion (waterplumb.com.au)", status: "inactive", spend: "NZ$0", leads: 0, cpl: "—", reach: "0", freq: "0", impr: "0", cpm: "—", clicks: 0, cpc: "—", ctr: "—", lf: "Off" },
+  ],
+};
+const META_RECS = [
+  { status: "amber", t: "Lift creative CTR", d: "0.78% link CTR is low for lead gen. Test before/after video and a sharper offer; aim past 1%." },
+  { status: "amber", t: "Test website-form leads vs instant forms", d: "Instant-form leads qualify but aren’t closing. Route a test to a website form with a couple of qualifying questions." },
+  { status: "red", t: "Connect Meta leads to job outcomes", d: "0 of 8 tracked Meta leads became jobs. Tag source through to ‘won’ so cost-per-won-job is visible by channel." },
+  { status: "amber", t: "Resolve NZD billing", d: "The account bills in NZD for an AU business. Confirm this is intentional — it complicates reporting and FX." },
+];
+
+/* --------------------------- FUNNEL + COMPS ---------------------------- */
+
+const FUNNEL = [
+  { stage: "Leads", value: 16, sub: "30 Mar – 21 Apr · 8 Google, 8 Meta" },
+  { stage: "Qualified", value: 14, sub: "88% qualified" },
+  { stage: "Quotes", value: 9, sub: "quotes with a value issued" },
+  { stage: "Won jobs", value: 2, sub: "$67,111 won · avg $33,556" },
+];
+const FUNNEL_BY_SOURCE = [
+  { key: "google_ads", leads: 8, qualified: 6, quoted: 5, won: 2, rev: "$67,111", note: "Both wins. Two junk leads, but the revenue channel." },
+  { key: "meta_ads", leads: 8, qualified: 8, quoted: 4, won: 0, rev: "$0", note: "Cleanest qualification, zero wins yet. Several quotes still open." },
+];
+
+const COMPETITORS = [
+  { name: "Only Bathrooms Gold Coast", rating: 5.0, reviews: 107, suburb: "Mudgeeraba", note: "Most-reviewed dedicated reno specialist on the Coast. The main one to watch.", threat: "high" },
+  { name: "Kuda Bathrooms", rating: 5.0, reviews: 93, suburb: "Burleigh Heads", note: "Premium-priced — often the dearest of three quotes, but reviewers feel it’s worth it.", threat: "high" },
+  { name: "Bespoke Bathrooms", rating: 4.9, reviews: 69, suburb: "Mermaid Waters", note: "Owner-led (Craig). Reputation built on honesty and not over-promising.", threat: "medium" },
+  { name: "Benco Bathroom Renovations", rating: 5.0, reviews: 59, suburb: "Burleigh Heads", note: "Family business with a showroom and a detailed, formal quoting process.", threat: "medium" },
+  { name: "4D Renovations", rating: 4.9, reviews: 37, suburb: "Southport", note: "Design-led, gets referred by Reece.", threat: "medium" },
+  { name: "Varli Building", rating: 4.9, reviews: 30, suburb: "Molendinar", note: "Bathrooms + kitchens; strong on apartment / body-corporate jobs.", threat: "low" },
+  { name: "Coastal Bathroom Renovations", rating: 4.8, reviews: 24, suburb: "Robina", note: "Leans hard on transparent, no-surprises up-front pricing.", threat: "low" },
+  { name: "Surfers Paradise Bathroom Renovations", rating: 5.0, reviews: 21, suburb: "Surfers Paradise", note: "Does high-rise / apartment work.", threat: "low" },
+  { name: "Moriarty", rating: 4.8, reviews: 21, suburb: "Ashmore", note: "Will take smaller jobs and assist DIY renovators.", threat: "low" },
+];
+const COMPETITOR_RECS = [
+  "Only Bathrooms sits at 107 reviews / 5.0 — review velocity is the visibility game here. Connect your own Google profile so we can benchmark and set a monthly review target.",
+  "Kuda Bathrooms shows up in your Google search terms — people search rivals by name. Make sure your brand term is defended and your reviews are front-and-centre.",
+  "You lost two deals on price; Kuda wins at a premium and Benco/Coastal win on transparent fixed pricing. Pick your lane and make the justification explicit on quotes and the site.",
+  "Rivals cluster in Burleigh Heads, Mermaid, Robina, Southport — the same suburbs as your quoted/won leads. Suburb landing pages are worth building here.",
+];
+
+const ACTIONS = [
+  { id: "a1", pri: "high", text: "Install Google conversion tracking (calls + lead form + Tradify offline import) before relaunch", impact: 10, diff: 4, lift: "see revenue" },
+  { id: "a2", pri: "high", text: "Restructure broad ‘bathroom renovation price’ keyword ($2,297 / 26% of spend)", impact: 9, diff: 3, lift: "stop the bleed" },
+  { id: "a3", pri: "high", text: "Add negatives: cheap / affordable / budget / under $5000 / how much / remodeling / tiler / plumber / kitchen + competitor brands", impact: 8, diff: 2, lift: "save $1,000+/yr" },
+  { id: "a4", pri: "high", text: "Restrict location to Gold Coast + NSW border; exclude Brisbane / Logan / Sunshine Coast", impact: 8, diff: 2, lift: "save ~$560" },
+  { id: "a5", pri: "med", text: "Fund geo-core terms: ‘bathroom renovations gold coast’, ‘…near me’, ‘laundry renovations gold coast’, suburb terms", impact: 7, diff: 2, lift: "+ qualified leads" },
+  { id: "a6", pri: "med", text: "Meta: test website-form leads vs instant forms; lift creative CTR past 1%", impact: 7, diff: 4, lift: "+ lead quality" },
+  { id: "a7", pri: "med", text: "Add a price-justification block (QBCC, warranty, fixed price) to quotes + landing page", impact: 7, diff: 3, lift: "win price battles" },
+  { id: "a8", pri: "med", text: "Resolve Meta NZD billing / confirm currency handling", impact: 4, diff: 2, lift: "clean reporting" },
+  { id: "a9", pri: "low", text: "Build suburb pages: Burleigh, Robina, Nerang, Mudgeeraba, Currumbin", impact: 6, diff: 6, lift: "organic + geo ads" },
+  { id: "a10", pri: "low", text: "Connect Google Business Profile and start a review-velocity push toward 107 (Only Bathrooms)", impact: 6, diff: 3, lift: "local visibility" },
+];
+
+const CONTENT_IDEAS = [
+  { id: "c1", insight: "Your wins come from high-intent Google searches in Gold Coast suburbs. Make content that ranks and converts there.", project: "Burleigh & Robina won/quoted jobs",
+    headline: "Bathroom renovations in Burleigh — fixed-price, QBCC licensed", post: "A Burleigh bathroom, start to finish. Fixed quote, QBCC licensed, 7-year workmanship warranty. Book a free on-site measure and quote.", caption: "Quality bathroom renovations across the Gold Coast. Fixed pricing, no surprises. Tap to book your quote.", ad: "Search + suburb landing page · CTA ‘Book a free quote’" },
+  { id: "c2", insight: "Meta leads aren’t closing — lead with proof and a clear price story, not just a pretty render.", project: "Won jobs: Joanne (Burleigh), Ron",
+    headline: "What a $30k Gold Coast bathroom actually includes", post: "Real project, real fixed price. Here’s exactly what’s included in a quality bathroom renovation — and why ‘cheap’ costs more later.", caption: "Transparent fixed pricing. QBCC licensed. Book a quote and we’ll walk you through every line.", ad: "Before/after video · CTA ‘Get a fixed-price quote’ · website form" },
+  { id: "c3", insight: "Two losses on price. A short ‘why we’re not the cheapest’ explainer pre-empts the objection.", project: "Lost: Frank ($148k), Hania ($24k)",
+    headline: "Cheapest quote vs right quote: a Gold Coast guide", post: "Three quotes, big price gap — here’s how to compare them properly so you don’t pay twice.", caption: "Know what you’re paying for. QBCC licensed, fixed price, fully warranted.", ad: "Blog + retargeting · CTA ‘Read the guide’" },
+];
+
+const ASSISTANTS = [
+  { id: "google", name: "Google Ads Assistant", icon: Search, latest: "0 conversions tracked on $8,722 — yet Google drove both won jobs. Tracking is the whole game right now.",
+    qa: [{ q: "What do I fix first?", a: "Conversion tracking: call tracking, a lead-form conversion, and offline import from Tradify. Until Google can see which clicks became jobs, every other change is a guess." },
+      { q: "Where’s the money leaking?", a: "‘bathroom renovation price’ on broad match — $2,297, a quarter of your spend — plus cheap/budget terms and out-of-area clicks (Brisbane, Logan, Beenleigh)." }] },
+  { id: "meta", name: "Meta Ads Assistant", icon: Facebook, latest: "8 leads, 0 won, 0.78% CTR, NZ$223/lead. Volume’s fine; quality and measurement aren’t.",
+    qa: [{ q: "Why aren’t Meta leads closing?", a: "They’re on-Meta instant forms — low friction, low intent. Test a website form with two qualifying questions, and strengthen the creative/offer." },
+      { q: "Is the spend efficient?", a: "NZ$223 per lead is high, and it’s billed in NZD for an AU business. Worth confirming the currency setup and tightening targeting." }] },
+  { id: "seo", name: "SEO Assistant", icon: TrendingUp, latest: "No rank data connected yet — but your suburbs are clear from won/quoted jobs.",
+    qa: [{ q: "What should I build first?", a: "Suburb pages for Burleigh, Robina, Nerang, Mudgeeraba and Currumbin — exactly where your quoted and won leads are." }] },
+  { id: "content", name: "Content Assistant", icon: Sparkles, latest: "Lead with fixed-price + proof. Two deals were lost on price.",
+    qa: [{ q: "What should I post this week?", a: "A ‘what a $30k bathroom includes’ breakdown and a Burleigh before/after — both pre-drafted in the Content Engine." }] },
+  { id: "review", name: "Review Assistant", icon: Star, latest: "Top rival Only Bathrooms has 107 reviews at 5.0. Connect your profile to set a target.",
+    qa: [{ q: "How do I catch up?", a: "Ask every completed job within 48 hours of handover. Connect your Google Business Profile and we’ll track velocity against the field." }] },
+  { id: "competitor", name: "Competitor Assistant", icon: Swords, latest: "Kuda wins at a premium; Benco/Coastal win on transparent pricing. Pick your lane.",
+    qa: [{ q: "How do I compete on price?", a: "Don’t race to cheapest. Make the value explicit — QBCC, warranty, fixed price — and show it on the quote so a price comparison becomes a value comparison." }] },
+];
+
+/* ----------------------------- NAV ------------------------------------- */
+const NAV = [
+  { group: "Operations", items: [
+    { id: "leads", label: "Leads", icon: Workflow },
+    { id: "pipeline", label: "Pipeline", icon: CalendarRange },
+    { id: "revenue", label: "Job Revenue", icon: Banknote },
+  ]},
+  { group: "Marketing", items: [
+    { id: "funnel", label: "Lead Funnel", icon: Filter },
+    { id: "compare", label: "Paid vs Organic", icon: Scale },
+    { id: "google", label: "Google Ads", icon: Search },
+    { id: "meta", label: "Meta Ads", icon: Facebook },
+    { id: "content", label: "Content Engine", icon: Sparkles },
+    { id: "calendar", label: "Content Calendar", icon: CalendarDays },
+    { id: "ads", label: "Ad Creator", icon: Megaphone },
+    { id: "seo", label: "SEO", icon: TrendingUp },
+    { id: "reviews", label: "Reviews", icon: Star },
+    { id: "competitor", label: "Competitors", icon: Swords },
+    { id: "actions", label: "Action Centre", icon: ListChecks },
+    { id: "assistants", label: "Assistants", icon: Bot },
+  ]},
+];
+const TITLES = { leads: "Leads", pipeline: "Pipeline", revenue: "Job Revenue", funnel: "Lead Funnel", google: "Google Ads",
+  meta: "Meta Ads", content: "Content Engine", seo: "SEO", reviews: "Reviews", competitor: "Competitors",
+  actions: "Action Centre", assistants: "Assistants", compare: "Paid vs Organic", calendar: "Content Calendar", ads: "Ad Creator" };
+
+/* --------------------------- PRIMITIVES -------------------------------- */
+const STATUS = {
+  green:   { dot: "bg-emerald-400", text: "text-emerald-400", chip: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30" },
+  amber:   { dot: "bg-amber-400",   text: "text-amber-400",   chip: "bg-amber-500/10 text-amber-300 border-amber-500/30" },
+  red:     { dot: "bg-red-400",     text: "text-red-400",     chip: "bg-red-500/10 text-red-300 border-red-500/30" },
+  cyan:    { dot: "bg-cyan-400",    text: "text-cyan-300",    chip: "bg-cyan-500/10 text-cyan-300 border-cyan-500/30" },
+  slate:   { dot: "bg-slate-400",   text: "text-slate-300",   chip: "bg-slate-700/40 text-slate-300 border-slate-600/50" },
+  emerald: { dot: "bg-emerald-400", text: "text-emerald-300", chip: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30" },
+  paused:  { dot: "bg-slate-500",   text: "text-slate-400",   chip: "bg-slate-700/40 text-slate-400 border-slate-600/50" },
+  active:  { dot: "bg-emerald-400", text: "text-emerald-300", chip: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30" },
+  inactive:{ dot: "bg-slate-500",   text: "text-slate-400",   chip: "bg-slate-700/40 text-slate-400 border-slate-600/50" },
+  indigo:  { dot: "bg-indigo-400",  text: "text-indigo-300",  chip: "bg-indigo-500/10 text-indigo-300 border-indigo-500/30" },
+  sky:     { dot: "bg-sky-400",     text: "text-sky-300",     chip: "bg-sky-500/10 text-sky-300 border-sky-500/30" },
+};
+const SOURCES = {
+  google_ads: { label: "Google Ads",       short: "Google Ads", paid: true,  chip: "bg-sky-500/10 text-sky-300 border-sky-500/30" },
+  meta_ads:   { label: "Meta Ads",          short: "Meta Ads",   paid: true,  chip: "bg-indigo-500/10 text-indigo-300 border-indigo-500/30" },
+  instagram:  { label: "Instagram (organic)", short: "Instagram", paid: false, chip: "bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/30" },
+  facebook:   { label: "Facebook (organic)",  short: "Facebook",  paid: false, chip: "bg-blue-500/10 text-blue-300 border-blue-500/30" },
+  gbp:        { label: "Google Business Profile", short: "GBP",   paid: false, chip: "bg-amber-500/10 text-amber-300 border-amber-500/30" },
+  referral:   { label: "Referral / word-of-mouth", short: "Referral", paid: false, chip: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30" },
+  website:    { label: "Website (organic)", short: "Website",    paid: false, chip: "bg-teal-500/10 text-teal-300 border-teal-500/30" },
+};
+const SOURCE_KEYS = Object.keys(SOURCES);
+const PAID_KEYS = SOURCE_KEYS.filter((k) => SOURCES[k].paid);
+const ORGANIC_KEYS = SOURCE_KEYS.filter((k) => !SOURCES[k].paid);
+const Dot = ({ status }) => <span className={`inline-block h-2 w-2 rounded-full ${(STATUS[status] || STATUS.slate).dot}`} />;
+const Eyebrow = ({ children, icon: Icon }) => (
+  <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500 font-display">
+    {Icon && <Icon className="h-3.5 w-3.5 text-cyan-400" />}{children}
+  </div>
+);
+const Panel = ({ children, className = "", glow = false }) => (
+  <div className={`rounded-2xl border border-slate-800 bg-slate-900/60 ${glow ? "ring-1 ring-cyan-500/25" : ""} ${className}`}>{children}</div>
+);
+const Chip = ({ status, children, className = "" }) => (
+  <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${(STATUS[status] || STATUS.slate).chip} ${className}`}>{children}</span>
+);
+const SrcChip = ({ source }) => {
+  const s = SOURCES[source];
+  return <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${s?.chip || "bg-slate-700/40 text-slate-300 border-slate-600/50"}`}>{s?.short || source}</span>;
+};
+const SectionHeader = ({ icon: Icon, title, desc }) => (
+  <div className="mb-5 flex items-start gap-3">
+    <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-slate-900 text-cyan-400"><Icon className="h-5 w-5" /></div>
+    <div><h2 className="font-display text-lg font-semibold tracking-tight text-slate-100">{title}</h2><p className="text-sm text-slate-500">{desc}</p></div>
+  </div>
+);
+function Spark({ data, status = "cyan" }) {
+  const w = 60, h = 18, max = Math.max(...data), min = Math.min(...data);
+  const pts = data.map((v, i) => `${((i / (data.length - 1)) * w).toFixed(1)},${(h - ((v - min) / (max - min || 1)) * h).toFixed(1)}`).join(" ");
+  return <span className={(STATUS[status] || STATUS.cyan).text}><svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none"><polyline points={pts} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg></span>;
+}
+function StatTable({ columns, rows, render }) {
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-slate-800">
+      <table className="w-full min-w-[680px] text-sm">
+        <thead><tr className="border-b border-slate-800 text-left text-[11px] uppercase tracking-wider text-slate-500 font-display">
+          {columns.map((c) => <th key={c} className={`px-4 py-3 font-medium ${c !== columns[0] ? "text-right" : ""}`}>{c}</th>)}
+        </tr></thead>
+        <tbody className="divide-y divide-slate-800/70">{rows.map(render)}</tbody>
+      </table>
+    </div>
+  );
+}
+const RecBlock = ({ icon: Icon, title, items }) => (
+  <div>
+    <Eyebrow icon={Icon}>{title}</Eyebrow>
+    <ul className="mt-3 space-y-2">{items.map((it, i) => (
+      <li key={i} className="flex items-start gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-3.5">
+        <Dot status={it.status} /><div><p className="text-sm font-medium text-slate-200">{it.t}</p>{it.d && <p className="mt-0.5 text-xs text-slate-500">{it.d}</p>}</div>
+      </li>))}
+    </ul>
+  </div>
+);
+function ConnectPrompt({ icon: Icon, title, body, items }) {
+  return (
+    <Panel className="p-8 text-center">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-cyan-400"><Icon className="h-6 w-6" /></div>
+      <h3 className="mt-4 font-display text-base font-semibold text-slate-100">{title}</h3>
+      <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">{body}</p>
+      {items && <ul className="mx-auto mt-4 flex max-w-md flex-col gap-2 text-left">{items.map((t, i) => (
+        <li key={i} className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-400"><PlugZap className="h-4 w-4 shrink-0 text-cyan-400" />{t}</li>))}</ul>}
+    </Panel>
+  );
+}
+
+/* ============================= LEADS BOARD ============================== */
+
+function AiBanner({ onOpen, dismissed, setDismissed }) {
+  if (dismissed) return null;
+  const r = AI_RECS.find((x) => x.priority);
+  return (
+    <Panel glow className="mb-5 bg-cyan-500/5">
+      <div className="flex items-start gap-3 p-4">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-500/15 text-cyan-300"><Zap className="h-4 w-4" /></div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2"><span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-300">Priority</span><span className="text-[10px] uppercase tracking-wider text-slate-500 font-display">{r.area} · confidence {r.confidence}%</span></div>
+          <p className="mt-1 text-sm font-medium text-slate-100">{r.title}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button onClick={onOpen} className="rounded-lg bg-cyan-500 px-2.5 py-1.5 text-xs font-medium text-slate-950 transition hover:bg-cyan-400">View actions</button>
+          <button onClick={() => setDismissed(true)} className="rounded-md border border-slate-700 p-1.5 text-slate-500 transition hover:bg-slate-800"><X className="h-3.5 w-3.5" /></button>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function LeadCard({ lead, onClick }) {
+  const val = leadValue(lead);
+  return (
+    <button onClick={onClick} className="group w-full rounded-xl border border-slate-800 bg-slate-900 p-3 text-left transition hover:border-cyan-500/40 hover:bg-slate-800/60">
+      <div className="flex items-center justify-between">
+        <span className="font-display text-sm font-semibold text-slate-100">{lead.name}</span>
+        <SrcChip source={lead.source} />
+      </div>
+      <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500"><MapPin className="h-3 w-3" />{lead.suburb} · {lead.project}</div>
+      {val > 0 && (
+        <div className="mt-2 flex items-center justify-between">
+          <span className="font-data text-sm font-semibold tabular-nums text-slate-200">{audFmt(val)}</span>
+          {lead.stage === "lost" && lead.lostReason && <span className="text-[10px] text-red-300">{lead.lostReason}</span>}
+          {lead.quotes.length > 1 && <span className="text-[10px] text-slate-500">{lead.quotes.length} quotes</span>}
+        </div>
+      )}
+    </button>
+  );
+}
+
+function StageColumn({ stage, leads, onCard }) {
+  const total = leads.reduce((s, l) => s + leadValue(l), 0);
+  const showValue = ["quote", "won", "lost"].includes(stage.id);
+  const a = STATUS[stage.accent] || STATUS.slate;
+  return (
+    <div className="flex w-72 shrink-0 flex-col">
+      <div className="mb-2 flex items-center justify-between px-1">
+        <div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${a.dot}`} /><span className="font-display text-sm font-semibold text-slate-200">{stage.label}</span><span className="font-data text-xs text-slate-500">{leads.length}</span></div>
+        {showValue && total > 0 && <span className="font-data text-[11px] tabular-nums text-slate-400">{audFmt(total)}</span>}
+      </div>
+      <div className="flex flex-1 flex-col gap-2 rounded-2xl border border-slate-800/70 bg-slate-950/40 p-2">
+        {leads.length === 0 && <p className="px-2 py-6 text-center text-xs text-slate-600">Nothing here</p>}
+        {leads.map((l) => <LeadCard key={l.id} lead={l} onClick={() => onCard(l.id)} />)}
+      </div>
+    </div>
+  );
+}
+
+function LeadsBoard({ leads, onCard, onAdd, openActions, aiDismissed, setAiDismissed, onReset }) {
+  const [month, setMonth] = useState("all");
+  const monthLabel = (ym) => { const d = new Date(ym + "-01"); return isNaN(d) ? ym : d.toLocaleDateString("en-AU", { month: "short", year: "numeric" }); };
+  const monthsPresent = Array.from(new Set(leads.map((l) => (l.date || "").slice(0, 7)).filter(Boolean))).sort().reverse();
+  const shown = month === "all" ? leads : leads.filter((l) => (l.date || "").slice(0, 7) === month);
+  const trend = monthsPresent.slice().reverse().map((ym) => {
+    const ls = leads.filter((l) => (l.date || "").slice(0, 7) === ym);
+    return { ym, label: monthLabel(ym), paid: ls.filter((l) => SOURCES[l.source]?.paid).length, organic: ls.filter((l) => SOURCES[l.source] && !SOURCES[l.source].paid).length, total: ls.length };
+  });
+  const maxTrend = Math.max(1, ...trend.map((t) => t.total));
+
+  return (
+    <div>
+      <AiBanner onOpen={openActions} dismissed={aiDismissed} setDismissed={setAiDismissed} />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-500">Click any card to qualify it, build a quote, or mark it won or lost.</p>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-slate-500" />
+            <select value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500/50">
+              <option value="all">All months</option>
+              {monthsPresent.map((ym) => <option key={ym} value={ym}>{monthLabel(ym)}</option>)}
+            </select>
+          </div>
+          <button onClick={onReset} title="Reset to tracker data" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-400 transition hover:bg-slate-800"><RotateCcw className="h-3.5 w-3.5" /> Reset</button>
+          <button onClick={onAdd} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-1.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Plus className="h-4 w-4" /> Add lead</button>
+        </div>
+      </div>
+
+      {trend.length > 0 && (
+        <Panel className="mb-4 p-4">
+          <div className="flex items-center justify-between">
+            <Eyebrow icon={TrendingUp}>Leads per month</Eyebrow>
+            <div className="flex items-center gap-3 text-[11px] text-slate-400">
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> Paid</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-400" /> Organic</span>
+            </div>
+          </div>
+          <div className="mt-3 flex items-end gap-3 overflow-x-auto">
+            {trend.map((t) => (
+              <button key={t.ym} onClick={() => setMonth(month === t.ym ? "all" : t.ym)} className="flex shrink-0 flex-col items-center gap-1" style={{ width: 44 }} title={`${t.label}: ${t.paid} paid · ${t.organic} organic`}>
+                <span className="font-data text-[11px] tabular-nums text-slate-300">{t.total}</span>
+                <span className="flex h-24 w-full flex-col justify-end overflow-hidden rounded-md border border-slate-800 bg-slate-950">
+                  <span className="w-full bg-emerald-400/80" style={{ height: `${(t.organic / maxTrend) * 100}%` }} />
+                  <span className="w-full bg-amber-400/80" style={{ height: `${(t.paid / maxTrend) * 100}%` }} />
+                </span>
+                <span className={`text-[10px] ${month === t.ym ? "text-cyan-300" : "text-slate-500"}`}>{t.label}</span>
+              </button>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      <div className="flex gap-3 overflow-x-auto pb-4">
+        {STAGES.map((s) => <StageColumn key={s.id} stage={s} leads={shown.filter((l) => l.stage === s.id)} onCard={onCard} />)}
+      </div>
+    </div>
+  );
+}
+
+/* --------------------------- LEAD DRAWER ------------------------------- */
+
+function Field({ label, value }) {
+  return <div><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">{label}</p><p className="mt-0.5 text-sm text-slate-200">{value || "—"}</p></div>;
+}
+
+function LeadDrawer({ lead, onClose, actions }) {
+  const [lostOpen, setLostOpen] = useState(false);
+  if (!lead) return null;
+  const stage = STAGES.find((s) => s.id === lead.stage);
+  return (
+    <>
+      <div onClick={onClose} className="fixed inset-0 z-40 bg-slate-950/70" />
+      <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-slate-800 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+          <div className="flex items-center gap-2"><Chip status={stage.accent}>{stage.label}</Chip><SrcChip source={lead.source} /></div>
+          <button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-5">
+          <h3 className="font-display text-xl font-semibold text-slate-100">{lead.name}</h3>
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            <Field label="Suburb" value={lead.suburb} />
+            <Field label="Project" value={lead.project} />
+            <Field label="Lead date" value={lead.date} />
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Source</p>
+              <select value={lead.source} onChange={(e) => actions.setSource(lead.id, e.target.value)} className="mt-0.5 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-200 focus:border-cyan-500/50">
+                <optgroup label="Paid">{PAID_KEYS.map((k) => <option key={k} value={k}>{SOURCES[k].label}</option>)}</optgroup>
+                <optgroup label="Organic">{ORGANIC_KEYS.map((k) => <option key={k} value={k}>{SOURCES[k].label}</option>)}</optgroup>
+              </select>
+            </div>
+          </div>
+
+          {/* Quotes */}
+          {(lead.quotes.length > 0 || lead.stage === "quote" || lead.stage === "won" || lead.stage === "lost") && (
+            <div className="mt-6">
+              <Eyebrow icon={FileText}>Quotes</Eyebrow>
+              <div className="mt-3 space-y-2">
+                {lead.quotes.length === 0 && <p className="text-xs text-slate-500">No quotes yet.</p>}
+                {lead.quotes.map((q) => {
+                  const t = quoteTotals(q); const isWon = lead.wonQuoteId === q.id;
+                  return (
+                    <div key={q.id} className={`rounded-xl border p-3 ${isWon ? "border-emerald-500/40 bg-emerald-500/5" : "border-slate-800 bg-slate-950/40"}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Chip status={q.status === "sent" ? "cyan" : "slate"}>{q.status === "sent" ? "Sent" : "Draft"}</Chip>
+                          {isWon && <Chip status="emerald">Won</Chip>}
+                        </div>
+                        <span className="font-data text-sm font-semibold tabular-nums text-slate-100">{audFmt(t.total, true)}</span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">{q.lineItems.length} line item{q.lineItems.length !== 1 ? "s" : ""} · incl. {audFmt(t.gst, true)} GST</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <button onClick={() => actions.editQuote(lead.id, q.id)} className="inline-flex items-center gap-1 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 transition hover:border-cyan-500/40"><Pencil className="h-3 w-3" /> Edit</button>
+                        {(lead.stage === "quote") && <button onClick={() => actions.markWon(lead.id, q.id)} className="inline-flex items-center gap-1 rounded-md bg-emerald-500/90 px-2 py-1 text-xs font-medium text-slate-950 transition hover:bg-emerald-400"><Trophy className="h-3 w-3" /> Mark won</button>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {lead.stage === "won" && (
+            <div className="mt-6">
+              <Eyebrow icon={Banknote}>Job</Eyebrow>
+              <p className="mt-2 font-data text-2xl font-semibold tabular-nums text-emerald-300">{audFmt(leadValue(lead), true)}</p>
+              <p className="text-xs text-slate-500">recorded as revenue won</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Scheduled start</p>
+                  <input type="date" value={lead.startDate || ""} onChange={(e) => actions.scheduleJob(lead.id, { startDate: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-data text-sm text-slate-200 focus:border-cyan-500/50" />
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Duration (weeks)</p>
+                  <input type="number" min="1" value={lead.durationWeeks || ""} onChange={(e) => actions.scheduleJob(lead.id, { durationWeeks: Number(e.target.value) })}
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-data text-sm text-slate-200 focus:border-cyan-500/50" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Status</p>
+                <div className="mt-1 flex items-center gap-1 rounded-lg border border-slate-700 p-0.5">
+                  {JOB_STATUSES.map((s) => (
+                    <button key={s.id} onClick={() => actions.scheduleJob(lead.id, { jobStatus: s.id })} className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${(lead.jobStatus || "scheduled") === s.id ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}>{s.label}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-3">
+                <p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Tradify job # / link</p>
+                <input value={lead.tradify || ""} onChange={(e) => actions.setTradify(lead.id, e.target.value)} placeholder="Paste Tradify job number or link"
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50" />
+              </div>
+            </div>
+          )}
+          {lead.stage === "lost" && (
+            <div className="mt-6 rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+              <p className="text-[11px] uppercase tracking-wider text-red-300 font-display">Lost</p>
+              <p className="mt-1 text-sm text-slate-300">Reason: {lead.lostReason || "—"}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer actions by stage */}
+        <div className="border-t border-slate-800 p-4">
+          {lead.stage === "new" && (
+            <button onClick={() => actions.qualify(lead.id)} className="flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Check className="h-4 w-4" /> Qualify lead</button>
+          )}
+          {lead.stage === "qualified" && (
+            <button onClick={() => actions.newQuote(lead.id)} className="flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><FileText className="h-4 w-4" /> Create quote</button>
+          )}
+          {lead.stage === "quote" && !lostOpen && (
+            <div className="flex gap-2">
+              <button onClick={() => actions.newQuote(lead.id)} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 transition hover:bg-slate-800"><Plus className="h-4 w-4" /> New revision</button>
+              <button onClick={() => setLostOpen(true)} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-red-500/40 px-3 py-2.5 text-sm text-red-300 transition hover:bg-red-500/10"><X className="h-4 w-4" /> Mark lost</button>
+            </div>
+          )}
+          {lead.stage === "quote" && lostOpen && (
+            <div>
+              <p className="mb-2 text-xs text-slate-400">Reason lost:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {LOST_REASONS.map((r) => <button key={r} onClick={() => { actions.markLost(lead.id, r); setLostOpen(false); }} className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-red-500/40 hover:text-red-300">{r}</button>)}
+                <button onClick={() => setLostOpen(false)} className="rounded-lg px-2.5 py-1.5 text-xs text-slate-500">Cancel</button>
+              </div>
+            </div>
+          )}
+          {(lead.stage === "won" || lead.stage === "lost") && (
+            <button onClick={() => actions.reopen(lead.id)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-slate-800"><RotateCcw className="h-4 w-4" /> Reopen to Quotes</button>
+          )}
+        </div>
+      </aside>
+    </>
+  );
+}
+
+/* -------------------------- QUOTE BUILDER ------------------------------ */
+
+function QuoteBuilder({ editor, leadName, onSave, onClose }) {
+  const [items, setItems] = useState(editor.quote.lineItems.length ? editor.quote.lineItems : [{ id: uid(), desc: "", qty: 1, unitPrice: 0 }]);
+  const [status, setStatus] = useState(editor.quote.status || "draft");
+  const setItem = (id, k, v) => setItems((p) => p.map((li) => li.id === id ? { ...li, [k]: v } : li));
+  const addItem = () => setItems((p) => [...p, { id: uid(), desc: "", qty: 1, unitPrice: 0 }]);
+  const delItem = (id) => setItems((p) => p.filter((li) => li.id !== id));
+  const t = quoteTotals({ lineItems: items });
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+          <div><Eyebrow icon={FileText}>Quote builder</Eyebrow><p className="mt-1 font-display text-base font-semibold text-slate-100">{leadName}</p></div>
+          <button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div className="grid grid-cols-[1fr_64px_104px_88px_32px] gap-2 px-1 pb-2 text-[11px] uppercase tracking-wider text-slate-500 font-display">
+            <span>Description</span><span className="text-right">Qty</span><span className="text-right">Unit price</span><span className="text-right">Line</span><span />
+          </div>
+          <div className="space-y-2">
+            {items.map((li) => {
+              const line = (Number(li.qty) || 0) * (Number(li.unitPrice) || 0);
+              return (
+                <div key={li.id} className="grid grid-cols-[1fr_64px_104px_88px_32px] items-center gap-2">
+                  <input value={li.desc} onChange={(e) => setItem(li.id, "desc", e.target.value)} placeholder="e.g. Demolition & removal"
+                    className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50" />
+                  <input type="number" value={li.qty} onChange={(e) => setItem(li.id, "qty", e.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-right font-data text-sm text-slate-200 focus:border-cyan-500/50" />
+                  <input type="number" value={li.unitPrice} onChange={(e) => setItem(li.id, "unitPrice", e.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-right font-data text-sm text-slate-200 focus:border-cyan-500/50" />
+                  <span className="text-right font-data text-sm tabular-nums text-slate-300">{audFmt(line)}</span>
+                  <button onClick={() => delItem(li.id)} className="flex items-center justify-center text-slate-600 transition hover:text-red-400"><Trash2 className="h-4 w-4" /></button>
+                </div>
+              );
+            })}
+          </div>
+          <button onClick={addItem} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-700 px-3 py-2 text-sm text-slate-400 transition hover:border-cyan-500/40 hover:text-cyan-300"><Plus className="h-4 w-4" /> Add line item</button>
+
+          <div className="mt-5 ml-auto w-full max-w-xs space-y-1.5 text-sm">
+            <div className="flex justify-between text-slate-400"><span>Subtotal</span><span className="font-data tabular-nums text-slate-200">{audFmt(t.sub, true)}</span></div>
+            <div className="flex justify-between text-slate-400"><span>GST (10%)</span><span className="font-data tabular-nums text-slate-200">{audFmt(t.gst, true)}</span></div>
+            <div className="flex justify-between border-t border-slate-800 pt-1.5 text-base font-semibold text-slate-100"><span>Total</span><span className="font-data tabular-nums text-cyan-300">{audFmt(t.total, true)}</span></div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-slate-800 px-5 py-4">
+          <div className="flex items-center gap-1 rounded-lg border border-slate-700 p-0.5">
+            {["draft", "sent"].map((s) => (
+              <button key={s} onClick={() => setStatus(s)} className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${status === s ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}>{s === "draft" ? "Draft" : "Sent"}</button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800">Cancel</button>
+            <button onClick={() => onSave({ ...editor.quote, lineItems: items, status })} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Send className="h-4 w-4" /> Save quote</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* --------------------------- ADD LEAD ---------------------------------- */
+function AddLead({ onSave, onClose }) {
+  const [f, setF] = useState({ name: "", suburb: "", source: "google_ads", project: "Bathroom" });
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div className="relative w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl">
+        <div className="flex items-center justify-between"><Eyebrow icon={Plus}>New lead</Eyebrow><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
+        <div className="mt-4 space-y-3">
+          <input autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Name" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50" />
+          <input value={f.suburb} onChange={(e) => setF({ ...f, suburb: e.target.value })} placeholder="Suburb" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50" />
+          <input value={f.project} onChange={(e) => setF({ ...f, project: e.target.value })} placeholder="Project type" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50" />
+          <div>
+            <p className="mb-1 text-[11px] uppercase tracking-wider text-slate-500 font-display">Source</p>
+            <select value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-cyan-500/50">
+              <optgroup label="Paid">{PAID_KEYS.map((k) => <option key={k} value={k}>{SOURCES[k].label}</option>)}</optgroup>
+              <optgroup label="Organic">{ORGANIC_KEYS.map((k) => <option key={k} value={k}>{SOURCES[k].label}</option>)}</optgroup>
+            </select>
+          </div>
+        </div>
+        <button disabled={!f.name.trim()} onClick={() => onSave(f)} className="mt-4 w-full rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-40">Add to New Leads</button>
+      </div>
+    </div>
+  );
+}
+
+/* --------------------------- JOB REVENUE ------------------------------- */
+
+function RevenueView({ leads }) {
+  const won = leads.filter((l) => l.stage === "won");
+  const totalRev = won.reduce((s, l) => s + leadValue(l), 0);
+  const byMonth = {};
+  won.forEach((l) => { const k = monthKey(l.date); (byMonth[k] = byMonth[k] || { jobs: 0, rev: 0 }); byMonth[k].jobs++; byMonth[k].rev += leadValue(l); });
+  const months = Object.entries(byMonth);
+  const avg = won.length ? totalRev / won.length : 0;
+
+  return (
+    <div className="space-y-8">
+      <SectionHeader icon={Banknote} title="Job Revenue" desc="Won jobs, totalled overall and by month. Updates automatically as you mark quotes won." />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Panel className="p-4"><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Total revenue won</p><p className="mt-2 font-data text-2xl font-semibold tabular-nums text-emerald-300">{audFmt(totalRev)}</p></Panel>
+        <Panel className="p-4"><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Jobs won</p><p className="mt-2 font-data text-2xl font-semibold tabular-nums text-slate-100">{won.length}</p></Panel>
+        <Panel className="p-4"><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Average job</p><p className="mt-2 font-data text-2xl font-semibold tabular-nums text-slate-100">{audFmt(avg)}</p></Panel>
+        <Panel className="p-4"><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Open quotes</p><p className="mt-2 font-data text-2xl font-semibold tabular-nums text-amber-300">{audFmt(leads.filter((l) => l.stage === "quote").reduce((s, l) => s + leadValue(l), 0))}</p></Panel>
+      </div>
+
+      <div>
+        <Eyebrow>By month</Eyebrow>
+        <div className="mt-3">
+          <StatTable columns={["Month", "Jobs won", "Revenue won"]} rows={months.length ? months : [["—", { jobs: 0, rev: 0 }]]}
+            render={([m, v]) => (<tr key={m} className="text-slate-300"><td className="px-4 py-3 font-medium text-slate-200">{m}</td><td className="px-4 py-3 text-right font-data tabular-nums">{v.jobs}</td><td className="px-4 py-3 text-right font-data tabular-nums text-emerald-300">{audFmt(v.rev)}</td></tr>)} />
+        </div>
+      </div>
+
+      <div>
+        <Eyebrow>Won jobs</Eyebrow>
+        <div className="mt-3">
+          <StatTable columns={["Date", "Name", "Suburb", "Project", "Source", "Revenue", "Tradify #"]} rows={won}
+            render={(l) => (
+              <tr key={l.id} className="text-slate-300">
+                <td className="px-4 py-3 font-data text-slate-400">{l.date}</td>
+                <td className="px-4 py-3 font-medium text-slate-200">{l.name}</td>
+                <td className="px-4 py-3">{l.suburb}</td>
+                <td className="px-4 py-3 text-slate-400">{l.project}</td>
+                <td className="px-4 py-3 text-right"><SrcChip source={l.source} /></td>
+                <td className="px-4 py-3 text-right font-data tabular-nums text-emerald-300">{audFmt(leadValue(l))}</td>
+                <td className="px-4 py-3 text-right text-xs text-slate-500">{l.tradify || "—"}</td>
+              </tr>
+            )} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------- AD VIEWS -------------------------------- */
+
+function FunnelView() {
+  const maxW = FUNNEL[0].value;
+  return (
+    <div className="space-y-8">
+      <SectionHeader icon={Filter} title="Lead Funnel" desc="Visitor → lead → quote → won, from your tracker (30 Mar – 21 Apr). Where leads are lost, and which channel earns." />
+      <Panel className="p-6">
+        <div className="space-y-5">
+          {FUNNEL.map((f, i) => {
+            const pct = Math.max(12, (f.value / maxW) * 100);
+            const conv = i > 0 ? Math.round((f.value / FUNNEL[i - 1].value) * 100) : null;
+            const leak = conv !== null && conv < 35;
+            return (
+              <div key={f.stage}>
+                <div className="flex items-baseline justify-between"><span className="font-display text-sm font-medium text-slate-200">{f.stage}</span>
+                  <div className="flex items-center gap-3">{conv !== null && <span className={`font-data text-xs ${leak ? "text-amber-400" : "text-slate-500"}`}>{conv}% step</span>}<span className="font-data tabular-nums text-base text-slate-100">{f.value}</span></div></div>
+                <div className="mt-1.5 h-3 overflow-hidden rounded-full bg-slate-800"><div className={`h-3 rounded-full ${leak ? "bg-amber-400" : "bg-gradient-to-r from-cyan-500 to-cyan-400"}`} style={{ width: `${pct}%` }} /></div>
+                <p className="mt-1 text-xs text-slate-500">{f.sub}</p>
+              </div>
+            );
+          })}
+        </div>
+      </Panel>
+      <div>
+        <Eyebrow>By source</Eyebrow>
+        <div className="mt-3"><StatTable columns={["Source", "Leads", "Qualified", "Quoted", "Won", "Revenue", "Read"]} rows={FUNNEL_BY_SOURCE}
+          render={(r) => (<tr key={r.key} className="text-slate-300"><td className="px-4 py-3"><SrcChip source={r.key} /></td><td className="px-4 py-3 text-right font-data">{r.leads}</td><td className="px-4 py-3 text-right font-data">{r.qualified}</td><td className="px-4 py-3 text-right font-data">{r.quoted}</td><td className="px-4 py-3 text-right font-data">{r.won}</td><td className="px-4 py-3 text-right font-data text-emerald-300">{r.rev}</td><td className="px-4 py-3 text-right text-xs text-slate-500 max-w-[220px]">{r.note}</td></tr>)} /></div>
+      </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <DiagnosisCard icon={Trophy} status="amber" title="Quote → won" body="2 of 9 quotes closed (22%). Both losses were on price — your biggest controllable leak." />
+        <DiagnosisCard icon={Facebook} status="red" title="Meta isn’t closing" body="8 Meta leads, 0 won. Cleanly qualified but low purchase-intent. Several quotes still open — watch close-rate by source." />
+        <DiagnosisCard icon={Eye} status="amber" title="Tiny sample" body="16 leads over 3 weeks. Directional, not statistical — but Google’s revenue edge is clear so far." />
+      </div>
+    </div>
+  );
+}
+function DiagnosisCard({ icon: Icon, status, title, body }) {
+  return <Panel className="p-5"><div className="flex items-center gap-2"><Icon className={`h-4 w-4 ${(STATUS[status]||STATUS.slate).text}`} /><span className="font-display text-sm font-medium text-slate-200">{title}</span></div><p className="mt-2 text-sm leading-relaxed text-slate-400">{body}</p></Panel>;
+}
+
+function GoogleView() {
+  return (
+    <div className="space-y-8">
+      <SectionHeader icon={Search} title="Google Ads" desc="12 months to Jun 2026 · AUD · account currently paused." />
+      <Panel className="p-4">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-red-400" />
+          <p className="text-sm text-red-200">Conversions recorded: <span className="font-data font-semibold">0.00</span> on <span className="font-data font-semibold">{audFmt(GOOGLE_TOTALS.spend)}</span> of spend. The account has optimised blind for a year — fix tracking before relaunch.</p>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Stat label="Spend (12-mo)" value={audFmt(GOOGLE_TOTALS.spend)} />
+          <Stat label="Clicks" value={GOOGLE_TOTALS.clicks.toLocaleString()} />
+          <Stat label="Avg CPC" value={GOOGLE_TOTALS.cpc} sub="≈3× higher than launch" />
+          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3"><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Monthly spend</p><div className="mt-2"><Spark data={GOOGLE_MONTHLY} status="cyan" /></div></div>
+        </div>
+      </Panel>
+
+      <div><Eyebrow>Campaigns</Eyebrow><div className="mt-3"><StatTable columns={["Campaign", "Spend", "Clicks", "CTR", "Conv.", ""]} rows={GOOGLE_CAMPAIGNS}
+        render={(c) => (<tr key={c.name} className="text-slate-300"><td className="px-4 py-3 font-medium text-slate-200">{c.name}</td><td className="px-4 py-3 text-right font-data tabular-nums">{c.spend}</td><td className="px-4 py-3 text-right font-data tabular-nums">{c.clicks}</td><td className="px-4 py-3 text-right font-data tabular-nums text-slate-400">{c.ctr}</td><td className="px-4 py-3 text-right font-data tabular-nums text-red-400">{c.conv}</td><td className="px-4 py-3 text-right"><Chip status="paused">paused</Chip></td></tr>)} /></div></div>
+
+      <div><Eyebrow>Keywords (top by spend)</Eyebrow><div className="mt-3"><StatTable columns={["Keyword", "Match", "Spend", "Clicks", "CTR", "Action"]} rows={GOOGLE_KEYWORDS}
+        render={(k) => (<tr key={k.kw + k.type} className="text-slate-300"><td className="px-4 py-3 font-data text-slate-200">{k.kw}</td><td className="px-4 py-3 text-right text-xs text-slate-400">{k.type}</td><td className="px-4 py-3 text-right font-data tabular-nums">{k.spend}</td><td className="px-4 py-3 text-right font-data tabular-nums text-slate-400">{k.clicks}</td><td className="px-4 py-3 text-right font-data tabular-nums text-slate-400">{k.ctr}</td><td className="px-4 py-3 text-right"><Chip status={k.status}>{k.action}</Chip></td></tr>)} /></div></div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Panel className="p-5"><Eyebrow icon={Plus}>Search terms — promote / fund</Eyebrow><ul className="mt-3 space-y-1.5">{SEARCH_TERMS_GOOD.map((t) => <li key={t} className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5"><span className="font-data text-sm text-slate-200">{t}</span><Check className="h-3.5 w-3.5 text-emerald-400" /></li>)}</ul></Panel>
+        <Panel className="p-5"><Eyebrow icon={X}>Negatives — block these</Eyebrow><ul className="mt-3 flex flex-wrap gap-2">{SEARCH_TERMS_BAD.map((t) => <li key={t} className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-xs text-red-200"><X className="h-3 w-3" />{t}</li>)}</ul></Panel>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Panel className="p-5"><Eyebrow>Devices</Eyebrow><div className="mt-3 space-y-3">{GOOGLE_DEVICES.map((d) => (<div key={d.d}><div className="flex justify-between text-sm"><span className="text-slate-300">{d.d}</span><span className="font-data tabular-nums text-slate-200">{d.spend} · {d.pct}%</span></div><div className="mt-1 h-2 rounded-full bg-slate-800"><div className="h-2 rounded-full bg-cyan-500" style={{ width: `${d.pct}%` }} /></div></div>))}</div><p className="mt-3 text-[11px] text-slate-500">76% of spend is mobile — the mobile landing + click-to-call must be flawless.</p></Panel>
+        <RecBlock icon={Bot} title="Google recommendations" items={[
+          { status: "red", t: "Fix conversion tracking first", d: "Calls + lead form + Tradify offline import. Everything else compounds off this." },
+          { status: "red", t: "Restructure ‘bathroom renovation price’", d: "Broad price-shopper term, 26% of spend." },
+          { status: "amber", t: "Add negatives + location exclusions", d: "Stop paying for cheap/budget and out-of-area clicks." },
+          { status: "green", t: "Fund geo-core + suburb terms", d: "Where your quoted and won leads actually come from." },
+        ]} />
+      </div>
+    </div>
+  );
+}
+function Stat({ label, value, sub }) {
+  return <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3"><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">{label}</p><p className="mt-1 font-data text-lg font-semibold tabular-nums text-slate-100">{value}</p>{sub && <p className="text-[11px] text-slate-500">{sub}</p>}</div>;
+}
+
+function MetaView() {
+  const c = META.campaigns[0];
+  return (
+    <div className="space-y-8">
+      <SectionHeader icon={Facebook} title="Meta Ads" desc={`${META.window} · billed in ${META.currency}.`} />
+      <Panel className="p-4">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" />
+          <p className="text-sm text-amber-100/90">Account bills in <span className="font-semibold">NZD</span> for an AU business, and the active campaign’s leads (on-Meta instant forms) qualified but produced <span className="font-semibold">0 won jobs</span> in the tracked window.</p>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <Stat label="Spend" value={c.spend} />
+          <Stat label="Leads" value={c.leads} />
+          <Stat label="Cost / lead" value={c.cpl} />
+          <Stat label="Link CTR" value={c.ctr} sub="low for lead gen" />
+          <Stat label="Frequency" value={c.freq} />
+          <Stat label="Reach" value={c.reach} />
+        </div>
+      </Panel>
+
+      <div><Eyebrow>Campaigns</Eyebrow><div className="mt-3"><StatTable columns={["Campaign", "Spend", "Leads", "Cost / lead", "CTR", "Lead form", ""]} rows={META.campaigns}
+        render={(c) => (<tr key={c.name} className="text-slate-300"><td className="px-4 py-3 font-medium text-slate-200">{c.name}</td><td className="px-4 py-3 text-right font-data tabular-nums">{c.spend}</td><td className="px-4 py-3 text-right font-data tabular-nums">{c.leads}</td><td className="px-4 py-3 text-right font-data tabular-nums">{c.cpl}</td><td className="px-4 py-3 text-right font-data tabular-nums text-slate-400">{c.ctr}</td><td className="px-4 py-3 text-right text-xs text-slate-400">{c.lf}</td><td className="px-4 py-3 text-right"><Chip status={c.status}>{c.status}</Chip></td></tr>)} /></div>
+        <p className="mt-2 text-[11px] text-slate-500">Ad-level breakdown isn’t in this export — pull an ad-level CSV from Ads Manager to see which creative to scale or pause.</p>
+      </div>
+
+      <RecBlock icon={Bot} title="Meta recommendations" items={META_RECS} />
+    </div>
+  );
+}
+
+function ContentView() {
+  const [open, setOpen] = useState({});
+  return (
+    <div className="space-y-6">
+      <SectionHeader icon={Sparkles} title="Content Engine" desc="What your real data says to make next — built around fixed-price proof and your winning suburbs." />
+      {CONTENT_IDEAS.map((c) => {
+        const isOpen = open[c.id];
+        return (
+          <Panel key={c.id} className="p-5">
+            <div className="flex items-start gap-3"><Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-cyan-400" /><div className="flex-1">
+              <p className="text-sm leading-relaxed text-slate-300">{c.insight}</p>
+              <p className="mt-1 text-[11px] uppercase tracking-wider text-slate-500 font-display">From: {c.project}</p>
+              <button onClick={() => setOpen((p) => ({ ...p, [c.id]: !p[c.id] }))} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-1.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Sparkles className="h-4 w-4" /> {isOpen ? "Hide draft" : "Generate post"}</button>
+            </div></div>
+            {isOpen && (<div className="mt-4 grid grid-cols-1 gap-3 border-t border-slate-800 pt-4 md:grid-cols-2">
+              <Draft label="Headline" value={c.headline} /><Draft label="Ad" value={c.ad} /><Draft label="Post" value={c.post} full /><Draft label="Caption" value={c.caption} full /></div>)}
+          </Panel>
+        );
+      })}
+    </div>
+  );
+}
+const Draft = ({ label, value, full }) => (<div className={full ? "md:col-span-2" : ""}><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">{label}</p><p className="mt-1 rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-300">{value}</p></div>);
+
+function CompetitorView() {
+  const maxR = Math.max(...COMPETITORS.map((c) => c.reviews));
+  return (
+    <div className="space-y-8">
+      <SectionHeader icon={Swords} title="Competitors" desc="Your Gold Coast field, by Google review count — a proxy for local visibility and trust." />
+      <div className="space-y-2">
+        {COMPETITORS.map((c) => (
+          <Panel key={c.name} className="p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2"><span className="font-display text-base font-semibold text-slate-100">{c.name}</span><Chip status={c.threat === "high" ? "red" : c.threat === "medium" ? "amber" : "slate"}>{c.threat}</Chip><span className="inline-flex items-center gap-1 text-xs text-slate-500"><MapPin className="h-3 w-3" />{c.suburb}</span></div>
+                <p className="mt-1.5 text-sm text-slate-400">{c.note}</p>
+                <div className="mt-2 h-1.5 max-w-md rounded-full bg-slate-800"><div className="h-1.5 rounded-full bg-cyan-500" style={{ width: `${(c.reviews / maxR) * 100}%` }} /></div>
+              </div>
+              <div className="flex items-center gap-5 text-right">
+                <div><p className="font-data text-lg tabular-nums text-amber-300">{c.rating.toFixed(1)}★</p><p className="text-[11px] text-slate-500">rating</p></div>
+                <div><p className="font-data text-lg tabular-nums text-slate-100">{c.reviews}</p><p className="text-[11px] text-slate-500">reviews</p></div>
+              </div>
+            </div>
+          </Panel>
+        ))}
+      </div>
+      <RecBlock icon={Bot} title="How to compete" items={COMPETITOR_RECS.map((r) => ({ status: "amber", t: r, d: "" }))} />
+    </div>
+  );
+}
+
+function ActionsView({ done, toggle }) {
+  const [filter, setFilter] = useState("all");
+  const [recState, setRecState] = useState({});
+  const tabs = [{ id: "all", label: "All" }, { id: "high", label: "High" }, { id: "med", label: "Medium" }, { id: "low", label: "Low" }];
+  const list = ACTIONS.filter((a) => filter === "all" || a.pri === filter);
+  const doneCount = ACTIONS.filter((a) => done.has(a.id)).length;
+  const priColor = { high: "red", med: "amber", low: "slate" };
+  const priority = AI_RECS.find((r) => r.priority);
+  const rest = AI_RECS.filter((r) => !r.priority);
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader icon={ListChecks} title="Action Centre" desc="Your marketing chief’s read on the data, then every move ranked by impact." />
+
+      <Panel glow className="bg-cyan-500/5 p-5">
+        <div className="flex items-center gap-2"><span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-300">Priority</span><span className="text-[10px] uppercase tracking-wider text-slate-500 font-display">{priority.area} · confidence {priority.confidence}%</span></div>
+        <h3 className="mt-2 font-display text-lg font-semibold leading-snug tracking-tight text-slate-100">{priority.title}</h3>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">{priority.body}</p>
+        <p className="mt-2 text-[11px] text-cyan-300">{priority.estimate}</p>
+      </Panel>
+      <ul className="space-y-2">
+        {rest.map((r) => { const s = recState[r.id]; if (s === "dismissed") return null; return (
+          <li key={r.id} className="flex items-start gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-3.5">
+            <Dot status={r.impact === "high" ? "red" : "amber"} />
+            <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="text-[10px] uppercase tracking-wider text-slate-500 font-display">{r.area}</span><span className="font-data text-[10px] text-slate-600">conf {r.confidence}%</span></div><p className={`text-sm font-medium ${s === "done" ? "text-slate-500 line-through" : "text-slate-200"}`}>{r.title}</p><p className="mt-0.5 text-xs text-slate-500">{r.body}</p></div>
+            <div className="flex shrink-0 gap-1">{s !== "done" ? (<><button onClick={() => setRecState((p) => ({ ...p, [r.id]: "done" }))} className="rounded-md border border-slate-700 p-1.5 text-slate-300 transition hover:border-cyan-500/50"><Check className="h-3.5 w-3.5" /></button><button onClick={() => setRecState((p) => ({ ...p, [r.id]: "dismissed" }))} className="rounded-md border border-slate-700 p-1.5 text-slate-500 transition hover:bg-slate-800"><X className="h-3.5 w-3.5" /></button></>) : <Check className="h-4 w-4 text-emerald-400" />}</div>
+          </li>); })}
+      </ul>
+
+      <Panel className="p-4"><div className="flex items-center justify-between"><span className="text-sm text-slate-400">Checklist progress</span><span className="font-data text-sm text-slate-200">{doneCount}/{ACTIONS.length}</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-2 rounded-full bg-gradient-to-r from-cyan-500 to-cyan-400" style={{ width: `${(doneCount / ACTIONS.length) * 100}%` }} /></div></Panel>
+
+      <div className="flex gap-2">{tabs.map((t) => <button key={t.id} onClick={() => setFilter(t.id)} className={`rounded-lg px-3 py-1.5 text-sm transition ${filter === t.id ? "bg-cyan-500 text-slate-950" : "border border-slate-700 text-slate-400 hover:bg-slate-800"}`}>{t.label}</button>)}</div>
+      <ul className="space-y-2">{list.map((a) => { const isDone = done.has(a.id); return (
+        <li key={a.id}><Panel className={`p-4 transition ${isDone ? "opacity-60" : ""}`}><div className="flex items-start gap-3">
+          <button onClick={() => toggle(a.id)} className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition ${isDone ? "border-cyan-500 bg-cyan-500" : "border-slate-600 hover:border-cyan-500/60"}`}>{isDone && <Check className="h-3.5 w-3.5 text-slate-950" />}</button>
+          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><Chip status={priColor[a.pri]}>{a.pri === "med" ? "medium" : a.pri}</Chip><span className="font-data text-[11px] text-cyan-300">{a.lift}</span></div><p className={`mt-1.5 text-sm ${isDone ? "text-slate-500 line-through" : "text-slate-200"}`}>{a.text}</p></div>
+          <div className="flex shrink-0 gap-4 text-center"><Dial label="Impact" value={a.impact} tone="cyan" /><Dial label="Effort" value={a.diff} tone="slate" /></div>
+        </div></Panel></li>); })}</ul>
+    </div>
+  );
+}
+const Dial = ({ label, value, tone }) => (<div className="w-12"><p className={`font-data text-lg font-semibold tabular-nums ${tone === "cyan" ? "text-cyan-300" : "text-slate-300"}`}>{value}<span className="text-[11px] text-slate-600">/10</span></p><p className="text-[10px] uppercase tracking-wider text-slate-500">{label}</p></div>);
+
+function AssistantsView() {
+  const [openA, setOpenA] = useState(null);
+  const [answers, setAnswers] = useState({});
+  return (
+    <div className="space-y-6">
+      <SectionHeader icon={Bot} title="Assistants" desc="Six specialists watching your channels. Tap a question for a specific answer." />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {ASSISTANTS.map((as) => { const isOpen = openA === as.id; return (
+          <Panel key={as.id} className="overflow-hidden">
+            <button onClick={() => setOpenA(isOpen ? null : as.id)} className="flex w-full items-start gap-3 p-5 text-left transition hover:bg-slate-800/30">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-800 bg-slate-950 text-cyan-400"><as.icon className="h-5 w-5" /></div>
+              <div className="min-w-0 flex-1"><div className="flex items-center justify-between"><span className="font-display font-semibold text-slate-100">{as.name}</span><ChevronRight className={`h-4 w-4 text-slate-500 transition ${isOpen ? "rotate-90" : ""}`} /></div><p className="mt-1 text-sm text-slate-400">{as.latest}</p></div>
+            </button>
+            {isOpen && (<div className="border-t border-slate-800 px-5 py-4"><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Ask</p><div className="mt-2 space-y-2">
+              {as.qa.map((qa, i) => { const key = `${as.id}-${i}`; const shown = answers[key]; return (<div key={key}>
+                <button onClick={() => setAnswers((p) => ({ ...p, [key]: !p[key] }))} className="flex w-full items-center justify-between rounded-lg border border-slate-700 px-3 py-2 text-left text-sm text-slate-300 transition hover:border-cyan-500/40 hover:bg-slate-800/40">{qa.q}<ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition ${shown ? "rotate-180" : ""}`} /></button>
+                {shown && <p className="mt-1.5 rounded-lg bg-slate-950/50 p-3 text-sm leading-relaxed text-slate-300">{qa.a}</p>}</div>); })}
+            </div></div>)}
+          </Panel>); })}
+      </div>
+    </div>
+  );
+}
+
+/* ====================== PIPELINE (BOOKED-AHEAD) ======================== */
+
+function SettingNum({ label, value, onChange, prefix, suffix, step }) {
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">{label}</p>
+      <div className="mt-1 flex items-center rounded-lg border border-slate-700 bg-slate-950 focus-within:border-cyan-500/50">
+        {prefix && <span className="pl-2.5 text-sm text-slate-500">{prefix}</span>}
+        <input type="number" step={step || "1"} min="0" value={value} onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+          className="w-full bg-transparent px-2.5 py-2 font-data text-sm text-slate-200 focus:outline-none" />
+        {suffix && <span className="pr-2.5 text-xs text-slate-500">{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+function PipelineView({ leads, settings, setSettings, onCard, onSchedule }) {
+  const [showSettings, setShowSettings] = useState(false);
+  const set = (k, v) => setSettings((s) => ({ ...s, [k]: v }));
+  const jobs = leads.filter((l) => l.stage === "won");
+  const months = next12();
+  const { jobsTarget, revenueTarget, leadTimeWeeks, costPerLead, leadToWonRate } = settings;
+  const leadTimeMonths = leadTimeWeeks / 4.345;
+  const hasMoney = costPerLead > 0 && leadToWonRate > 0;
+  const costPerWon = hasMoney ? costPerLead / (leadToWonRate / 100) : 0;
+  const bandMeta = { slow: { c: "amber", label: "Slow" }, filling: { c: "cyan", label: "Filling" }, booked: { c: "emerald", label: "Booked out" } };
+
+  const rows = months.map((m, i) => {
+    const inMonth = jobs.filter((j) => sameMonth(j.startDate, m));
+    const count = inMonth.length;
+    const value = inMonth.reduce((s, j) => s + leadValue(j), 0);
+    const ratio = jobsTarget > 0 ? count / jobsTarget : 0;
+    const band = ratio >= 1 ? "booked" : ratio >= 0.5 ? "filling" : "slow";
+    return { m, i, inMonth, count, value, ratio, band, short: Math.max(0, jobsTarget - count), fillable: i >= leadTimeMonths };
+  });
+  const fillableSlow = rows.filter((r) => r.band !== "booked" && r.fillable && r.short > 0);
+  const tooSoonSlow = rows.filter((r) => r.band !== "booked" && !r.fillable && r.short > 0);
+  const soonest = fillableSlow[0];
+  const totalJobs = rows.reduce((s, r) => s + r.count, 0);
+  const totalValue = rows.reduce((s, r) => s + r.value, 0);
+
+  const rec = (r) => {
+    const pct = Math.round(r.ratio * 100);
+    if (r.band === "booked") return { tone: "emerald", verb: "Hold / redirect", text: `Booked out (${pct}% of target). No extra spend needed — redirect budget to slower months.` };
+    if (!r.fillable) return { tone: "slate", verb: "Too soon", text: `${pct}% booked, but it’s inside your ~${leadTimeWeeks}-week ad lead time. Too close to fill with new ads — focus spend on the months after.` };
+    const dollar = hasMoney && r.short > 0 ? ` ~${r.short} job${r.short > 1 ? "s" : ""} short — at ≈${audFmt(costPerWon)} per won job, about ${audFmt(r.short * costPerWon)} in extra ad spend, committed now.` : "";
+    return { tone: r.band === "slow" ? "amber" : "cyan", verb: r.band === "slow" ? "Increase" : "Top up", text: `${pct}% booked.${dollar || " Increase ad spend now to fill it."}` };
+  };
+
+  return (
+    <div className="space-y-8">
+      <SectionHeader icon={CalendarRange} title="Pipeline" desc="Your jobs booked ahead, month by month — and what to spend on ads to fill the gaps." />
+
+      <Panel glow className="bg-cyan-500/5 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <Eyebrow icon={Zap}>Forward look · next 12 months</Eyebrow>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">
+              {soonest
+                ? <>Soonest slow month you can still fill with ads: <span className="font-semibold text-cyan-300">{monthShort(soonest.m)}</span> (~{Math.round(soonest.ratio * 100)}% booked{hasMoney && soonest.short > 0 ? <>, ~{soonest.short} job{soonest.short > 1 ? "s" : ""} short ≈ {audFmt(soonest.short * costPerWon)} extra ad spend</> : ""}).{fillableSlow.length > 1 ? ` ${fillableSlow.length} fillable slow months ahead — each is broken out below.` : ""}</>
+                : <>Every fillable month is at or above your target of {jobsTarget} job{jobsTarget !== 1 ? "s" : ""}/mo. Hold spend and redirect to the furthest months.</>}
+              {tooSoonSlow.length > 0 && <> The next {tooSoonSlow.length} slow month{tooSoonSlow.length > 1 ? "s are" : " is"} inside your ~{leadTimeWeeks}-week lead time — too close to fill, so push spend to the months after.</>}
+            </p>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{totalJobs} job{totalJobs !== 1 ? "s" : ""} · {audFmt(totalValue)} scheduled across the window. {hasMoney ? <>Cost-per-won-job ≈ {audFmt(costPerWon)} (rough — built from cost/lead ÷ {leadToWonRate}% lead→won; limited conversion data).</> : "Add cost/lead and a lead→won rate in settings for dollar estimates."} Spend shown in AUD; note Meta currently bills in NZD.</p>
+          </div>
+          <button onClick={() => setShowSettings((v) => !v)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800"><Settings className="h-3.5 w-3.5" /> Capacity &amp; ad settings</button>
+        </div>
+        {showSettings && (
+          <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-800 pt-4 sm:grid-cols-3 lg:grid-cols-5">
+            <SettingNum label="Jobs / month" value={jobsTarget} onChange={(v) => set("jobsTarget", v)} />
+            <SettingNum label="Revenue target /mo" value={revenueTarget} onChange={(v) => set("revenueTarget", v)} prefix="$" />
+            <SettingNum label="Ad lead time" value={leadTimeWeeks} onChange={(v) => set("leadTimeWeeks", v)} suffix="wks" />
+            <SettingNum label="Cost / lead" value={costPerLead} onChange={(v) => set("costPerLead", v)} prefix="$" />
+            <SettingNum label="Lead → won" value={leadToWonRate} onChange={(v) => set("leadToWonRate", v)} suffix="%" step="0.5" />
+          </div>
+        )}
+      </Panel>
+
+      <div>
+        <Eyebrow icon={CalendarDays}>Booked ahead</Eyebrow>
+        <div className="mt-3 space-y-2">
+          {rows.map((r) => {
+            const bm = bandMeta[r.band]; const rc = rec(r); const revMet = revenueTarget > 0 && r.value >= revenueTarget;
+            return (
+              <Panel key={r.i} className="p-4">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+                  <div className="w-24 shrink-0">
+                    <p className="font-display text-sm font-semibold text-slate-100">{monthShort(r.m)}</p>
+                    <p className="font-data text-[11px] text-slate-500">{r.count}/{jobsTarget} job{jobsTarget !== 1 ? "s" : ""}</p>
+                  </div>
+                  <div className="min-w-[140px] flex-1">
+                    <div className="h-2.5 overflow-hidden rounded-full bg-slate-800"><div className={`h-2.5 rounded-full ${STATUS[bm.c].dot}`} style={{ width: `${Math.min(100, r.ratio * 100)}%` }} /></div>
+                    <div className="mt-1 flex items-center justify-between">
+                      <span className="font-data text-[11px] tabular-nums text-slate-400">{audFmt(r.value)}{revenueTarget > 0 && <span className="text-slate-600"> / {audFmt(revenueTarget)}{revMet ? " ✓" : ""}</span>}</span>
+                      <Chip status={bm.c}>{bm.label}</Chip>
+                    </div>
+                  </div>
+                  <div className="flex w-full items-start gap-2 border-t border-slate-800/70 pt-3 sm:w-auto sm:flex-1 sm:border-0 sm:pt-0">
+                    {rc.verb === "Increase" ? <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" /> : rc.verb === "Hold / redirect" ? <TrendingDown className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" /> : rc.verb === "Too soon" ? <Clock className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" /> : <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-cyan-400" />}
+                    <div><span className={`font-display text-xs font-semibold ${STATUS[rc.tone].text}`}>{rc.verb}</span><p className="text-xs leading-relaxed text-slate-400">{rc.text}</p></div>
+                  </div>
+                </div>
+                {r.inMonth.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-800/70 pt-3">
+                    {r.inMonth.map((j) => (
+                      <button key={j.id} onClick={() => onCard(j.id)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/40 px-2.5 py-1 text-xs text-slate-300 transition hover:border-cyan-500/40"><Hammer className="h-3 w-3 text-slate-500" />{j.name} · {audFmt(leadValue(j))}</button>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <Eyebrow icon={Hammer}>Jobs — set a start month &amp; status</Eyebrow>
+        <p className="mt-1 text-xs text-slate-500">Won quotes become jobs here. Edit a job’s start date, duration and status inline, or click its name to open the full card.</p>
+        <div className="mt-3">
+          {jobs.length === 0 ? (
+            <Panel className="p-6 text-center text-sm text-slate-500">No won jobs yet — mark a quote won on the Leads board and it’ll appear here.</Panel>
+          ) : (
+            <StatTable columns={["Job", "Value", "Suburb", "Scheduled start", "Weeks", "Status"]} rows={jobs}
+              render={(j) => (
+                <tr key={j.id} className="text-slate-300">
+                  <td className="px-4 py-3"><button onClick={() => onCard(j.id)} className="font-medium text-slate-100 underline-offset-2 hover:text-cyan-300 hover:underline">{j.name}</button></td>
+                  <td className="px-4 py-3 text-right font-data tabular-nums text-emerald-300">{audFmt(leadValue(j))}</td>
+                  <td className="px-4 py-3 text-right text-slate-400">{j.suburb}</td>
+                  <td className="px-4 py-3 text-right"><input type="date" value={j.startDate || ""} onChange={(e) => onSchedule(j.id, { startDate: e.target.value })} className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 font-data text-xs text-slate-200 focus:border-cyan-500/50" /></td>
+                  <td className="px-4 py-3 text-right"><input type="number" min="1" value={j.durationWeeks || ""} onChange={(e) => onSchedule(j.id, { durationWeeks: Number(e.target.value) })} className="w-14 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-right font-data text-xs text-slate-200 focus:border-cyan-500/50" /></td>
+                  <td className="px-4 py-3 text-right"><select value={j.jobStatus || "scheduled"} onChange={(e) => onSchedule(j.id, { jobStatus: e.target.value })} className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 focus:border-cyan-500/50">{JOB_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></td>
+                </tr>
+              )} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ========================= PAID VS ORGANIC ============================= */
+
+function PaidVsOrganicView({ leads, metrics, setMetrics }) {
+  const setSpend = (k, v) => setMetrics((m) => ({ ...m, spend: { ...m.spend, [k]: v } }));
+  const setOrg = (k, v) => setMetrics((m) => ({ ...m, organic: { ...m.organic, [k]: v } }));
+  const rowFor = (k) => {
+    const ls = leads.filter((l) => l.source === k);
+    const won = ls.filter((l) => l.stage === "won");
+    const revenue = won.reduce((s, l) => s + leadValue(l), 0);
+    const cost = SOURCES[k].paid ? (metrics.spend[k] || 0) : 0;
+    return { k, paid: SOURCES[k].paid, leads: ls.length, won: won.length, revenue, cost, cpl: ls.length ? cost / ls.length : 0, cpw: won.length ? cost / won.length : 0 };
+  };
+  const allRows = SOURCE_KEYS.map(rowFor);
+  const rows = allRows.filter((r) => r.paid || r.leads > 0);
+  const paidRows = allRows.filter((r) => r.paid);
+  const orgRows = allRows.filter((r) => !r.paid);
+  const sum = (a, f) => a.reduce((s, r) => s + f(r), 0);
+  const pT = { leads: sum(paidRows, (r) => r.leads), won: sum(paidRows, (r) => r.won), cost: sum(paidRows, (r) => r.cost), rev: sum(paidRows, (r) => r.revenue) };
+  const oT = { leads: sum(orgRows, (r) => r.leads), won: sum(orgRows, (r) => r.won), rev: sum(orgRows, (r) => r.revenue) };
+
+  return (
+    <div className="space-y-8">
+      <SectionHeader icon={Scale} title="Paid vs Organic" desc="Every channel side by side — leads, cost, cost per lead, and how many became jobs. Driven by how each lead is tagged." />
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Panel className="p-4"><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Paid leads → won</p><p className="mt-2 font-data text-2xl font-semibold tabular-nums text-slate-100">{pT.leads} → {pT.won}</p><p className="text-[11px] text-slate-500">{audFmt(pT.cost)} spend · {audFmt(pT.rev)} won</p></Panel>
+        <Panel className="p-4"><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Organic leads → won</p><p className="mt-2 font-data text-2xl font-semibold tabular-nums text-emerald-300">{oT.leads} → {oT.won}</p><p className="text-[11px] text-slate-500">$0 spend · {audFmt(oT.rev)} won</p></Panel>
+        <Panel className="p-4"><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Paid cost / won</p><p className="mt-2 font-data text-2xl font-semibold tabular-nums text-cyan-300">{pT.won ? audFmt(pT.cost / pT.won) : "—"}</p><p className="text-[11px] text-slate-500">spend ÷ paid wins</p></Panel>
+        <Panel className="p-4"><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Organic share of wins</p><p className="mt-2 font-data text-2xl font-semibold tabular-nums text-slate-100">{(pT.won + oT.won) ? Math.round((oT.won / (pT.won + oT.won)) * 100) : 0}%</p><p className="text-[11px] text-slate-500">free jobs vs paid</p></Panel>
+      </div>
+
+      <div>
+        <Eyebrow icon={Coins}>By channel</Eyebrow>
+        <p className="mt-1 text-xs text-slate-500">Paid spend is editable (≈ per month). Organic is free — any wins there are pure margin. Tag leads to organic sources on a lead’s card to populate those rows.</p>
+        <div className="mt-3">
+          <StatTable columns={["Channel", "Type", "Leads", "Cost", "Cost / lead", "Won", "Won revenue", "Cost / won"]} rows={rows}
+            render={(r) => (
+              <tr key={r.k} className="text-slate-300">
+                <td className="px-4 py-3"><SrcChip source={r.k} /></td>
+                <td className="px-4 py-3 text-right"><Chip status={r.paid ? "amber" : "emerald"}>{r.paid ? "Paid" : "Organic"}</Chip></td>
+                <td className="px-4 py-3 text-right font-data tabular-nums">{r.leads}</td>
+                <td className="px-4 py-3 text-right">{r.paid
+                  ? <span className="inline-flex items-center rounded-md border border-slate-700 bg-slate-950"><span className="pl-2 text-xs text-slate-500">$</span><input type="number" min="0" value={metrics.spend[r.k] || 0} onChange={(e) => setSpend(r.k, e.target.value === "" ? 0 : Number(e.target.value))} className="w-20 bg-transparent px-1 py-1 text-right font-data text-xs text-slate-200 focus:outline-none" /></span>
+                  : <span className="font-data text-xs text-slate-500">$0</span>}</td>
+                <td className="px-4 py-3 text-right font-data tabular-nums text-slate-400">{r.paid ? (r.leads ? audFmt(r.cpl) : "—") : "$0"}</td>
+                <td className="px-4 py-3 text-right font-data tabular-nums">{r.won}</td>
+                <td className="px-4 py-3 text-right font-data tabular-nums text-emerald-300">{audFmt(r.revenue)}</td>
+                <td className="px-4 py-3 text-right font-data tabular-nums text-cyan-300">{r.paid ? (r.won ? audFmt(r.cpw) : "—") : "$0"}</td>
+              </tr>
+            )} />
+        </div>
+        <p className="mt-2 text-[11px] text-slate-500">Spend in AUD. Google Ads is currently paused; Meta bills in NZD (≈{audFmt(metrics.spend.meta_ads || 0)} AUD/mo shown). Lead counts come from in-app tagging, so periods may differ from the ad-platform windows.</p>
+      </div>
+
+      <div>
+        <Eyebrow icon={TrendingUp}>Organic reach (manual entry)</Eyebrow>
+        <p className="mt-1 text-xs text-slate-500">Enter these from Instagram / Facebook Insights and your Google Business Profile until the APIs are connected.</p>
+        <Panel className="mt-3 p-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <SettingNum label="IG reach / mo" value={metrics.organic.ig_reach} onChange={(v) => setOrg("ig_reach", v)} />
+            <SettingNum label="IG engagements" value={metrics.organic.ig_eng} onChange={(v) => setOrg("ig_eng", v)} />
+            <SettingNum label="FB reach / mo" value={metrics.organic.fb_reach} onChange={(v) => setOrg("fb_reach", v)} />
+            <SettingNum label="FB engagements" value={metrics.organic.fb_eng} onChange={(v) => setOrg("fb_eng", v)} />
+            <SettingNum label="GBP views / mo" value={metrics.organic.gbp_views} onChange={(v) => setOrg("gbp_views", v)} />
+            <SettingNum label="GBP calls / mo" value={metrics.organic.gbp_calls} onChange={(v) => setOrg("gbp_calls", v)} />
+          </div>
+        </Panel>
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-400">
+          <PlugZap className="mt-0.5 h-4 w-4 shrink-0 text-cyan-400" />
+          <p>Phase 2: auto-pull Instagram &amp; Facebook insights via the <span className="text-slate-300">Meta Graph API</span> and GBP views/calls via the <span className="text-slate-300">Google Business Profile API</span>. The Meta side needs app permissions + App Review (which takes time), so these stay manual until then.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ====================== CONTENT CALENDAR + AI ========================== */
+
+const POST_CHANNELS = ["instagram", "facebook", "gbp"];
+const POST_GOALS = ["Book quotes / enquiries", "Showcase craftsmanship", "Counter price objections", "Build trust & reviews", "Educate (process / what's included)"];
+const POST_STATUS = { draft: { label: "Draft", c: "slate" }, scheduled: { label: "Scheduled", c: "cyan" }, posted: { label: "Posted", c: "emerald" } };
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+const plusDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const defaultSchedule = () => plusDays(1) + "T18:00";
+const fmtWhen = (s) => { const d = new Date(s); return isNaN(d) ? (s || "—") : d.toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); };
+
+const SEED_POSTS = [
+  { id: "p1", photo: null, caption: "Fixed-price bathroom reno in Burleigh — demo to handover, no surprises. QBCC licensed, with a workmanship warranty.", hashtags: "#goldcoastbathrooms #bathroomrenovation #burleighheads #fixedprice #qbcc #renovation", channels: ["instagram", "facebook"], scheduledAt: plusDays(2) + "T18:00", status: "draft", reach: null, engagement: null, why: "" },
+  { id: "p2", photo: null, caption: "Cheapest quote vs the right quote — here's what a proper fixed price actually includes on a Gold Coast bathroom.", hashtags: "#bathroomrenovation #goldcoast #renovationtips #fixedprice", channels: ["instagram"], scheduledAt: plusDays(6) + "T19:00", status: "scheduled", reach: null, engagement: null, why: "" },
+];
+
+/* --- AI plumbing (live inside Claude; graceful fallback when downloaded) --- */
+const AD_PERSONA = `You are a world-class direct-response marketer for a Gold Coast bathroom renovation company. Your single job is to turn every piece of content into a lead — an enquiry or quote request. This is not brand fluff: every caption, post and ad must move a high-intent local homeowner to take one clear action.
+For everything you write:
+- Open with a hook that stops a homeowner who's thinking about renovating.
+- Speak to the real desire and the real objections — a beautiful, functional bathroom and an end to the dated or leaking one, against the worries of cost, mess, disruption and trusting the wrong tradie.
+- Use proven direct-response structure (problem–agitate–solve, or hook–value–offer). Be specific and concrete, never generic.
+- Build trust and lower risk using the business's edge — transparent fixed pricing, QBCC licence, workmanship warranty, real before/afters — and counter price objections with value, since price is the top reason deals are lost.
+- End with ONE clear, low-friction call to action that captures a lead (e.g. 'DM BATHROOM for a free fixed-price quote', 'Book your free design consult'). Make the next step effortless.
+- Match the platform: punchy and visual-first for Instagram/Facebook, benefit-and-trust-led within character limits for Google Search, scroll-stopping for paid.
+- Sound like the trusted local expert, never a hypey ad — anything that reads as spam erodes trust with a big-ticket buyer.
+- Use the business's own data and competitor positioning provided to you to angle every message at what actually converts.
+Always optimise for the enquiry. Before returning anything, ask yourself: would this make a homeowner reach out? If not, rewrite it until it would.
+When asked for JSON, return only valid JSON with no markdown or commentary.`;
+
+async function callClaude(messages, maxTokens = 1024, system = AD_PERSONA) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, system, messages }),
+  });
+  if (!res.ok) throw new Error("AI request failed (" + res.status + ")");
+  const data = await res.json();
+  return (data.content || []).map((b) => (b.type === "text" ? b.text : "")).join("");
+}
+const parseJSON = (t) => JSON.parse((t || "").replace(/```json/gi, "").replace(/```/g, "").trim());
+const dataUrlParts = (u) => { const m = /^data:(.+?);base64,(.*)$/.exec(u || ""); return m ? { media_type: m[1], data: m[2] } : null; };
+function bizContext(leads) {
+  const won = leads.filter((l) => l.stage === "won");
+  const suburbs = Array.from(new Set(won.map((l) => l.suburb).filter((s) => s && s !== "—"))).slice(0, 5);
+  const bySrc = {}; leads.forEach((l) => { bySrc[l.source] = bySrc[l.source] || { leads: 0, won: 0 }; bySrc[l.source].leads++; if (l.stage === "won") bySrc[l.source].won++; });
+  const conv = Object.entries(bySrc).filter(([, v]) => v.won > 0).map(([k, v]) => `${SOURCES[k]?.label || k}: ${v.won}/${v.leads}`);
+  return [
+    "Business: Plumb Renovations — quality (not budget) bathroom, ensuite and laundry renovations on the Gold Coast, Australia.",
+    "Positioning vs competitors: premium-justified quality, transparent fixed pricing (no surprises), QBCC licensed, workmanship warranty. Not the cheapest — the right quote.",
+    suburbs.length ? `Recent won jobs in: ${suburbs.join(", ")}.` : "",
+    conv.length ? `Channels converting to won jobs: ${conv.join("; ")}.` : "",
+    "Audience: mid-to-high-end owner-occupier homeowners, often 45+.",
+  ].filter(Boolean).join(" ");
+}
+async function generatePost({ photoDataUrl, channels, goal, leads }) {
+  const chLabels = channels.map((c) => SOURCES[c]?.label || c).join(", ") || "Instagram";
+  const prompt = `Write ONE high-performing organic post to go WITH the attached photo (you are NOT generating an image — the user supplies the photo). Business + conversion context: ${bizContext(leads)} Channel(s): ${chLabels}. Primary goal: ${goal}. Apply bathroom-reno social best practice: open with a hook, use concrete specifics, light proof, one clear CTA. Instagram/Facebook get a warm caption plus relevant hashtags; Google Business Profile gets a short post with no hashtags.
+
+Return ONLY valid JSON, no markdown, exactly these keys:
+{"caption": string, "hashtags": string[] (8-12 tags WITH leading #, empty array if GBP only), "cta": string, "suggestedTime": string (day + time window in AEST for this audience), "why": string (one sentence on why it should perform)}`;
+  const content = [];
+  const parts = dataUrlParts(photoDataUrl);
+  if (parts) content.push({ type: "image", source: { type: "base64", media_type: parts.media_type, data: parts.data } });
+  content.push({ type: "text", text: prompt });
+  const j = parseJSON(await callClaude([{ role: "user", content }], 1024));
+  return { caption: j.caption || "", hashtags: Array.isArray(j.hashtags) ? j.hashtags.join(" ") : (j.hashtags || ""), cta: j.cta || "", suggestedTime: j.suggestedTime || "", why: j.why || "" };
+}
+async function generateIdeas({ leads }) {
+  const prompt = `${bizContext(leads)}
+
+Suggest 5 organic social post ideas likely to perform for this business — especially ones that counter price objections and showcase quality (before/afters, "what's included" breakdowns, suburb spotlights, process). Return ONLY valid JSON: {"ideas":[{"title": string, "why": string}]}`;
+  const j = parseJSON(await callClaude([{ role: "user", content: [{ type: "text", text: prompt }] }], 700));
+  return (j.ideas || []).slice(0, 6);
+}
+const GOAL_LINE = {
+  "Book quotes / enquiries": "Ready to start yours? Book a free on-site measure and fixed-price quote.",
+  "Showcase craftsmanship": "Every detail done properly — tiling, waterproofing and a finish you can rely on.",
+  "Counter price objections": "The cheapest quote is rarely the cheapest job. Here's what a proper fixed price includes.",
+  "Build trust & reviews": "Another happy Gold Coast homeowner — QBCC licensed, fully warranted, no surprises.",
+  "Educate (process / what's included)": "From demo to handover, here's exactly what's included in a quality bathroom renovation.",
+};
+function fallbackPost({ channels, goal, leads }) {
+  const won = leads.filter((l) => l.stage === "won");
+  const suburb = (won.find((l) => l.suburb && l.suburb !== "—") || {}).suburb || "the Gold Coast";
+  const gbpOnly = channels.length === 1 && channels[0] === "gbp";
+  return {
+    caption: `${GOAL_LINE[goal] || GOAL_LINE["Book quotes / enquiries"]} A recent fixed-price bathroom in ${suburb} — QBCC licensed, workmanship warranty, no surprises.`,
+    hashtags: gbpOnly ? "" : "#goldcoastbathrooms #bathroomrenovation #goldcoastbuilder #bathroomdesign #qbcc #fixedprice #renovation #bathroominspo",
+    cta: "Book your free quote — link in bio.", suggestedTime: "Thursday 7:00–8:00 pm AEST",
+    why: "(Offline template) Open this file inside Claude for live, photo-specific AI copy.",
+  };
+}
+const FALLBACK_IDEAS = CONTENT_IDEAS.map((c) => ({ title: c.headline, why: c.insight }));
+
+/* --- Paid ad generators (same persona + AI setup as the post generator) --- */
+const META_CTAS = ["Book Now", "Get Quote", "Learn More", "Contact Us", "Send Message", "Sign Up"];
+function adContext(leads) {
+  return [
+    bizContext(leads),
+    "Ad-performance learnings from this account: Google Ads conversion tracking has been broken (0 conversions recorded on ~$8.7k spend) yet Google still drove the only won jobs — so lean into high-intent, geo-specific terms that convert and stop wasting budget on price-shoppers.",
+    "The single biggest paid waste was the broad keyword 'bathroom renovation price' (price-shopper intent) — avoid bidding into cheap/price-shopping intent.",
+    "High-intent terms that work: " + SEARCH_TERMS_GOOD.join(", ") + ".",
+    "Treat these as negatives / avoid: " + SEARCH_TERMS_BAD.join(", ") + ".",
+    "Two recent deals were lost on price, so counter price with value (fixed price, QBCC licence, workmanship warranty).",
+  ].join(" ");
+}
+async function generateMetaAd({ photoDataUrl, goal, leads }) {
+  const prompt = `Task: write a paid Meta (Facebook/Instagram) ad to run WITH the attached photo (you do NOT generate the image). Goal: ${goal}.
+Business + ad-performance context: ${adContext(leads)}
+Produce 2-3 distinct variations to A/B test, each a different angle. Stay within Meta's recommended lengths: primary text <= 125 characters, headline <= 40 characters, link description <= 30 characters. Pick a call-to-action button from exactly this list: ${META_CTAS.join(", ")}.
+Return ONLY valid JSON: {"variations":[{"primaryText":string,"headline":string,"description":string,"cta":string}]}`;
+  const content = []; const parts = dataUrlParts(photoDataUrl);
+  if (parts) content.push({ type: "image", source: { type: "base64", media_type: parts.media_type, data: parts.data } });
+  content.push({ type: "text", text: prompt });
+  const j = parseJSON(await callClaude([{ role: "user", content }], 1400));
+  return { variations: (j.variations || []).slice(0, 3) };
+}
+async function generateGoogleAd({ photoDataUrl, goal, leads }) {
+  const withAssets = !!photoDataUrl;
+  const prompt = `Task: create Google Ads copy for this business. Goal: ${goal}.
+Business + ad-performance context: ${adContext(leads)}
+1) A Responsive Search Ad: up to 15 headlines, each a HARD MAX of 30 characters, and up to 4 descriptions, each a HARD MAX of 90 characters. Never exceed these limits — count characters.
+2) 8-12 suggested keywords (high-intent, local/geo, lean into what converts) and 8-12 negative keywords (cheap/price-shopper, out-of-area, off-offering terms to exclude).
+3) Ad extensions: 4-6 callouts (each <= 25 chars) and 4 sitelinks (each with short link text <= 25 chars and a one-line description <= 35 chars).${withAssets ? "\n4) Performance Max / Display assets: 5 short headlines (<= 30 chars), 1 long headline (<= 90 chars) and 3-4 descriptions (<= 90 chars)." : ""}
+Return ONLY valid JSON: {"headlines":string[],"descriptions":string[],"keywords":string[],"negatives":string[],"callouts":string[],"sitelinks":[{"text":string,"description":string}]${withAssets ? ',"pmax":{"shortHeadlines":string[],"longHeadline":string,"descriptions":string[]}' : ""}}`;
+  const content = []; const parts = dataUrlParts(photoDataUrl);
+  if (parts) content.push({ type: "image", source: { type: "base64", media_type: parts.media_type, data: parts.data } });
+  content.push({ type: "text", text: prompt });
+  const j = parseJSON(await callClaude([{ role: "user", content }], 1800));
+  return { headlines: (j.headlines || []).slice(0, 15), descriptions: (j.descriptions || []).slice(0, 4), keywords: j.keywords || [], negatives: j.negatives || [], callouts: j.callouts || [], sitelinks: j.sitelinks || [], pmax: j.pmax || null };
+}
+function fallbackMetaAd({ goal, leads }) {
+  const won = leads.filter((l) => l.stage === "won");
+  const suburb = (won.find((l) => l.suburb && l.suburb !== "—") || {}).suburb || "the Gold Coast";
+  return { _offline: true, variations: [
+    { primaryText: `Dreaming of a new bathroom but dread the cost and mess? Fixed-price Gold Coast renos — QBCC licensed, fully warranted, no surprises.`, headline: "Fixed-Price Bathroom Renos", description: "Free quote · QBCC licensed", cta: "Get Quote" },
+    { primaryText: `Tired of the dated, leaking bathroom? We renovate it properly for a fixed price — no blowouts. See recent ${suburb} transformations.`, headline: "Renovate With Confidence", description: "No-surprise fixed pricing", cta: "Learn More" },
+    { primaryText: `Cheapest quote isn't the cheapest job. Get a transparent fixed-price quote from a QBCC-licensed team you can trust. Book today.`, headline: "A Fair, Fixed Quote", description: "Workmanship warranty", cta: "Book Now" },
+  ] };
+}
+function fallbackGoogleAd({ photoDataUrl }) {
+  const base = {
+    _offline: true,
+    headlines: ["Gold Coast Bathroom Renos", "Fixed-Price Bathrooms", "Free Bathroom Quote", "QBCC Licensed Builder", "No-Surprise Fixed Pricing", "Bathroom Renovations GC", "Quality Bathroom Reno", "Book A Free Quote", "Workmanship Warranty", "Burleigh Bathroom Renos", "Ensuite & Laundry Renos", "Renovate With Confidence", "Local Bathroom Experts", "Free On-Site Quote", "Fixed Quote, No Surprises"],
+    descriptions: ["Fixed-price Gold Coast bathroom renovations. QBCC licensed and fully warranted. Free quote.", "From demo to handover with no surprises. Transparent fixed pricing — book your free quote.", "Quality bathrooms done right by a QBCC-licensed team with a workmanship warranty.", "See why locals choose us. Free on-site measure and a fixed-price quote — book today."],
+    keywords: SEARCH_TERMS_GOOD.slice(0, 10),
+    negatives: ["cheap", "budget", "affordable", "under $5000", "how much", "diy", "remodeling", "brisbane", "logan", "sunshine coast"],
+    callouts: ["Fixed-Price Quotes", "QBCC Licensed", "Workmanship Warranty", "Free On-Site Quote", "Local Gold Coast Team"],
+    sitelinks: [{ text: "Free Quote", description: "Book an on-site measure" }, { text: "Our Work", description: "Recent bathroom transformations" }, { text: "Bathroom Renos", description: "Full bathroom renovations" }, { text: "Reviews", description: "What Gold Coast clients say" }],
+    pmax: null,
+  };
+  if (photoDataUrl) base.pmax = { shortHeadlines: ["Fixed-Price Bathrooms", "Gold Coast Bathroom Renos", "Free Bathroom Quote", "QBCC Licensed Builder", "No-Surprise Pricing"], longHeadline: "Quality fixed-price bathroom renovations across the Gold Coast — QBCC licensed", descriptions: ["Fixed-price bathroom renovations with no surprises. QBCC licensed, fully warranted.", "From demo to handover by a trusted local team. Book a free on-site quote today.", "End the dated, leaking bathroom. Transparent fixed pricing and a workmanship warranty."] };
+  return base;
+}
+
+function downscaleImage(file, maxDim = 1024, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let { width, height } = img;
+        if (Math.max(width, height) > maxDim) { const r = maxDim / Math.max(width, height); width = Math.round(width * r); height = Math.round(height * r); }
+        const c = document.createElement("canvas"); c.width = width; c.height = height;
+        c.getContext("2d").drawImage(img, 0, 0, width, height);
+        try { resolve(c.toDataURL("image/jpeg", quality)); } catch (e) { reject(e); }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+const ChannelPicker = ({ value, onToggle }) => (
+  <div className="flex flex-wrap gap-1.5">
+    {POST_CHANNELS.map((c) => { const on = value.includes(c); return (
+      <button key={c} onClick={() => onToggle(c)} className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${on ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-200" : "border-slate-700 text-slate-400 hover:bg-slate-800"}`}>{SOURCES[c].short}</button>
+    ); })}
+  </div>
+);
+
+/* --- Post editor --- */
+function PostEditor({ post, onSave, onDelete, onClose }) {
+  const [p, setP] = useState(post);
+  const set = (k, v) => setP((s) => ({ ...s, [k]: v }));
+  const toggleCh = (c) => setP((s) => ({ ...s, channels: s.channels.includes(c) ? s.channels.filter((x) => x !== c) : [...s.channels, c] }));
+  const pick = async (e) => { const f = e.target.files && e.target.files[0]; if (f) { try { set("photo", await downscaleImage(f)); } catch {} } };
+  const copy = () => { try { navigator.clipboard.writeText((p.caption || "") + (p.hashtags ? "\n\n" + p.hashtags : "")); } catch {} };
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div className="relative flex max-h-[92vh] w-full max-w-lg flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><Eyebrow icon={CalendarDays}>Post</Eyebrow><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <div>
+            <p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Photo</p>
+            {p.photo ? (
+              <div className="relative"><img src={p.photo} alt="" className="max-h-48 w-full rounded-lg object-cover" /><button onClick={() => set("photo", null)} className="absolute right-2 top-2 rounded-md bg-slate-950/80 p-1 text-slate-300 hover:text-red-300"><X className="h-3.5 w-3.5" /></button></div>
+            ) : (
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-700 px-3 py-6 text-sm text-slate-400 transition hover:border-cyan-500/40 hover:text-cyan-300"><ImagePlus className="h-4 w-4" /> Upload photo<input type="file" accept="image/*" onChange={pick} className="hidden" /></label>
+            )}
+          </div>
+          <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Caption</p><textarea rows={4} value={p.caption} onChange={(e) => set("caption", e.target.value)} placeholder="Write the caption…" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50" /></div>
+          <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Hashtags</p><input value={p.hashtags} onChange={(e) => set("hashtags", e.target.value)} placeholder="#goldcoastbathrooms #fixedprice" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-data text-xs text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50" /></div>
+          <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Channels</p><ChannelPicker value={p.channels} onToggle={toggleCh} /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Scheduled</p><input type="datetime-local" value={p.scheduledAt} onChange={(e) => set("scheduledAt", e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-data text-xs text-slate-200 focus:border-cyan-500/50" /></div>
+            <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Status</p>
+              <div className="flex items-center gap-1 rounded-lg border border-slate-700 p-0.5">{Object.keys(POST_STATUS).map((s) => <button key={s} onClick={() => set("status", s)} className={`flex-1 rounded-md px-1.5 py-1.5 text-[11px] font-medium transition ${p.status === s ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}>{POST_STATUS[s].label}</button>)}</div>
+            </div>
+          </div>
+          {p.status === "posted" && (
+            <div className="grid grid-cols-2 gap-3">
+              <SettingNum label="Reach" value={p.reach || 0} onChange={(v) => set("reach", v)} />
+              <SettingNum label="Engagements" value={p.engagement || 0} onChange={(v) => set("engagement", v)} />
+            </div>
+          )}
+          {p.why && <p className="rounded-lg border border-slate-800 bg-slate-950/40 p-2.5 text-xs text-slate-400"><span className="text-cyan-300">Why this should perform:</span> {p.why}</p>}
+          <div className="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-900/40 p-2.5 text-[11px] text-slate-500"><PlugZap className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-400" />Phase 2: auto-publish on schedule and auto-pull reach/engagement via the Meta Graph API (instagram_content_publish, pages_manage_posts, insights) — needs App Review. For now, copy the caption, post manually, then mark it Posted.</div>
+        </div>
+        <div className="flex items-center justify-between gap-2 border-t border-slate-800 px-5 py-4">
+          <button onClick={() => onDelete(p.id)} className="rounded-lg border border-red-500/40 px-3 py-2 text-xs text-red-300 transition hover:bg-red-500/10"><Trash2 className="h-3.5 w-3.5" /></button>
+          <div className="flex gap-2">
+            <button onClick={copy} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800"><Copy className="h-3.5 w-3.5" /> Copy caption</button>
+            <button onClick={() => { onSave(p); onClose(); }} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Send className="h-4 w-4" /> Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* --- AI post studio (photo -> post) --- */
+function AiStudio({ leads, onClose, onSaveDraft }) {
+  const [photo, setPhoto] = useState(null);
+  const [channels, setChannels] = useState(["instagram"]);
+  const [goal, setGoal] = useState(POST_GOALS[0]);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [offline, setOffline] = useState(false);
+  const toggleCh = (c) => setChannels((p) => p.includes(c) ? p.filter((x) => x !== c) : [...p, c]);
+  const pick = async (e) => { const f = e.target.files && e.target.files[0]; if (f) { try { setPhoto(await downscaleImage(f)); } catch {} } };
+  const run = async () => {
+    setLoading(true); setOffline(false);
+    try { setResult(await generatePost({ photoDataUrl: photo, channels, goal, leads })); }
+    catch { setResult(fallbackPost({ channels, goal, leads })); setOffline(true); }
+    setLoading(false);
+  };
+  const copy = () => { try { navigator.clipboard.writeText((result.caption || "") + (result.hashtags ? "\n\n" + result.hashtags : "")); } catch {} };
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><Eyebrow icon={Wand2}>AI post studio</Eyebrow><p className="mt-1 text-xs text-slate-500">Upload a finished photo → get caption, hashtags, CTA and a suggested time. {RUNTIME !== "claude" && "Open inside Claude for live AI; this download uses a template."}</p></div><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
+        <div className="grid flex-1 gap-5 overflow-y-auto px-5 py-4 md:grid-cols-2">
+          <div className="space-y-4">
+            {photo ? (
+              <div className="relative"><img src={photo} alt="" className="max-h-56 w-full rounded-lg object-cover" /><button onClick={() => setPhoto(null)} className="absolute right-2 top-2 rounded-md bg-slate-950/80 p-1 text-slate-300 hover:text-red-300"><X className="h-3.5 w-3.5" /></button></div>
+            ) : (
+              <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-700 px-3 py-10 text-sm text-slate-400 transition hover:border-cyan-500/40 hover:text-cyan-300"><ImagePlus className="h-5 w-5" /> Upload a finished-bathroom photo<span className="text-[11px] text-slate-600">It writes the copy — it doesn't make the image</span><input type="file" accept="image/*" onChange={pick} className="hidden" /></label>
+            )}
+            <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Channels</p><ChannelPicker value={channels} onToggle={toggleCh} /></div>
+            <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Goal</p><select value={goal} onChange={(e) => setGoal(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-cyan-500/50">{POST_GOALS.map((g) => <option key={g} value={g}>{g}</option>)}</select></div>
+            <button onClick={run} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">{loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</> : <><Wand2 className="h-4 w-4" /> {result ? "Regenerate" : "Generate post"}</>}</button>
+          </div>
+          <div className="space-y-3">
+            {!result && !loading && <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-600">Your generated post will appear here.</div>}
+            {result && (
+              <>
+                {offline && <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">Offline template — open this file inside Claude for live, photo-specific copy.</p>}
+                <div><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Caption</p><p className="mt-1 whitespace-pre-wrap rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-200">{result.caption}</p></div>
+                {result.hashtags && <div><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Hashtags</p><p className="mt-1 rounded-lg border border-slate-800 bg-slate-950/40 p-3 font-data text-xs text-cyan-200">{result.hashtags}</p></div>}
+                <div className="grid grid-cols-2 gap-3">
+                  <div><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Call to action</p><p className="mt-1 text-sm text-slate-300">{result.cta}</p></div>
+                  <div><p className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Suggested time</p><p className="mt-1 inline-flex items-center gap-1 text-sm text-slate-300"><Clock className="h-3.5 w-3.5 text-cyan-400" />{result.suggestedTime}</p></div>
+                </div>
+                {result.why && <p className="rounded-lg border border-slate-800 bg-slate-950/40 p-2.5 text-xs text-slate-400"><span className="text-cyan-300">Why:</span> {result.why}</p>}
+                <div className="flex gap-2 pt-1">
+                  <button onClick={copy} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800"><Copy className="h-3.5 w-3.5" /> Copy</button>
+                  <button onClick={() => onSaveDraft({ id: uid(), photo, caption: result.caption || "", hashtags: result.hashtags || "", channels, scheduledAt: defaultSchedule(), status: "draft", reach: null, engagement: null, why: result.why || "" })} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Plus className="h-4 w-4" /> Save as draft</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* --- Idea starters --- */
+function IdeaStarters({ leads, onClose, onUseIdea }) {
+  const [loading, setLoading] = useState(true);
+  const [ideas, setIdeas] = useState([]);
+  const [offline, setOffline] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try { const r = await generateIdeas({ leads }); if (alive) setIdeas(r.length ? r : FALLBACK_IDEAS); }
+      catch { if (alive) { setIdeas(FALLBACK_IDEAS); setOffline(true); } }
+      if (alive) setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, []);
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div className="relative flex max-h-[88vh] w-full max-w-lg flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><Eyebrow icon={Sparkles}>Idea starters</Eyebrow><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
+        <div className="flex-1 space-y-2 overflow-y-auto px-5 py-4">
+          {loading && <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Thinking up ideas…</div>}
+          {!loading && offline && <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">Offline suggestions — open inside Claude for fresh, data-specific ideas.</p>}
+          {!loading && ideas.map((idea, i) => (
+            <div key={i} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+              <p className="text-sm font-medium text-slate-200">{idea.title}</p>
+              {idea.why && <p className="mt-0.5 text-xs text-slate-500">{idea.why}</p>}
+              <button onClick={() => onUseIdea(idea)} className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-cyan-500 px-2.5 py-1 text-xs font-medium text-slate-950 transition hover:bg-cyan-400"><Plus className="h-3 w-3" /> Draft this</button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* --- Calendar view --- */
+function PostChip({ post, onClick }) {
+  const c = post.channels[0] || "instagram";
+  return <button onClick={onClick} className={`flex w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[10px] ${SOURCES[c]?.chip || "bg-slate-700/40 text-slate-300 border-slate-600/50"} border`}><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS[POST_STATUS[post.status].c].dot}`} /><span className="truncate">{post.caption || "Untitled"}</span></button>;
+}
+function CalendarView({ posts, setPosts, leads }) {
+  const [tab, setTab] = useState("calendar");
+  const [cursor, setCursor] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [editing, setEditing] = useState(null);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [ideasOpen, setIdeasOpen] = useState(false);
+  const savePost = (np) => setPosts((prev) => prev.some((x) => x.id === np.id) ? prev.map((x) => x.id === np.id ? np : x) : [...prev, np]);
+  const delPost = (id) => { setPosts((prev) => prev.filter((p) => p.id !== id)); setEditing(null); };
+  const newPost = (date) => setEditing({ id: uid(), photo: null, caption: "", hashtags: "", channels: ["instagram"], scheduledAt: (date || new Date().toISOString().slice(0, 10)) + "T18:00", status: "draft", reach: null, engagement: null, why: "" });
+  const useIdea = (idea) => { setIdeasOpen(false); setEditing({ id: uid(), photo: null, caption: idea.title || "", hashtags: "", channels: ["instagram"], scheduledAt: defaultSchedule(), status: "draft", reach: null, engagement: null, why: "" }); };
+
+  const y = cursor.getFullYear(), m = cursor.getMonth();
+  const startDow = (new Date(y, m, 1).getDay() + 6) % 7;
+  const daysIn = new Date(y, m + 1, 0).getDate();
+  const cells = []; for (let i = 0; i < startDow; i++) cells.push(null); for (let d = 1; d <= daysIn; d++) cells.push(d);
+  const dayISO = (d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const postsByDay = (d) => posts.filter((p) => (p.scheduledAt || "").slice(0, 10) === dayISO(d));
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const nowMin = new Date().toISOString().slice(0, 16);
+  const upcoming = posts.filter((p) => p.status === "scheduled" && (p.scheduledAt || "") >= nowMin).sort((a, b) => (a.scheduledAt || "").localeCompare(b.scheduledAt || "")).slice(0, 4);
+  const sortedList = posts.slice().sort((a, b) => (b.scheduledAt || "").localeCompare(a.scheduledAt || ""));
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader icon={CalendarDays} title="Content Calendar" desc="Plan, draft and schedule your organic posts. Publish manually for now and mark them posted." />
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-1 rounded-lg border border-slate-700 p-0.5">
+          <button onClick={() => setTab("calendar")} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${tab === "calendar" ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}><CalendarDays className="h-3.5 w-3.5" /> Calendar</button>
+          <button onClick={() => setTab("list")} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${tab === "list" ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}><List className="h-3.5 w-3.5" /> List</button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setIdeasOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-slate-800"><Sparkles className="h-4 w-4 text-cyan-400" /> Idea starters</button>
+          <button onClick={() => setAiOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-sm text-cyan-200 transition hover:bg-cyan-500/20"><Wand2 className="h-4 w-4" /> Create with AI</button>
+          <button onClick={() => newPost(todayISO)} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-1.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Plus className="h-4 w-4" /> New post</button>
+        </div>
+      </div>
+
+      {upcoming.length > 0 && (
+        <Panel className="p-4">
+          <Eyebrow icon={Clock}>Upcoming scheduled</Eyebrow>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {upcoming.map((p) => (
+              <button key={p.id} onClick={() => setEditing(p)} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-left transition hover:border-cyan-500/40">
+                <div className="flex items-center gap-1.5">{p.channels.map((c) => <SrcChip key={c} source={c} />)}</div>
+                <p className="mt-1.5 line-clamp-2 text-xs text-slate-300">{p.caption || "Untitled"}</p>
+                <p className="mt-1 font-data text-[11px] text-cyan-300">{fmtWhen(p.scheduledAt)}</p>
+              </button>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {tab === "calendar" ? (
+        <Panel className="p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-display text-base font-semibold text-slate-100">{cursor.toLocaleDateString("en-AU", { month: "long", year: "numeric" })}</h3>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setCursor(new Date(y, m - 1, 1))} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><ChevronLeft className="h-4 w-4" /></button>
+              <button onClick={() => { const d = new Date(); setCursor(new Date(d.getFullYear(), d.getMonth(), 1)); }} className="rounded-md border border-slate-700 px-2 py-1.5 text-[11px] text-slate-400 transition hover:bg-slate-800">Today</button>
+              <button onClick={() => setCursor(new Date(y, m + 1, 1))} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><ChevronRight className="h-4 w-4" /></button>
+            </div>
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {WEEKDAYS.map((w) => <div key={w} className="px-1 py-1 text-center text-[10px] uppercase tracking-wider text-slate-500 font-display">{w}</div>)}
+            {cells.map((d, i) => {
+              if (d === null) return <div key={"e" + i} className="min-h-[84px] rounded-lg" />;
+              const dp = postsByDay(d); const isToday = dayISO(d) === todayISO;
+              return (
+                <div key={d} onClick={() => newPost(dayISO(d))} className={`min-h-[84px] cursor-pointer rounded-lg border p-1 transition hover:border-cyan-500/40 ${isToday ? "border-cyan-500/40 bg-cyan-500/5" : "border-slate-800 bg-slate-950/40"}`}>
+                  <div className={`px-1 text-[11px] font-data ${isToday ? "text-cyan-300" : "text-slate-500"}`}>{d}</div>
+                  <div className="mt-0.5 space-y-0.5">
+                    {dp.slice(0, 3).map((p) => <PostChip key={p.id} post={p} onClick={(e) => { e.stopPropagation(); setEditing(p); }} />)}
+                    {dp.length > 3 && <p className="px-1 text-[10px] text-slate-500">+{dp.length - 3} more</p>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      ) : (
+        <div className="space-y-2">
+          {sortedList.length === 0 && <Panel className="p-6 text-center text-sm text-slate-500">No posts yet — create one, or generate with AI.</Panel>}
+          {sortedList.map((p) => (
+            <Panel key={p.id} className="p-3">
+              <button onClick={() => setEditing(p)} className="flex w-full items-center gap-3 text-left">
+                {p.photo ? <img src={p.photo} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-slate-950 text-slate-600"><ImagePlus className="h-4 w-4" /></div>}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">{p.channels.map((c) => <SrcChip key={c} source={c} />)}<Chip status={POST_STATUS[p.status].c}>{POST_STATUS[p.status].label}</Chip></div>
+                  <p className="mt-1 truncate text-sm text-slate-200">{p.caption || "Untitled"}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="font-data text-[11px] text-slate-400">{fmtWhen(p.scheduledAt)}</p>
+                  {p.status === "posted" && (p.reach || p.engagement) ? <p className="font-data text-[11px] text-emerald-300">{p.reach || 0} reach · {p.engagement || 0} eng</p> : null}
+                </div>
+              </button>
+            </Panel>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-3 text-[11px] text-slate-500"><PlugZap className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-400" />Phase 1 (now): plan, draft and schedule, then copy the caption and post manually. Phase 2 (later): connect the Meta Graph API (Instagram Business + Facebook Page) to auto-publish on schedule and auto-pull performance — requires Meta permissions and App Review.</div>
+
+      {editing && <PostEditor post={editing} onSave={savePost} onDelete={delPost} onClose={() => setEditing(null)} />}
+      {aiOpen && <AiStudio leads={leads} onClose={() => setAiOpen(false)} onSaveDraft={(p) => { savePost(p); setAiOpen(false); }} />}
+      {ideasOpen && <IdeaStarters leads={leads} onClose={() => setIdeasOpen(false)} onUseIdea={useIdea} />}
+    </div>
+  );
+}
+
+/* ========================= AD CREATOR (PAID) =========================== */
+
+const AD_STATUS = { draft: { label: "Draft", c: "slate" }, live: { label: "Live", c: "emerald" }, archived: { label: "Archived", c: "amber" } };
+const copyText = (t) => { try { navigator.clipboard.writeText(t); } catch {} };
+const CharCount = ({ s, max }) => { const n = (s || "").length; return <span className={`font-data text-[10px] ${n <= max ? "text-slate-500" : "text-red-400"}`}>{n}/{max}</span>; };
+const today = () => new Date().toISOString().slice(0, 10);
+
+/* --- Meta paid ad studio --- */
+function MetaAdStudio({ leads, onClose, onSave }) {
+  const [photo, setPhoto] = useState(null);
+  const [goal, setGoal] = useState(POST_GOALS[0]);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [offline, setOffline] = useState(false);
+  const pick = async (e) => { const f = e.target.files && e.target.files[0]; if (f) { try { setPhoto(await downscaleImage(f)); } catch {} } };
+  const run = async () => { setLoading(true); setOffline(false); try { setResult(await generateMetaAd({ photoDataUrl: photo, goal, leads })); } catch { setResult(fallbackMetaAd({ goal, leads })); setOffline(true); } setLoading(false); };
+  const vText = (v) => `${v.primaryText}\n\nHeadline: ${v.headline}\nDescription: ${v.description}\nCTA: ${v.cta}`;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><Eyebrow icon={Facebook}>Meta paid ad</Eyebrow><p className="mt-1 text-xs text-slate-500">Facebook / Instagram. Upload a photo + pick a goal → ad copy with 2–3 test variations. {RUNTIME !== "claude" && "Open in Claude for live AI."}</p></div><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
+        <div className="grid flex-1 gap-5 overflow-y-auto px-5 py-4 md:grid-cols-2">
+          <div className="space-y-4">
+            {photo ? <div className="relative"><img src={photo} alt="" className="max-h-56 w-full rounded-lg object-cover" /><button onClick={() => setPhoto(null)} className="absolute right-2 top-2 rounded-md bg-slate-950/80 p-1 text-slate-300 hover:text-red-300"><X className="h-3.5 w-3.5" /></button></div>
+              : <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-700 px-3 py-10 text-sm text-slate-400 transition hover:border-cyan-500/40 hover:text-cyan-300"><ImagePlus className="h-5 w-5" /> Upload the ad image<span className="text-[11px] text-slate-600">Writes copy for your image — doesn't make it</span><input type="file" accept="image/*" onChange={pick} className="hidden" /></label>}
+            <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Goal</p><select value={goal} onChange={(e) => setGoal(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-cyan-500/50">{POST_GOALS.map((g) => <option key={g} value={g}>{g}</option>)}</select></div>
+            <button onClick={run} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">{loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</> : <><Wand2 className="h-4 w-4" /> {result ? "Regenerate" : "Generate ad"}</>}</button>
+            <p className="text-[11px] text-slate-500">Lengths follow Meta's recommendations: primary text ≤125, headline ≤40, link description ≤30.</p>
+          </div>
+          <div className="space-y-3">
+            {!result && !loading && <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-600">Your ad variations will appear here.</div>}
+            {offline && result && <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">Offline template — open inside Claude for live, photo-specific copy.</p>}
+            {result && result.variations.map((v, i) => (
+              <div key={i} className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                <div className="flex items-center justify-between"><span className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Variation {i + 1}</span><button onClick={() => copyText(vText(v))} className="rounded-md border border-slate-700 p-1 text-slate-400 transition hover:text-cyan-300"><Copy className="h-3 w-3" /></button></div>
+                <div><div className="flex items-center justify-between"><p className="text-[10px] uppercase tracking-wider text-slate-500">Primary text</p><CharCount s={v.primaryText} max={125} /></div><p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-200">{v.primaryText}</p></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><div className="flex items-center justify-between"><p className="text-[10px] uppercase tracking-wider text-slate-500">Headline</p><CharCount s={v.headline} max={40} /></div><p className="mt-0.5 text-sm text-slate-200">{v.headline}</p></div>
+                  <div><div className="flex items-center justify-between"><p className="text-[10px] uppercase tracking-wider text-slate-500">Description</p><CharCount s={v.description} max={30} /></div><p className="mt-0.5 text-sm text-slate-200">{v.description}</p></div>
+                </div>
+                <div className="flex items-center gap-2"><span className="text-[10px] uppercase tracking-wider text-slate-500">Button</span><Chip status="cyan">{v.cta}</Chip></div>
+              </div>
+            ))}
+            {result && <button onClick={() => onSave({ id: uid(), type: "meta", goal, photo, status: "draft", createdAt: today(), content: { variations: result.variations } })} className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Plus className="h-4 w-4" /> Save as draft</button>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* --- Google ads studio --- */
+function GoogleAdStudio({ leads, onClose, onSave }) {
+  const [photo, setPhoto] = useState(null);
+  const [goal, setGoal] = useState(POST_GOALS[0]);
+  const [loading, setLoading] = useState(false);
+  const [r, setR] = useState(null);
+  const [offline, setOffline] = useState(false);
+  const pick = async (e) => { const f = e.target.files && e.target.files[0]; if (f) { try { setPhoto(await downscaleImage(f)); } catch {} } };
+  const run = async () => { setLoading(true); setOffline(false); try { setR(await generateGoogleAd({ photoDataUrl: photo, goal, leads })); } catch { setR(fallbackGoogleAd({ photoDataUrl: photo })); setOffline(true); } setLoading(false); };
+  const allText = (g) => [
+    "HEADLINES:", ...g.headlines.map((h) => "• " + h), "", "DESCRIPTIONS:", ...g.descriptions.map((d) => "• " + d), "",
+    "Keywords: " + g.keywords.join(", "), "Negative keywords: " + g.negatives.join(", "), "Callouts: " + g.callouts.join(", "),
+    "Sitelinks:", ...g.sitelinks.map((s) => "• " + s.text + (s.description ? " — " + s.description : "")),
+    ...(g.pmax ? ["", "PERFORMANCE MAX:", "Short headlines: " + g.pmax.shortHeadlines.join(" | "), "Long headline: " + g.pmax.longHeadline, "Descriptions:", ...g.pmax.descriptions.map((d) => "• " + d)] : []),
+  ].join("\n");
+  const okH = r ? r.headlines.filter((h) => h.length <= 30).length : 0;
+  const okD = r ? r.descriptions.filter((d) => d.length <= 90).length : 0;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div className="relative flex max-h-[92vh] w-full max-w-3xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><Eyebrow icon={Search}>Google Ads</Eyebrow><p className="mt-1 text-xs text-slate-500">Responsive Search Ad + keywords, negatives and extensions. Add a photo for Performance Max assets. {RUNTIME !== "claude" && "Open in Claude for live AI."}</p></div><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
+        <div className="grid flex-1 gap-5 overflow-y-auto px-5 py-4 md:grid-cols-[260px_1fr]">
+          <div className="space-y-4">
+            <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Goal</p><select value={goal} onChange={(e) => setGoal(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-cyan-500/50">{POST_GOALS.map((g) => <option key={g} value={g}>{g}</option>)}</select></div>
+            {photo ? <div className="relative"><img src={photo} alt="" className="max-h-40 w-full rounded-lg object-cover" /><button onClick={() => setPhoto(null)} className="absolute right-2 top-2 rounded-md bg-slate-950/80 p-1 text-slate-300 hover:text-red-300"><X className="h-3.5 w-3.5" /></button></div>
+              : <label className="flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-700 px-3 py-6 text-xs text-slate-400 transition hover:border-cyan-500/40 hover:text-cyan-300"><ImagePlus className="h-4 w-4" /> Optional: photo for PMax assets<input type="file" accept="image/*" onChange={pick} className="hidden" /></label>}
+            <button onClick={run} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">{loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</> : <><Wand2 className="h-4 w-4" /> {r ? "Regenerate" : "Generate ad"}</>}</button>
+            <p className="text-[11px] text-slate-500">Hard limits enforced: headlines ≤30 chars, descriptions ≤90 chars. Over-limit items are flagged red.</p>
+          </div>
+          <div className="space-y-4">
+            {!r && !loading && <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-600">Your RSA, keywords and extensions will appear here.</div>}
+            {offline && r && <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">Offline template — open inside Claude for live, data-specific copy.</p>}
+            {r && (
+              <>
+                <div>
+                  <div className="flex items-center justify-between"><Eyebrow>Headlines</Eyebrow><span className="font-data text-[10px] text-slate-500">{okH}/{r.headlines.length} ≤30</span></div>
+                  <div className="mt-2 grid gap-1 sm:grid-cols-2">{r.headlines.map((h, i) => <div key={i} className="flex items-center justify-between gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-2 py-1"><span className="truncate text-xs text-slate-200">{h}</span><CharCount s={h} max={30} /></div>)}</div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between"><Eyebrow>Descriptions</Eyebrow><span className="font-data text-[10px] text-slate-500">{okD}/{r.descriptions.length} ≤90</span></div>
+                  <div className="mt-2 space-y-1">{r.descriptions.map((d, i) => <div key={i} className="flex items-center justify-between gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-2 py-1"><span className="text-xs text-slate-200">{d}</span><CharCount s={d} max={90} /></div>)}</div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div><Eyebrow>Keywords</Eyebrow><div className="mt-2 flex flex-wrap gap-1.5">{r.keywords.map((k, i) => <span key={i} className="rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2 py-0.5 text-[11px] text-emerald-200">{k}</span>)}</div></div>
+                  <div><Eyebrow>Negatives</Eyebrow><div className="mt-2 flex flex-wrap gap-1.5">{r.negatives.map((k, i) => <span key={i} className="rounded-md border border-red-500/20 bg-red-500/5 px-2 py-0.5 text-[11px] text-red-200">{k}</span>)}</div></div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div><Eyebrow>Callouts</Eyebrow><div className="mt-2 flex flex-wrap gap-1.5">{r.callouts.map((c, i) => <span key={i} className="rounded-md border border-slate-700 bg-slate-900 px-2 py-0.5 text-[11px] text-slate-300">{c}</span>)}</div></div>
+                  <div><Eyebrow>Sitelinks</Eyebrow><ul className="mt-2 space-y-1">{r.sitelinks.map((s, i) => <li key={i} className="rounded-md border border-slate-800 bg-slate-950/40 px-2 py-1 text-[11px] text-slate-300"><span className="text-slate-100">{s.text}</span>{s.description ? <span className="text-slate-500"> — {s.description}</span> : null}</li>)}</ul></div>
+                </div>
+                {r.pmax && (
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                    <Eyebrow icon={ImagePlus}>Performance Max / Display assets</Eyebrow>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <div><p className="text-[10px] uppercase tracking-wider text-slate-500">Short headlines (≤30)</p><div className="mt-1 space-y-1">{r.pmax.shortHeadlines.map((h, i) => <div key={i} className="flex items-center justify-between"><span className="truncate text-xs text-slate-200">{h}</span><CharCount s={h} max={30} /></div>)}</div></div>
+                      <div><p className="text-[10px] uppercase tracking-wider text-slate-500">Long headline (≤90)</p><div className="mt-1 flex items-center justify-between"><span className="text-xs text-slate-200">{r.pmax.longHeadline}</span><CharCount s={r.pmax.longHeadline} max={90} /></div><p className="mt-2 text-[10px] uppercase tracking-wider text-slate-500">Descriptions (≤90)</p><div className="mt-1 space-y-1">{r.pmax.descriptions.map((d, i) => <div key={i} className="flex items-center justify-between"><span className="text-xs text-slate-200">{d}</span><CharCount s={d} max={90} /></div>)}</div></div>
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={() => copyText(allText(r))} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800"><Copy className="h-3.5 w-3.5" /> Copy all</button>
+                  <button onClick={() => onSave({ id: uid(), type: "google", goal, photo, status: "draft", createdAt: today(), content: r })} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Plus className="h-4 w-4" /> Save as draft</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* --- Saved ad viewer --- */
+function AdViewer({ ad, onClose, onStatus, onDelete }) {
+  const g = ad.content;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+          <div className="flex items-center gap-2"><Chip status={ad.type === "meta" ? "indigo" : "sky"}>{ad.type === "meta" ? "Meta" : "Google"}</Chip><span className="text-xs text-slate-500">{ad.goal} · {ad.createdAt}</span></div>
+          <button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+          {ad.photo && <img src={ad.photo} alt="" className="max-h-48 w-full rounded-lg object-cover" />}
+          {ad.type === "meta" ? g.variations.map((v, i) => (
+            <div key={i} className="space-y-1 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+              <div className="flex items-center justify-between"><span className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Variation {i + 1}</span><button onClick={() => copyText(`${v.primaryText}\n\nHeadline: ${v.headline}\nDescription: ${v.description}\nCTA: ${v.cta}`)} className="rounded-md border border-slate-700 p-1 text-slate-400 transition hover:text-cyan-300"><Copy className="h-3 w-3" /></button></div>
+              <p className="whitespace-pre-wrap text-sm text-slate-200">{v.primaryText}</p>
+              <p className="text-xs text-slate-400">{v.headline} · {v.description} · <span className="text-cyan-300">{v.cta}</span></p>
+            </div>
+          )) : (
+            <div className="space-y-3">
+              <div><Eyebrow>Headlines</Eyebrow><div className="mt-1 flex flex-wrap gap-1.5">{g.headlines.map((h, i) => <span key={i} className="rounded-md border border-slate-800 bg-slate-950/40 px-2 py-0.5 text-xs text-slate-200">{h}</span>)}</div></div>
+              <div><Eyebrow>Descriptions</Eyebrow><ul className="mt-1 space-y-1">{g.descriptions.map((d, i) => <li key={i} className="text-xs text-slate-300">• {d}</li>)}</ul></div>
+              <div className="grid gap-2 sm:grid-cols-2 text-xs text-slate-400"><div><span className="text-slate-500">Keywords:</span> {g.keywords.join(", ")}</div><div><span className="text-slate-500">Negatives:</span> {g.negatives.join(", ")}</div></div>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-between border-t border-slate-800 px-5 py-4">
+          <button onClick={() => onDelete(ad.id)} className="rounded-lg border border-red-500/40 px-3 py-2 text-xs text-red-300 transition hover:bg-red-500/10"><Trash2 className="h-3.5 w-3.5" /></button>
+          <div className="flex items-center gap-1 rounded-lg border border-slate-700 p-0.5">{Object.keys(AD_STATUS).map((s) => <button key={s} onClick={() => onStatus(ad.id, s)} className={`rounded-md px-2.5 py-1.5 text-[11px] font-medium transition ${ad.status === s ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}>{AD_STATUS[s].label}</button>)}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* --- Ad Creator view --- */
+function AdsView({ ads, setAds, leads }) {
+  const [studio, setStudio] = useState(null);
+  const [viewing, setViewing] = useState(null);
+  const saveAd = (a) => { setAds((prev) => [a, ...prev]); setStudio(null); };
+  const setStatus = (id, s) => setAds((prev) => prev.map((a) => a.id === id ? { ...a, status: s } : a));
+  const delAd = (id) => { setAds((prev) => prev.filter((a) => a.id !== id)); setViewing(null); };
+  const preview = (a) => a.type === "meta" ? (a.content.variations[0]?.headline || a.content.variations[0]?.primaryText || "Meta ad") : (a.content.headlines[0] || "Search ad");
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader icon={Megaphone} title="Ad Creator" desc="Generate ready-to-use paid ad copy, built to turn clicks into enquiries. Save drafts, then paste into Meta or Google." />
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => setStudio("meta")} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-sm text-cyan-200 transition hover:bg-cyan-500/20"><Facebook className="h-4 w-4" /> Create Meta ad</button>
+        <button onClick={() => setStudio("google")} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-sm text-cyan-200 transition hover:bg-cyan-500/20"><Search className="h-4 w-4" /> Create Google ad</button>
+        {RUNTIME !== "claude" && <span className="text-[11px] text-slate-500">AI is live inside Claude; downloaded file uses a template.</span>}
+      </div>
+
+      <div>
+        <Eyebrow icon={Wand2}>Ad drafts</Eyebrow>
+        <div className="mt-3 space-y-2">
+          {ads.length === 0 && <Panel className="p-6 text-center text-sm text-slate-500">No ad drafts yet — create a Meta or Google ad above.</Panel>}
+          {ads.map((a) => (
+            <Panel key={a.id} className="p-3">
+              <div className="flex items-center gap-3">
+                <button onClick={() => setViewing(a)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                  {a.photo ? <img src={a.photo} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" /> : <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-slate-950 text-slate-600">{a.type === "meta" ? <Facebook className="h-4 w-4" /> : <Search className="h-4 w-4" />}</div>}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5"><Chip status={a.type === "meta" ? "indigo" : "sky"}>{a.type === "meta" ? "Meta" : "Google"}</Chip><span className="text-[11px] text-slate-500">{a.goal}</span></div>
+                    <p className="mt-1 truncate text-sm text-slate-200">{preview(a)}</p>
+                  </div>
+                </button>
+                <select value={a.status} onChange={(e) => setStatus(a.id, e.target.value)} className="shrink-0 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 focus:border-cyan-500/50">{Object.keys(AD_STATUS).map((s) => <option key={s} value={s}>{AD_STATUS[s].label}</option>)}</select>
+              </div>
+            </Panel>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-3 text-[11px] text-slate-500"><PlugZap className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-400" />Generating the copy works now — paste it into Meta Ads Manager or Google Ads. Later (in Claude Code): push campaigns and pull performance via the Meta Marketing and Google Ads APIs.</div>
+
+      {studio === "meta" && <MetaAdStudio leads={leads} onClose={() => setStudio(null)} onSave={saveAd} />}
+      {studio === "google" && <GoogleAdStudio leads={leads} onClose={() => setStudio(null)} onSave={saveAd} />}
+      {viewing && <AdViewer ad={viewing} onClose={() => setViewing(null)} onStatus={setStatus} onDelete={delAd} />}
+    </div>
+  );
+}
+
+/* ------------------------------ SHELL ---------------------------------- */
+
+const LEADS_KEY = "plumb_pipeline_v2";
+const SETTINGS_KEY = "plumb_pipeline_settings_v1";
+const METRICS_KEY = "plumb_metrics_v1";
+const POSTS_KEY = "plumb_posts_v1";
+const ADS_KEY = "plumb_ads_v1";
+const DEFAULT_SETTINGS = { jobsTarget: 3, revenueTarget: 0, leadTimeWeeks: 7, costPerLead: 205, leadToWonRate: 12.5 };
+const DEFAULT_METRICS = { spend: { google_ads: 800, meta_ads: 1639 }, organic: { ig_reach: 0, ig_eng: 0, fb_reach: 0, fb_eng: 0, gbp_views: 0, gbp_calls: 0 } };
+
+// Adaptive storage: window.storage when running inside Claude (durable, cross-device),
+// otherwise localStorage when opened as a downloaded file. Same calling shape either way.
+const RUNTIME = (typeof window !== "undefined" && window.storage && typeof window.storage.get === "function") ? "claude" : "local";
+const store = {
+  async get(key, fallback) {
+    try {
+      if (RUNTIME === "claude") { const r = await window.storage.get(key); return r && r.value != null ? JSON.parse(r.value) : fallback; }
+      const r = localStorage.getItem(key); return r != null ? JSON.parse(r) : fallback;
+    } catch { return fallback; }
+  },
+  async set(key, value) {
+    try {
+      const s = JSON.stringify(value);
+      if (RUNTIME === "claude") { await window.storage.set(key, s); } else { localStorage.setItem(key, s); }
+    } catch {}
+  },
+};
+
+function MarketingCommandCentre() {
+  const [view, setView] = useState("leads");
+  const [navOpen, setNavOpen] = useState(false);
+  const [leads, setLeads] = useState(SEED_LEADS);
+  const [selId, setSelId] = useState(null);
+  const [editor, setEditor] = useState(null); // { leadId, quote }
+  const [addOpen, setAddOpen] = useState(false);
+  const [aiDismissed, setAiDismissed] = useState(false);
+  const [done, setDone] = useState(new Set());
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [metrics, setMetrics] = useState(DEFAULT_METRICS);
+  const [posts, setPosts] = useState(SEED_POSTS);
+  const [ads, setAds] = useState([]);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [L, S, M, P, A] = await Promise.all([
+        store.get(LEADS_KEY, SEED_LEADS), store.get(SETTINGS_KEY, DEFAULT_SETTINGS),
+        store.get(METRICS_KEY, DEFAULT_METRICS), store.get(POSTS_KEY, SEED_POSTS), store.get(ADS_KEY, []),
+      ]);
+      if (!alive) return;
+      setLeads(Array.isArray(L) ? L : SEED_LEADS);
+      setSettings({ ...DEFAULT_SETTINGS, ...(S || {}) });
+      setMetrics({ spend: { ...DEFAULT_METRICS.spend, ...((M && M.spend) || {}) }, organic: { ...DEFAULT_METRICS.organic, ...((M && M.organic) || {}) } });
+      setPosts(Array.isArray(P) ? P : []);
+      setAds(Array.isArray(A) ? A : []);
+      setHydrated(true);
+    })();
+    return () => { alive = false; };
+  }, []);
+  useEffect(() => { if (hydrated) store.set(LEADS_KEY, leads); }, [leads, hydrated]);
+  useEffect(() => { if (hydrated) store.set(SETTINGS_KEY, settings); }, [settings, hydrated]);
+  useEffect(() => { if (hydrated) store.set(METRICS_KEY, metrics); }, [metrics, hydrated]);
+  useEffect(() => { if (hydrated) store.set(POSTS_KEY, posts); }, [posts, hydrated]);
+  useEffect(() => { if (hydrated) store.set(ADS_KEY, ads); }, [ads, hydrated]);
+  useEffect(() => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap";
+    document.head.appendChild(link);
+    // When running as a native Claude React artifact, the runtime ships only core
+    // Tailwind classes; load the Play CDN so the arbitrary-value classes also work.
+    // Guarded so the downloadable HTML build (which already loads Tailwind) skips it.
+    if (typeof window !== "undefined" && !window.tailwind && !document.getElementById("tw-play")) {
+      const tw = document.createElement("script");
+      tw.id = "tw-play";
+      tw.src = "https://cdn.tailwindcss.com";
+      document.head.appendChild(tw);
+    }
+    return () => { if (link.parentNode) link.parentNode.removeChild(link); };
+  }, []);
+
+  const sel = leads.find((l) => l.id === selId) || null;
+  const patch = (id, fn) => setLeads((prev) => prev.map((l) => (l.id === id ? fn(l) : l)));
+
+  const actions = {
+    qualify: (id) => patch(id, (l) => ({ ...l, stage: "qualified" })),
+    newQuote: (id) => setEditor({ leadId: id, quote: { id: uid(), status: "draft", createdAt: new Date().toISOString().slice(0, 10), lineItems: [] } }),
+    editQuote: (id, qid) => { const l = leads.find((x) => x.id === id); const q = l.quotes.find((x) => x.id === qid); setEditor({ leadId: id, quote: q }); },
+    saveQuote: (leadId, quote) => {
+      patch(leadId, (l) => {
+        const exists = l.quotes.some((q) => q.id === quote.id);
+        const quotes = exists ? l.quotes.map((q) => (q.id === quote.id ? quote : q)) : [...l.quotes, quote];
+        const stage = l.stage === "qualified" || l.stage === "new" ? "quote" : l.stage;
+        return { ...l, quotes, stage };
+      });
+      setEditor(null);
+    },
+    markWon: (id, qid) => patch(id, (l) => ({ ...l, stage: "won", wonQuoteId: qid, lostReason: null, jobStatus: l.jobStatus || "scheduled", durationWeeks: l.durationWeeks || 2, startDate: l.startDate || firstOfNextMonth() })),
+    scheduleJob: (id, p) => patch(id, (l) => ({ ...l, ...p })),
+    markLost: (id, reason) => patch(id, (l) => ({ ...l, stage: "lost", lostReason: reason })),
+    reopen: (id) => patch(id, (l) => ({ ...l, stage: l.quotes.length ? "quote" : "qualified", wonQuoteId: null, lostReason: null })),
+    setTradify: (id, v) => patch(id, (l) => ({ ...l, tradify: v })),
+    setSource: (id, src) => patch(id, (l) => ({ ...l, source: src })),
+  };
+  const addLead = (f) => { const id = "n" + uid(); setLeads((p) => [{ id, date: new Date().toISOString().slice(0, 10), name: f.name.trim(), suburb: f.suburb.trim() || "—", source: f.source, project: f.project.trim() || "Bathroom", stage: "new", quotes: [] }, ...p]); setAddOpen(false); setSelId(id); };
+  const resetBoard = () => { if (typeof window !== "undefined" && window.confirm("Reset the board to your tracker data? This clears any changes.")) { setLeads(SEED_LEADS); setSelId(null); } };
+  const toggleDone = (id) => setDone((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const go = (id) => { setView(id); setNavOpen(false); };
+
+  const renderView = () => {
+    switch (view) {
+      case "leads":      return <LeadsBoard leads={leads} onCard={setSelId} onAdd={() => setAddOpen(true)} openActions={() => go("actions")} aiDismissed={aiDismissed} setAiDismissed={setAiDismissed} onReset={resetBoard} />;
+      case "pipeline":   return <PipelineView leads={leads} settings={settings} setSettings={setSettings} onCard={setSelId} onSchedule={actions.scheduleJob} />;
+      case "revenue":    return <RevenueView leads={leads} />;
+      case "funnel":     return <FunnelView />;
+      case "compare":    return <PaidVsOrganicView leads={leads} metrics={metrics} setMetrics={setMetrics} />;
+      case "google":     return <GoogleView />;
+      case "meta":       return <MetaView />;
+      case "content":    return <ContentView />;
+      case "calendar":   return <CalendarView posts={posts} setPosts={setPosts} leads={leads} />;
+      case "ads":        return <AdsView ads={ads} setAds={setAds} leads={leads} />;
+      case "seo":        return <ConnectPrompt icon={TrendingUp} title="Connect your SEO data" body="No rank tracker or Search Console is linked yet, so rankings and organic traffic aren’t shown. Your suburbs are clear from won/quoted jobs — see the Action Centre for the pages worth building." items={["Google Search Console", "A rank tracker (e.g. for ‘bathroom renovations gold coast’ and suburb terms)"]} />;
+      case "reviews":    return <ConnectPrompt icon={Star} title="Connect your Google Business Profile" body="Your own reviews, rating, calls and direction requests aren’t linked yet. The competitor field is in the Competitors tab — top rival sits at 107 reviews / 5.0, so a review-velocity target matters." items={["Google Business Profile (reviews, calls, clicks, directions)"]} />;
+      case "competitor": return <CompetitorView />;
+      case "actions":    return <ActionsView done={done} toggle={toggleDone} />;
+      case "assistants": return <AssistantsView />;
+      default:           return null;
+    }
+  };
+
+  return (
+    <div className="font-body min-h-screen bg-slate-950 text-slate-200">
+      <style>{`
+        :root { color-scheme: dark; }
+        .font-display { font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif; }
+        .font-body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        .font-data { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace; }
+        .tabular-nums { font-variant-numeric: tabular-nums; }
+        *::-webkit-scrollbar { width: 8px; height: 8px; }
+        *::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 8px; }
+        *::-webkit-scrollbar-track { background: transparent; }
+        *:focus-visible { outline: 2px solid #22d3ee; outline-offset: 2px; border-radius: 6px; }
+        input[type=number]::-webkit-inner-spin-button { opacity: .35; }
+        @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+      `}</style>
+
+      <div className="flex">
+        <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 transform flex-col border-r border-slate-800 bg-slate-900/80 transition-transform lg:static lg:translate-x-0 ${navOpen ? "translate-x-0" : "-translate-x-full"}`}>
+          <div className="flex h-16 items-center gap-2.5 border-b border-slate-800 px-5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-500 text-slate-950"><Workflow className="h-5 w-5" /></div>
+            <div className="leading-tight"><p className="font-display text-sm font-semibold text-slate-100">Plumb Renovations</p><p className="text-[10px] uppercase tracking-wider text-slate-500">Command Centre</p></div>
+          </div>
+          <nav className="flex-1 overflow-y-auto px-3 py-4">
+            {NAV.map((grp) => (
+              <div key={grp.group} className="mb-4">
+                <p className="px-3 pb-2 text-[10px] uppercase tracking-[0.18em] text-cyan-400/80 font-display">{grp.group}</p>
+                <div className="space-y-0.5">{grp.items.map((n) => { const active = view === n.id; return (
+                  <button key={n.id} onClick={() => go(n.id)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-cyan-500/10 text-cyan-300 ring-1 ring-cyan-500/30" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"}`}><n.icon className="h-4 w-4" />{n.label}</button>); })}
+                </div>
+              </div>
+            ))}
+          </nav>
+        </aside>
+        {navOpen && <div onClick={() => setNavOpen(false)} className="fixed inset-0 z-30 bg-slate-950/60 lg:hidden" />}
+
+        <div className="flex min-h-screen flex-1 flex-col">
+          <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-800 bg-slate-950/80 px-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setNavOpen(true)} className="rounded-lg border border-slate-700 p-2 text-slate-400 lg:hidden"><Menu className="h-4 w-4" /></button>
+              <div><Eyebrow>{["leads", "pipeline", "revenue"].includes(view) ? "Operations" : "Marketing"}</Eyebrow><h1 className="font-display text-lg font-semibold tracking-tight text-slate-100">{TITLES[view]}</h1></div>
+            </div>
+            <span className="hidden items-center gap-1.5 text-[11px] text-emerald-400 sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> live data</span>
+          </header>
+          <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">{renderView()}</main>
+        </div>
+      </div>
+
+      {sel && <LeadDrawer lead={sel} onClose={() => setSelId(null)} actions={actions} />}
+      {editor && <QuoteBuilder editor={editor} leadName={(leads.find((l) => l.id === editor.leadId) || {}).name} onSave={(q) => actions.saveQuote(editor.leadId, q)} onClose={() => setEditor(null)} />}
+      {addOpen && <AddLead onSave={addLead} onClose={() => setAddOpen(false)} />}
+    </div>
+  );
+}
+
+import { createRoot } from "react-dom/client";
+createRoot(document.getElementById("root")).render(<MarketingCommandCentre />);
+</script>
+</body>
+</html>
