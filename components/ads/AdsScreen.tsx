@@ -25,8 +25,9 @@ function MetaAdStudio({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [offline, setOffline] = useState(false);
+  const [aiError, setAiError] = useState("");
   const pick = async (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files && e.target.files[0]; if (f) { try { setPhoto(await downscaleImage(f)); } catch {} } };
-  const run = async () => { setLoading(true); setOffline(false); try { setResult(await generateMetaAd({ photoDataUrl: photo, goal, leads })); } catch { setResult(fallbackMetaAd({ goal, leads })); setOffline(true); } setLoading(false); };
+  const run = async () => { setLoading(true); setOffline(false); setAiError(""); try { setResult(await generateMetaAd({ photoDataUrl: photo, goal, leads })); } catch (e) { setResult(fallbackMetaAd({ goal, leads })); setOffline(true); setAiError((e as Error).message || "AI request failed"); } setLoading(false); };
   const vText = (v: any) => `${v.primaryText}\n\nHeadline: ${v.headline}\nDescription: ${v.description}\nCTA: ${v.cta}`;
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -43,7 +44,7 @@ function MetaAdStudio({
           </div>
           <div className="space-y-3">
             {!result && !loading && <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-600">Your ad variations will appear here.</div>}
-            {offline && result && <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">Offline template — open inside Claude for live, photo-specific copy.</p>}
+            {offline && result && <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">Showing a template — live AI was unavailable{aiError ? `: ${aiError}` : ""}.</p>}
             {result && result.variations.map((v: any, i: number) => (
               <div key={i} className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
                 <div className="flex items-center justify-between"><span className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Variation {i + 1}</span><button onClick={() => copyText(vText(v))} className="rounded-md border border-slate-700 p-1 text-slate-400 transition hover:text-cyan-300"><Copy className="h-3 w-3" /></button></div>
@@ -78,8 +79,9 @@ function GoogleAdStudio({
   const [loading, setLoading] = useState(false);
   const [r, setR] = useState<any>(null);
   const [offline, setOffline] = useState(false);
+  const [aiError, setAiError] = useState("");
   const pick = async (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files && e.target.files[0]; if (f) { try { setPhoto(await downscaleImage(f)); } catch {} } };
-  const run = async () => { setLoading(true); setOffline(false); try { setR(await generateGoogleAd({ photoDataUrl: photo, goal, leads })); } catch { setR(fallbackGoogleAd({ photoDataUrl: photo })); setOffline(true); } setLoading(false); };
+  const run = async () => { setLoading(true); setOffline(false); setAiError(""); try { setR(await generateGoogleAd({ photoDataUrl: photo, goal, leads })); } catch (e) { setR(fallbackGoogleAd({ photoDataUrl: photo })); setOffline(true); setAiError((e as Error).message || "AI request failed"); } setLoading(false); };
   const allText = (g: any) => [
     "HEADLINES:", ...g.headlines.map((h: string) => "• " + h), "", "DESCRIPTIONS:", ...g.descriptions.map((d: string) => "• " + d), "",
     "Keywords: " + g.keywords.join(", "), "Negative keywords: " + g.negatives.join(", "), "Callouts: " + g.callouts.join(", "),
@@ -103,7 +105,7 @@ function GoogleAdStudio({
           </div>
           <div className="space-y-4">
             {!r && !loading && <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-600">Your RSA, keywords and extensions will appear here.</div>}
-            {offline && r && <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">Offline template — open inside Claude for live, data-specific copy.</p>}
+            {offline && r && <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">Showing a template — live AI was unavailable{aiError ? `: ${aiError}` : ""}.</p>}
             {r && (
               <>
                 <div>

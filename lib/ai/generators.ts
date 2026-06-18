@@ -11,7 +11,16 @@ async function callAi(path: string, payload: any) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("AI request failed (" + res.status + ")");
+  if (!res.ok) {
+    // Surface the server's reason (e.g. "ANTHROPIC_MODEL is not set",
+    // "rate_limited") instead of a bare status, so failures are diagnosable.
+    let detail = "";
+    try {
+      const e = await res.json();
+      detail = e?.message || e?.error || "";
+    } catch {}
+    throw new Error(`AI request failed (${res.status})${detail ? ": " + detail : ""}`);
+  }
   return res.json();
 }
 
