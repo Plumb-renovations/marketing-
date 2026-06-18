@@ -11,21 +11,28 @@ import { ORG_ID } from "@/lib/domain/seed";
 //          System User token, and store it in the leads table (idempotent).
 // Public route (Meta calls it); secured by the verify token + X-Hub-Signature-256.
 export const runtime = "nodejs";
+// Never cache: each verify GET carries a unique hub.challenge that must be
+// echoed back verbatim. A cached/stale response makes Meta's verify fail even
+// though a manual browser GET looks fine.
+export const dynamic = "force-dynamic";
 
 // --- Subscription verification ---
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const mode = url.searchParams.get("hub.mode");
-  const token = url.searchParams.get("hub.verify_token");
-  const challenge = url.searchParams.get("hub.challenge");
-  if (mode === "subscribe" && token && token === meta.webhookVerifyToken) {
-    // Echo the challenge back as plain text with a 200.
-    return new NextResponse(challenge ?? "", {
+  const token = (url.searchParams.get("hub.verify_token") || "").trim();
+  const challenge = url.searchParams.get("hub.challenge") ?? "";
+  const expected = (process.env.META_WEBHOOK_VERIFY_TOKEN || "").trim();
+
+  if (mode === "subscribe" && expected && token === expected) {
+    // Echo the RAW challenge: plain text, 200, no JSON wrapping, no trailing
+    // newline, no caching.
+    return new Response(challenge, {
       status: 200,
-      headers: { "Content-Type": "text/plain" },
+      headers: { "content-type": "text/plain", "cache-control": "no-store" },
     });
   }
-  return new NextResponse("forbidden", { status: 403 });
+  return new Response("forbidden", { status: 403 });
 }
 
 // --- Leadgen events ---
