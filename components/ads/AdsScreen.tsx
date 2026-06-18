@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { X, ImagePlus, Wand2, Copy, Plus, Facebook, Search, Loader2, Trash2, Megaphone, PlugZap } from "lucide-react";
+import { X, ImagePlus, Wand2, Copy, Plus, Facebook, Search, Loader2, Trash2, Megaphone, PlugZap, Rocket } from "lucide-react";
 import { Panel, Eyebrow, Chip, SectionHeader, CharCount, copyText } from "@/components/ui/primitives";
 import { POST_GOALS, AD_STATUS } from "@/lib/domain/constants";
 import { uid, today } from "@/lib/domain/format";
 import { downscaleImage, generateMetaAd, generateGoogleAd, fallbackMetaAd, fallbackGoogleAd } from "@/lib/ai/generators";
 import { useData } from "@/components/DataProvider";
+import LaunchAdModal from "@/components/ads/LaunchAdModal";
 import type { Ad } from "@/lib/domain/types";
 
 /* --- Meta paid ad studio --- */
@@ -149,11 +150,13 @@ function AdViewer({
   onClose,
   onStatus,
   onDelete,
+  onLaunch,
 }: {
   ad: Ad;
   onClose: () => void;
   onStatus: (id: string, s: string) => void;
   onDelete: (id: string) => void;
+  onLaunch: (ad: Ad) => void;
 }) {
   const g = ad.content;
   return (
@@ -182,7 +185,10 @@ function AdViewer({
         </div>
         <div className="flex items-center justify-between border-t border-slate-800 px-5 py-4">
           <button onClick={() => onDelete(ad.id)} className="rounded-lg border border-red-500/40 px-3 py-2 text-xs text-red-300 transition hover:bg-red-500/10"><Trash2 className="h-3.5 w-3.5" /></button>
-          <div className="flex items-center gap-1 rounded-lg border border-slate-700 p-0.5">{Object.keys(AD_STATUS).map((s) => <button key={s} onClick={() => onStatus(ad.id, s)} className={`rounded-md px-2.5 py-1.5 text-[11px] font-medium transition ${ad.status === s ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}>{AD_STATUS[s].label}</button>)}</div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 rounded-lg border border-slate-700 p-0.5">{Object.keys(AD_STATUS).map((s) => <button key={s} onClick={() => onStatus(ad.id, s)} className={`rounded-md px-2.5 py-1.5 text-[11px] font-medium transition ${ad.status === s ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}>{AD_STATUS[s].label}</button>)}</div>
+            {ad.type === "meta" && <button onClick={() => onLaunch(ad)} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-xs font-medium text-slate-950 transition hover:bg-cyan-400"><Rocket className="h-3.5 w-3.5" /> Launch</button>}
+          </div>
         </div>
       </div>
     </div>
@@ -194,6 +200,7 @@ export default function AdsScreen() {
   const { ads, setAds, leads } = useData();
   const [studio, setStudio] = useState<"meta" | "google" | null>(null);
   const [viewing, setViewing] = useState<Ad | null>(null);
+  const [launching, setLaunching] = useState<Ad | null>(null);
   const saveAd = (a: Ad) => { setAds((prev) => [a, ...prev]); setStudio(null); };
   const setStatus = (id: string, s: string) => setAds((prev) => prev.map((a) => a.id === id ? { ...a, status: s } : a));
   const delAd = (id: string) => { setAds((prev) => prev.filter((a) => a.id !== id)); setViewing(null); };
@@ -232,7 +239,8 @@ export default function AdsScreen() {
 
       {studio === "meta" && <MetaAdStudio leads={leads} onClose={() => setStudio(null)} onSave={saveAd} />}
       {studio === "google" && <GoogleAdStudio leads={leads} onClose={() => setStudio(null)} onSave={saveAd} />}
-      {viewing && <AdViewer ad={viewing} onClose={() => setViewing(null)} onStatus={setStatus} onDelete={delAd} />}
+      {viewing && <AdViewer ad={viewing} onClose={() => setViewing(null)} onStatus={setStatus} onDelete={delAd} onLaunch={(a) => { setViewing(null); setLaunching(a); }} />}
+      {launching && <LaunchAdModal ad={launching} onClose={() => setLaunching(null)} />}
     </div>
   );
 }
