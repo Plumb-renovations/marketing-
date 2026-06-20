@@ -1,6 +1,37 @@
-import { graphPost, adAccountPath } from "./client";
+import { graphGet, graphPost, adAccountPath } from "./client";
 import { meta } from "../env";
 import type { LaunchConfig, PublishResult } from "../types";
+
+// Service-area default: a radius centred on the Gold Coast / Tweed Heads border
+// (Coolangatta), covering the Gold Coast QLD down through Tweed/Byron/Ballina NSW.
+export const DEFAULT_GEO = { latitude: -28.17, longitude: 153.54, radiusKm: 50 };
+
+// Default detailed-targeting preset for renovation buyers — interest *names*,
+// resolved to Meta ids at publish time (no brittle hard-coded ids).
+export const DEFAULT_INTERESTS = [
+  "Home improvement",
+  "Home Ownership",
+  "Renovation",
+  "Interior design",
+  "Bathroom",
+];
+
+// Resolve interest names → {id,name} via the Targeting Search API. Best-effort:
+// unresolved/failed terms are skipped so a bad term never blocks the launch.
+async function resolveInterests(names: string[]): Promise<{ id: string; name: string }[]> {
+  const out: { id: string; name: string }[] = [];
+  for (const q of names) {
+    if (!q?.trim()) continue;
+    try {
+      const res: any = await graphGet("search", { type: "adinterest", q: q.trim(), limit: 1 });
+      const hit = res?.data?.[0];
+      if (hit?.id) out.push({ id: String(hit.id), name: hit.name || q.trim() });
+    } catch {
+      // ignore a single failed lookup
+    }
+  }
+  return out;
+}
 
 // Builds the full Meta ad hierarchy (image → campaign → ad set → creative → ad)
 // from a single LaunchConfig + creative payload. Everything runs server-side
@@ -66,9 +97,27 @@ export async function publishMetaAd(cfg: LaunchConfig, creative: CreativeInput):
     const externalCampaignId = String(campaign?.id);
 
     // c. Ad set.
-    // TODO: precise Gold Coast geo-radius targeting needs lat/lng custom_locations
-    // (geo_locations.custom_locations: [{ latitude, longitude, radius, distance_unit }]).
-    // countries:["AU"] is a safe, valid default for dev testing.
+    // LOCATION (hard constraint): a radius around lat/lng — defaults to the
+    // Gold Coast / Tweed service area, capped at Meta's 80km custom-location max.
+    const lat = cfg.latitude ?? DEFAULT_GEO.latitude;
+    const lng = cfg.longitude ?? DEFAULT_GEO.longitude;
+    const radiusKm = Math.min(80, Math.max(1, cfg.radiusKm ?? DEFAULT_GEO.radiusKm));
+    // AUDIENCE (soft suggestions): resolve interest names → ids, pass via
+    // flexible_spec with Advantage+ audience so Meta can expand beyond them.
+    const interests = await resolveInterests(cfg.interests?.length ? cfg.interests : DEFAULT_INTERESTS);
+    const advantage = cfg.advantageAudience !== false;
+
+    const targeting: any = {
+      geo_locations: {
+        custom_locations: [{ latitude: lat, longitude: lng, radius: radiusKm, distance_unit: "kilometer" }],
+      },
+      age_min: cfg.ageMin ?? 30,
+      age_max: cfg.ageMax ?? 65,
+      publisher_platforms: ["facebook", "instagram"],
+    };
+    if (interests.length) targeting.flexible_spec = [{ interests }];
+    if (advantage) targeting.targeting_automation = { advantage_audience: 1 };
+
     const adset: any = await graphPost(`${adAccountPath()}/adsets`, {
       name: `${cfg.campaignName} — Ad Set`,
       campaign_id: externalCampaignId,
@@ -79,12 +128,7 @@ export async function publishMetaAd(cfg: LaunchConfig, creative: CreativeInput):
       start_time: cfg.startTime,
       end_time: cfg.endTime,
       status,
-      targeting: {
-        geo_locations: { countries: ["AU"] },
-        age_min: cfg.ageMin ?? 30,
-        age_max: cfg.ageMax ?? 65,
-        publisher_platforms: ["facebook", "instagram"],
-      },
+      targeting,
       promoted_object: { page_id: pageId },
     });
     const externalAdsetId = String(adset?.id);

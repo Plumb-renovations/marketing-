@@ -17,6 +17,13 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
   const [endTime, setEndTime] = useState("");
   const [ageMin, setAgeMin] = useState(30);
   const [ageMax, setAgeMax] = useState(65);
+  // Location (hard): default centred on the Gold Coast / Tweed Heads border.
+  const [lat, setLat] = useState(-28.17);
+  const [lng, setLng] = useState(153.54);
+  const [radiusKm, setRadiusKm] = useState(50);
+  // Audience (soft, Advantage+ suggestions): renovation-buyer interest preset.
+  const [interests, setInterests] = useState("Home improvement, Home Ownership, Renovation, Interior design, Bathroom");
+  const [advantage, setAdvantage] = useState(true);
   const [url, setUrl] = useState("https://waterplumb.com.au");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
@@ -40,6 +47,15 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
           endTime: endTime ? new Date(endTime).toISOString() : undefined,
           ageMin: platform === "meta" ? Number(ageMin) : undefined,
           ageMax: platform === "meta" ? Number(ageMax) : undefined,
+          ...(platform === "meta"
+            ? {
+                latitude: Number(lat),
+                longitude: Number(lng),
+                radiusKm: Number(radiusKm),
+                interests: interests.split(",").map((s) => s.trim()).filter(Boolean),
+                advantageAudience: advantage,
+              }
+            : {}),
           link: url,
           finalUrl: url,
         }),
@@ -93,10 +109,29 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
               <div><p className={label}>End (optional)</p><input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={`${field} font-data text-xs`} /></div>
             </div>
             {platform === "meta" && (
-              <div className="grid grid-cols-2 gap-3">
-                <div><p className={label}>Age min</p><input type="number" value={ageMin} onChange={(e) => setAgeMin(Number(e.target.value))} className={`${field} font-data`} /></div>
-                <div><p className={label}>Age max</p><input type="number" value={ageMax} onChange={(e) => setAgeMax(Number(e.target.value))} className={`${field} font-data`} /></div>
-              </div>
+              <>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                  <p className="mb-2 text-[11px] uppercase tracking-wider text-slate-500 font-display">Location — service area (hard constraint)</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div><p className={label}>Radius (km)</p><input type="number" min="1" max="80" value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))} className={`${field} font-data`} /></div>
+                    <div><p className={label}>Centre lat</p><input type="number" step="0.01" value={lat} onChange={(e) => setLat(Number(e.target.value))} className={`${field} font-data`} /></div>
+                    <div><p className={label}>Centre lng</p><input type="number" step="0.01" value={lng} onChange={(e) => setLng(Number(e.target.value))} className={`${field} font-data`} /></div>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-slate-500">Default: ~{radiusKm}km around the Gold Coast / Tweed Heads border (covers GC QLD down through Tweed/Byron). Max 80km.</p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                  <p className="mb-2 text-[11px] uppercase tracking-wider text-slate-500 font-display">Audience — Advantage+ suggestions (soft)</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><p className={label}>Age min</p><input type="number" value={ageMin} onChange={(e) => setAgeMin(Number(e.target.value))} className={`${field} font-data`} /></div>
+                    <div><p className={label}>Age max</p><input type="number" value={ageMax} onChange={(e) => setAgeMax(Number(e.target.value))} className={`${field} font-data`} /></div>
+                  </div>
+                  <div className="mt-2"><p className={label}>Interests (comma-separated)</p><textarea rows={2} value={interests} onChange={(e) => setInterests(e.target.value)} className={field} /></div>
+                  <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
+                    <input type="checkbox" checked={advantage} onChange={(e) => setAdvantage(e.target.checked)} className="accent-cyan-500" />
+                    Advantage+ audience (let Meta expand beyond these interests)
+                  </label>
+                </div>
+              </>
             )}
             <div>
               <p className={label}>Launch mode</p>
@@ -105,7 +140,7 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
                   <button key={m} onClick={() => setMode(m)} className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${mode === m ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}>{lbl}</button>
                 ))}
               </div>
-              <p className="mt-1.5 text-[11px] text-slate-500">{platform === "meta" ? "Targets Australia + age range (precise Gold Coast geo-radius coming next)." : "Search campaign with your generated headlines, descriptions and keywords."}</p>
+              <p className="mt-1.5 text-[11px] text-slate-500">{platform === "meta" ? "Hard geo radius around the Gold Coast/Tweed border; interests are Advantage+ suggestions Meta can expand." : "Search campaign with your generated headlines, descriptions and keywords."}</p>
             </div>
             {error && (
               <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-xs text-red-200"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>
