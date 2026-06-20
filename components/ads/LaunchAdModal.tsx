@@ -79,7 +79,7 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div onClick={onClose} className="absolute inset-0 bg-stone-900/40" />
       <div className="relative flex max-h-[92vh] w-full max-w-lg flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
           <div className="flex items-center gap-2"><Eyebrow icon={Rocket}>Launch ad</Eyebrow><Chip status={platform === "meta" ? "indigo" : "sky"}>{platform === "meta" ? "Meta" : "Google"}</Chip></div>

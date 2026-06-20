@@ -16,7 +16,7 @@ function LeadDrawer({ lead, onClose, actions }: { lead: Lead; onClose: () => voi
   const stage = STAGES.find((s) => s.id === lead.stage)!;
   return (
     <>
-      <div onClick={onClose} className="fixed inset-0 z-40 bg-slate-950/70" />
+      <div onClick={onClose} className="fixed inset-0 z-40 bg-stone-900/40" />
       <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-slate-800 bg-slate-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
           <div className="flex items-center gap-2"><Chip status={stage.accent}>{stage.label}</Chip><SrcChip source={lead.source} /></div>
@@ -145,7 +145,7 @@ function QuoteBuilder({ editor, leadName, onSave, onClose }: { editor: { leadId:
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div onClick={onClose} className="absolute inset-0 bg-stone-900/40" />
       <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
           <div><Eyebrow icon={FileText}>Quote builder</Eyebrow><p className="mt-1 font-display text-base font-semibold text-slate-100">{leadName}</p></div>
@@ -200,7 +200,7 @@ function AddLead({ onSave, onClose }: { onSave: (f: { name: string; suburb: stri
   const [f, setF] = useState({ name: "", suburb: "", source: "google_ads", project: "Bathroom" });
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div onClick={onClose} className="absolute inset-0 bg-stone-900/40" />
       <div className="relative w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl">
         <div className="flex items-center justify-between"><Eyebrow icon={Plus}>New lead</Eyebrow><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
         <div className="mt-4 space-y-3">
