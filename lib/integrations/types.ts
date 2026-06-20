@@ -11,11 +11,18 @@ export interface LaunchConfig {
   dailyBudgetAud: number;
   startTime?: string; // ISO
   endTime?: string; // ISO
-  // Targeting (kept simple + platform-mapped server-side)
-  locations?: string[]; // e.g. ["Gold Coast QLD", "Tweed Heads NSW"] / geo target ids
+  // Targeting (platform-mapped server-side)
+  locations?: string[]; // legacy label(s)
+  // Meta location: hard geo constraint — radius around a lat/lng (custom_locations).
+  latitude?: number;
+  longitude?: number;
   radiusKm?: number;
   ageMin?: number;
   ageMax?: number;
+  // Meta audience: detailed-targeting interest names, resolved to ids and passed
+  // as Advantage+ audience suggestions (soft, not hard constraints).
+  interests?: string[];
+  advantageAudience?: boolean; // default true
   // Meta creative
   pageId?: string;
   link?: string; // destination URL / lead form
