@@ -118,19 +118,38 @@ export async function publishMetaAd(cfg: LaunchConfig, creative: CreativeInput):
     if (interests.length) targeting.flexible_spec = [{ interests }];
     if (advantage) targeting.targeting_automation = { advantage_audience: 1 };
 
-    const adset: any = await graphPost(`${adAccountPath()}/adsets`, {
+    // SCHEDULE (optional): only send start/end when they're a real future
+    // window — as Unix seconds. Blank/past/equal → omit entirely so the ad set
+    // runs continuously. (Passing undefined would serialize to the literal
+    // "undefined", which Meta rejects.)
+    const nowSec = Math.floor(Date.now() / 1000);
+    const toFutureSec = (iso?: string) => {
+      if (!iso) return undefined;
+      const t = Date.parse(iso);
+      if (Number.isNaN(t)) return undefined;
+      const sec = Math.floor(t / 1000);
+      return sec > nowSec + 60 ? sec : undefined; // must be in the future
+    };
+    const startSec = toFutureSec(cfg.startTime);
+    let endSec = toFutureSec(cfg.endTime);
+    // End must be after start; otherwise drop it (treat as continuous).
+    if (endSec && startSec && endSec <= startSec) endSec = undefined;
+
+    const adsetParams: any = {
       name: `${cfg.campaignName} — Ad Set`,
       campaign_id: externalCampaignId,
       daily_budget: String(Math.round(cfg.dailyBudgetAud * 100)),
       billing_event: "IMPRESSIONS",
       optimization_goal: "LEAD_GENERATION",
       bid_strategy: "LOWEST_COST_WITHOUT_CAP",
-      start_time: cfg.startTime,
-      end_time: cfg.endTime,
       status,
       targeting,
       promoted_object: { page_id: pageId },
-    });
+    };
+    if (startSec) adsetParams.start_time = startSec;
+    if (endSec) adsetParams.end_time = endSec;
+
+    const adset: any = await graphPost(`${adAccountPath()}/adsets`, adsetParams);
     const externalAdsetId = String(adset?.id);
 
     // d. Creative.
