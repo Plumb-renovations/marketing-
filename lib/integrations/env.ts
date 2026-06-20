@@ -68,6 +68,24 @@ export const googleBusiness = {
   },
 };
 
+export const twilio = {
+  accountSid: get("TWILIO_ACCOUNT_SID"),
+  authToken: get("TWILIO_AUTH_TOKEN"),
+  from: get("TWILIO_FROM"), // sending number, e.g. +61...
+  get configured() {
+    return !!(this.accountSid && this.authToken && this.from);
+  },
+};
+
+export const resend = {
+  apiKey: get("RESEND_API_KEY"),
+  from: get("LEAD_FROM_EMAIL") || get("REVIEW_FROM_EMAIL") || "hello@example.com",
+  fromName: get("LEAD_FROM_NAME") || "",
+  get configured() {
+    return !!this.apiKey;
+  },
+};
+
 export const fx = {
   apiKey: get("FX_API_KEY"),
   apiBase: get("FX_API_BASE") || "https://api.exchangerate.host",
