@@ -42,7 +42,7 @@ function PostEditor({ post, onSave, onDelete, onClose }: { post: Post; onSave: (
   const copy = () => { try { navigator.clipboard.writeText((p.caption || "") + (p.hashtags ? "\n\n" + p.hashtags : "")); } catch {} };
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div onClick={onClose} className="absolute inset-0 bg-stone-900/40" />
       <div className="relative flex max-h-[92vh] w-full max-w-lg flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><Eyebrow icon={CalendarDays}>Post</Eyebrow><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
@@ -103,7 +103,7 @@ function AiStudio({ leads, onClose, onSaveDraft }: { leads: any[]; onClose: () =
   const copy = () => { try { navigator.clipboard.writeText((result.caption || "") + (result.hashtags ? "\n\n" + result.hashtags : "")); } catch {} };
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div onClick={onClose} className="absolute inset-0 bg-stone-900/40" />
       <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><Eyebrow icon={Wand2}>AI post studio</Eyebrow><p className="mt-1 text-xs text-slate-500">Upload a finished photo → get caption, hashtags, CTA and a suggested time. </p></div><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
         <div className="grid flex-1 gap-5 overflow-y-auto px-5 py-4 md:grid-cols-2">
@@ -158,7 +158,7 @@ function IdeaStarters({ leads, onClose, onUseIdea }: { leads: any[]; onClose: ()
   }, []);
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div onClick={onClose} className="absolute inset-0 bg-stone-900/40" />
       <div className="relative flex max-h-[88vh] w-full max-w-lg flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><Eyebrow icon={Sparkles}>Idea starters</Eyebrow><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
         <div className="flex-1 space-y-2 overflow-y-auto px-5 py-4">

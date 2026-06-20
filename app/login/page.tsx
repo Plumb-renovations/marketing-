@@ -41,10 +41,7 @@ export default function LoginPage() {
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-500 text-slate-950">
             <Workflow className="h-5 w-5" />
           </div>
-          <div className="leading-tight">
-            <p className="font-display text-sm font-semibold text-slate-100">Plumb Renovations</p>
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">Command Centre</p>
-          </div>
+          <p className="font-serif text-2xl font-semibold leading-none tracking-tight text-slate-100">Hazel</p>
         </div>
 
         {status === "sent" ? (

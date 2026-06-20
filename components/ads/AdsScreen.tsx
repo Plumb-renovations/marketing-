@@ -31,7 +31,7 @@ function MetaAdStudio({
   const vText = (v: any) => `${v.primaryText}\n\nHeadline: ${v.headline}\nDescription: ${v.description}\nCTA: ${v.cta}`;
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div onClick={onClose} className="absolute inset-0 bg-stone-900/40" />
       <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><Eyebrow icon={Facebook}>Meta paid ad — AI copywriter</Eyebrow><p className="mt-1 text-xs text-slate-500">Facebook / Instagram. Upload a photo + pick a goal, then let AI write 2–3 ad-copy variations to A/B test.</p></div><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
         <div className="grid flex-1 gap-5 overflow-y-auto px-5 py-4 md:grid-cols-2">
@@ -92,7 +92,7 @@ function GoogleAdStudio({
   const okD = r ? r.descriptions.filter((d: string) => d.length <= 90).length : 0;
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div onClick={onClose} className="absolute inset-0 bg-stone-900/40" />
       <div className="relative flex max-h-[92vh] w-full max-w-3xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><Eyebrow icon={Search}>Google Ads — AI copywriter</Eyebrow><p className="mt-1 text-xs text-slate-500">AI writes a Responsive Search Ad + keywords, negatives and extensions. Add a photo for Performance Max assets.</p></div><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
         <div className="grid flex-1 gap-5 overflow-y-auto px-5 py-4 md:grid-cols-[260px_1fr]">
@@ -163,7 +163,7 @@ function AdViewer({
   const g = ad.content;
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
+      <div onClick={onClose} className="absolute inset-0 bg-stone-900/40" />
       <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
           <div className="flex items-center gap-2"><Chip status={ad.type === "meta" ? "indigo" : "sky"}>{ad.type === "meta" ? "Meta" : "Google"}</Chip><span className="text-xs text-slate-500">{ad.goal} · {ad.createdAt}</span></div>

@@ -18,7 +18,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 transform flex-col border-r border-slate-800 bg-slate-900/80 transition-transform lg:static lg:translate-x-0 ${navOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex h-16 items-center gap-2.5 border-b border-slate-800 px-5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-500 text-slate-950"><Workflow className="h-5 w-5" /></div>
-          <div className="leading-tight"><p className="font-display text-sm font-semibold text-slate-100">Plumb Renovations</p><p className="text-[10px] uppercase tracking-wider text-slate-500">Command Centre</p></div>
+          <p className="font-serif text-2xl font-semibold leading-none tracking-tight text-slate-100">Hazel</p>
         </div>
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           {NAV.map((grp) => (
@@ -43,7 +43,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <button type="submit" className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-500 transition hover:bg-slate-800/60 hover:text-slate-300">Sign out</button>
         </form>
       </aside>
-      {navOpen && <div onClick={() => setNavOpen(false)} className="fixed inset-0 z-30 bg-slate-950/60 lg:hidden" />}
+      {navOpen && <div onClick={() => setNavOpen(false)} className="fixed inset-0 z-30 bg-stone-900/40 lg:hidden" />}
 
       <div className="flex min-h-screen flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-800 bg-slate-950/80 px-4 sm:px-6">
@@ -51,7 +51,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <button onClick={() => setNavOpen(true)} className="rounded-lg border border-slate-700 p-2 text-slate-400 lg:hidden"><Menu className="h-4 w-4" /></button>
             <div>
               <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500 font-display">{group}</div>
-              <h1 className="font-display text-lg font-semibold tracking-tight text-slate-100">{TITLES[current] || "Command Centre"}</h1>
+              <h1 className="font-display text-lg font-semibold tracking-tight text-slate-100">{TITLES[current] || "Hazel"}</h1>
             </div>
           </div>
           <span className="hidden items-center gap-1.5 text-[11px] text-emerald-400 sm:inline-flex"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> live data</span>

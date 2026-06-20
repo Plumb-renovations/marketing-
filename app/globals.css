@@ -2,9 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---- Cockpit design system (ported verbatim from the prototype) ---- */
+/* ---- Hazel design system — warm, light "interiors" palette ---- */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html,
@@ -14,9 +14,12 @@ body {
 
 body {
   margin: 0;
-  background: #020617; /* slate-950 */
+  background: #faf6ef; /* warm cream (slate-950 token) */
 }
 
+.font-serif {
+  font-family: var(--font-serif), "Fraunces", Georgia, ui-serif, serif;
+}
 .font-display {
   font-family: var(--font-display), "Space Grotesk", system-ui, -apple-system, sans-serif;
 }
@@ -35,14 +38,14 @@ body {
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: #e7decd; /* hairline taupe */
   border-radius: 8px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 *:focus-visible {
-  outline: 2px solid #22d3ee;
+  outline: 2px solid #b17a3c; /* hazel */
   outline-offset: 2px;
   border-radius: 6px;
 }
