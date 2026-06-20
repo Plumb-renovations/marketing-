@@ -11,6 +11,7 @@ import {
   Link2Off,
 } from "lucide-react";
 import { Panel, SectionHeader } from "@/components/ui/primitives";
+import GoogleBusinessCard from "@/components/settings/GoogleBusinessCard";
 
 interface MetaStatus {
   provider: "meta";
@@ -103,6 +104,8 @@ export default function IntegrationsScreen() {
           </div>
         )}
       </Panel>
+
+      <GoogleBusinessCard />
     </div>
   );
 }

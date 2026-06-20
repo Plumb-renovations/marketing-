@@ -55,6 +55,19 @@ export const dataManager = {
   },
 };
 
+export const googleBusiness = {
+  // OAuth app credentials (shared by every org's per-user connection).
+  clientId: get("GOOGLE_GBP_CLIENT_ID"),
+  clientSecret: get("GOOGLE_GBP_CLIENT_SECRET"),
+  // Env fallback for the DEFAULT (Plumb) org — analogous to the Meta System User.
+  refreshToken: get("GOOGLE_GBP_REFRESH_TOKEN"),
+  accountId: get("GOOGLE_GBP_ACCOUNT_ID"), // "accounts/123" or bare id
+  locationId: get("GOOGLE_GBP_LOCATION_ID"), // "locations/456" or bare id
+  get oauthConfigured() {
+    return !!(this.clientId && this.clientSecret);
+  },
+};
+
 export const fx = {
   apiKey: get("FX_API_KEY"),
   apiBase: get("FX_API_BASE") || "https://api.exchangerate.host",
