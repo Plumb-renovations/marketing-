@@ -73,6 +73,23 @@ export const fx = {
   apiBase: get("FX_API_BASE") || "https://api.exchangerate.host",
 };
 
+export const twilio = {
+  accountSid: get("TWILIO_ACCOUNT_SID"),
+  authToken: get("TWILIO_AUTH_TOKEN"),
+  from: get("TWILIO_FROM"), // sending number, e.g. +61...
+  get configured() {
+    return !!(this.accountSid && this.authToken && this.from);
+  },
+};
+
+export const resend = {
+  apiKey: get("RESEND_API_KEY"),
+  from: get("REVIEW_FROM_EMAIL") || "reviews@plumbrenovations.com.au",
+  get configured() {
+    return !!this.apiKey;
+  },
+};
+
 export const app = {
   url: get("NEXT_PUBLIC_APP_URL") || "http://localhost:3000",
   cronSecret: get("CRON_SECRET"),
