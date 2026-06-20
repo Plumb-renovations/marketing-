@@ -33,13 +33,13 @@ function MetaAdStudio({
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
       <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><Eyebrow icon={Facebook}>Meta paid ad</Eyebrow><p className="mt-1 text-xs text-slate-500">Facebook / Instagram. Upload a photo + pick a goal → ad copy with 2–3 test variations. </p></div><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><Eyebrow icon={Facebook}>Meta paid ad — AI copywriter</Eyebrow><p className="mt-1 text-xs text-slate-500">Facebook / Instagram. Upload a photo + pick a goal, then let AI write 2–3 ad-copy variations to A/B test.</p></div><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
         <div className="grid flex-1 gap-5 overflow-y-auto px-5 py-4 md:grid-cols-2">
           <div className="space-y-4">
             {photo ? <div className="relative"><img src={photo} alt="" className="max-h-56 w-full rounded-lg object-cover" /><button onClick={() => setPhoto(null)} className="absolute right-2 top-2 rounded-md bg-slate-950/80 p-1 text-slate-300 hover:text-red-300"><X className="h-3.5 w-3.5" /></button></div>
               : <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-700 px-3 py-10 text-sm text-slate-400 transition hover:border-cyan-500/40 hover:text-cyan-300"><ImagePlus className="h-5 w-5" /> Upload the ad image<span className="text-[11px] text-slate-600">Writes copy for your image — doesn't make it</span><input type="file" accept="image/*" onChange={pick} className="hidden" /></label>}
             <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Goal</p><select value={goal} onChange={(e) => setGoal(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-cyan-500/50">{POST_GOALS.map((g) => <option key={g} value={g}>{g}</option>)}</select></div>
-            <button onClick={run} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">{loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</> : <><Wand2 className="h-4 w-4" /> {result ? "Regenerate" : "Generate ad"}</>}</button>
+            <button onClick={run} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">{loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating with AI…</> : <><Wand2 className="h-4 w-4" /> {result ? "Regenerate with AI" : "Generate ad copy with AI"}</>}</button>
             <p className="text-[11px] text-slate-500">Lengths follow Meta's recommendations: primary text ≤125, headline ≤40, link description ≤30.</p>
           </div>
           <div className="space-y-3">
@@ -94,13 +94,13 @@ function GoogleAdStudio({
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div onClick={onClose} className="absolute inset-0 bg-slate-950/80" />
       <div className="relative flex max-h-[92vh] w-full max-w-3xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><Eyebrow icon={Search}>Google Ads</Eyebrow><p className="mt-1 text-xs text-slate-500">Responsive Search Ad + keywords, negatives and extensions. Add a photo for Performance Max assets. </p></div><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><Eyebrow icon={Search}>Google Ads — AI copywriter</Eyebrow><p className="mt-1 text-xs text-slate-500">AI writes a Responsive Search Ad + keywords, negatives and extensions. Add a photo for Performance Max assets.</p></div><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
         <div className="grid flex-1 gap-5 overflow-y-auto px-5 py-4 md:grid-cols-[260px_1fr]">
           <div className="space-y-4">
             <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Goal</p><select value={goal} onChange={(e) => setGoal(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-cyan-500/50">{POST_GOALS.map((g) => <option key={g} value={g}>{g}</option>)}</select></div>
             {photo ? <div className="relative"><img src={photo} alt="" className="max-h-40 w-full rounded-lg object-cover" /><button onClick={() => setPhoto(null)} className="absolute right-2 top-2 rounded-md bg-slate-950/80 p-1 text-slate-300 hover:text-red-300"><X className="h-3.5 w-3.5" /></button></div>
               : <label className="flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-700 px-3 py-6 text-xs text-slate-400 transition hover:border-cyan-500/40 hover:text-cyan-300"><ImagePlus className="h-4 w-4" /> Optional: photo for PMax assets<input type="file" accept="image/*" onChange={pick} className="hidden" /></label>}
-            <button onClick={run} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">{loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</> : <><Wand2 className="h-4 w-4" /> {r ? "Regenerate" : "Generate ad"}</>}</button>
+            <button onClick={run} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">{loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating with AI…</> : <><Wand2 className="h-4 w-4" /> {r ? "Regenerate with AI" : "Generate ad copy with AI"}</>}</button>
             <p className="text-[11px] text-slate-500">Hard limits enforced: headlines ≤30 chars, descriptions ≤90 chars. Over-limit items are flagged red.</p>
           </div>
           <div className="space-y-4">
@@ -210,11 +210,12 @@ export default function AdsScreen() {
 
   return (
     <div className="space-y-6">
-      <SectionHeader icon={Megaphone} title="Ad Creator" desc="Generate ready-to-use paid ad copy, built to turn clicks into enquiries. Save drafts, then paste into Meta or Google." />
+      <SectionHeader icon={Megaphone} title="Ad Creator" desc="AI writes ready-to-use paid ad copy, built to turn clicks into enquiries. Generate, save, then launch to Meta or Google." />
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={() => setStudio("meta")} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-sm text-cyan-200 transition hover:bg-cyan-500/20"><Facebook className="h-4 w-4" /> Create Meta ad</button>
-        <button onClick={() => setStudio("google")} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-sm text-cyan-200 transition hover:bg-cyan-500/20"><Search className="h-4 w-4" /> Create Google ad</button>
+        <button onClick={() => setStudio("meta")} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-sm text-cyan-200 transition hover:bg-cyan-500/20"><Wand2 className="h-4 w-4" /> Create Meta ad with AI</button>
+        <button onClick={() => setStudio("google")} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-sm text-cyan-200 transition hover:bg-cyan-500/20"><Wand2 className="h-4 w-4" /> Create Google ad with AI</button>
       </div>
+      <p className="-mt-3 text-[11px] text-slate-500">Each opens an AI ad writer — pick a goal and an optional photo, generate the copy, then save and launch. If AI is unavailable you’ll see the reason (not a silent template).</p>
 
       <div>
         <Eyebrow icon={Wand2}>Ad drafts</Eyebrow>
