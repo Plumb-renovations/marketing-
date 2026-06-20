@@ -1,5 +1,4 @@
-import { graphGet, graphPost, adAccountPath } from "./client";
-import { meta } from "../env";
+import type { MetaClient } from "./client";
 import type { LaunchConfig, PublishResult } from "../types";
 
 // Service-area default: a radius centred on the Gold Coast / Tweed Heads border
@@ -18,12 +17,12 @@ export const DEFAULT_INTERESTS = [
 
 // Resolve interest names → {id,name} via the Targeting Search API. Best-effort:
 // unresolved/failed terms are skipped so a bad term never blocks the launch.
-async function resolveInterests(names: string[]): Promise<{ id: string; name: string }[]> {
+async function resolveInterests(client: MetaClient, names: string[]): Promise<{ id: string; name: string }[]> {
   const out: { id: string; name: string }[] = [];
   for (const q of names) {
     if (!q?.trim()) continue;
     try {
-      const res: any = await graphGet("search", { type: "adinterest", q: q.trim(), limit: 1 });
+      const res: any = await client.get("search", { type: "adinterest", q: q.trim(), limit: 1 });
       const hit = res?.data?.[0];
       if (hit?.id) out.push({ id: String(hit.id), name: hit.name || q.trim() });
     } catch {
@@ -65,18 +64,22 @@ export function mapCta(cta: string): string {
   }
 }
 
-export async function publishMetaAd(cfg: LaunchConfig, creative: CreativeInput): Promise<PublishResult> {
+export async function publishMetaAd(
+  client: MetaClient,
+  cfg: LaunchConfig,
+  creative: CreativeInput,
+): Promise<PublishResult> {
   try {
     const status = cfg.mode === "launch" ? "ACTIVE" : "PAUSED";
     const link = cfg.link || cfg.finalUrl || "https://waterplumb.com.au";
-    const pageId = cfg.pageId || meta.pageId;
+    const pageId = cfg.pageId || client.pageId;
 
     // a. Upload the image (if supplied) and grab its hash. The adimages
     //    response keys by an arbitrary name, so take the first entry.
     let imageHash: string | undefined;
     if (creative.imageDataUrl) {
       const base64 = creative.imageDataUrl.replace(/^data:[^;]+;base64,/, "");
-      const imgRes: any = await graphPost(`${adAccountPath()}/adimages`, { bytes: base64 });
+      const imgRes: any = await client.post(`${client.adAccountPath()}/adimages`, { bytes: base64 });
       const images = imgRes?.images || {};
       const firstKey = Object.keys(images)[0];
       imageHash = firstKey ? images[firstKey]?.hash : undefined;
@@ -87,7 +90,7 @@ export async function publishMetaAd(cfg: LaunchConfig, creative: CreativeInput):
     //    JSON-encodes it. OUTCOME_LEADS is the current ODAX leads objective.
     //    is_adset_budget_sharing_enabled must be explicitly set when the budget
     //    lives at the ad-set level (no campaign budget) — false = ad-set budgets.
-    const campaign: any = await graphPost(`${adAccountPath()}/campaigns`, {
+    const campaign: any = await client.post(`${client.adAccountPath()}/campaigns`, {
       name: cfg.campaignName,
       objective: "OUTCOME_LEADS",
       status,
@@ -104,7 +107,7 @@ export async function publishMetaAd(cfg: LaunchConfig, creative: CreativeInput):
     const radiusKm = Math.min(80, Math.max(1, cfg.radiusKm ?? DEFAULT_GEO.radiusKm));
     // AUDIENCE (soft suggestions): resolve interest names → ids, pass via
     // flexible_spec with Advantage+ audience so Meta can expand beyond them.
-    const interests = await resolveInterests(cfg.interests?.length ? cfg.interests : DEFAULT_INTERESTS);
+    const interests = await resolveInterests(client, cfg.interests?.length ? cfg.interests : DEFAULT_INTERESTS);
     const advantage = cfg.advantageAudience !== false;
 
     const targeting: any = {
@@ -149,11 +152,11 @@ export async function publishMetaAd(cfg: LaunchConfig, creative: CreativeInput):
     if (startSec) adsetParams.start_time = startSec;
     if (endSec) adsetParams.end_time = endSec;
 
-    const adset: any = await graphPost(`${adAccountPath()}/adsets`, adsetParams);
+    const adset: any = await client.post(`${client.adAccountPath()}/adsets`, adsetParams);
     const externalAdsetId = String(adset?.id);
 
     // d. Creative.
-    const adcreative: any = await graphPost(`${adAccountPath()}/adcreatives`, {
+    const adcreative: any = await client.post(`${client.adAccountPath()}/adcreatives`, {
       name: `${cfg.campaignName} — Creative`,
       object_story_spec: {
         page_id: pageId,
@@ -173,7 +176,7 @@ export async function publishMetaAd(cfg: LaunchConfig, creative: CreativeInput):
     const externalCreativeId = String(adcreative?.id);
 
     // e. Ad.
-    const ad: any = await graphPost(`${adAccountPath()}/ads`, {
+    const ad: any = await client.post(`${client.adAccountPath()}/ads`, {
       name: `${cfg.campaignName} — Ad`,
       adset_id: externalAdsetId,
       creative: { creative_id: externalCreativeId },

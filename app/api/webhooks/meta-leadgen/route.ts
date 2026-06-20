@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { meta } from "@/lib/integrations/env";
-import { verifyWebhookSignature } from "@/lib/integrations/meta/client";
+import { metaClient, verifyWebhookSignature } from "@/lib/integrations/meta/client";
+import { getMetaConfigForPage } from "@/lib/integrations/meta/config";
 import { fetchLead } from "@/lib/integrations/meta/leads";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ORG_ID } from "@/lib/domain/seed";
 
 // Meta Lead Ads webhook.
 //   GET  — subscription verification handshake (hub.challenge).
@@ -58,45 +58,55 @@ export async function POST(req: Request) {
     return new NextResponse("bad json", { status: 400 });
   }
 
-  // Collect leadgen_ids from all page entries.
-  const leadgenIds: string[] = [];
+  const supabase = createAdminClient();
+  let received = 0;
+
+  // Process per page entry. entry.id is the Page id, which routes the lead to
+  // the org that connected that Page (falling back to the default Plumb org's
+  // env config). Each org's leads are fetched with that org's own token and
+  // stored under that org — no cross-org leakage.
   for (const entry of body?.entry || []) {
-    for (const change of entry?.changes || []) {
-      if (change?.field === "leadgen" && change?.value?.leadgen_id) {
-        leadgenIds.push(String(change.value.leadgen_id));
+    const leadgenIds = (entry?.changes || [])
+      .filter((c: any) => c?.field === "leadgen" && c?.value?.leadgen_id)
+      .map((c: any) => String(c.value.leadgen_id));
+    if (!leadgenIds.length) continue;
+
+    const pageId = entry?.id ? String(entry.id) : undefined;
+    const config = await getMetaConfigForPage(pageId);
+    if (!config) {
+      console.error("[meta-leadgen] no Meta config for page", pageId);
+      continue;
+    }
+    const client = metaClient(config);
+
+    for (const leadgenId of leadgenIds) {
+      try {
+        const lead = await fetchLead(client, leadgenId);
+        // Upsert into leads, deduped by (org_id, external_source, external_id)
+        // so re-deliveries don't create duplicates.
+        await supabase.from("leads").upsert(
+          {
+            id: "meta-" + leadgenId,
+            org_id: config.orgId,
+            name: lead.name,
+            suburb: lead.suburb,
+            project: lead.project,
+            source: "meta_ads",
+            stage: "new",
+            lead_date: new Date().toISOString().slice(0, 10),
+            external_source: "meta_leadgen",
+            external_id: leadgenId,
+            raw: lead.raw as any,
+          },
+          { onConflict: "org_id,external_source,external_id", ignoreDuplicates: true },
+        );
+        received += 1;
+      } catch (e) {
+        console.error("[meta-leadgen] failed to ingest lead", leadgenId, (e as Error).message);
       }
     }
   }
 
-  const supabase = createAdminClient();
-
-  for (const leadgenId of leadgenIds) {
-    try {
-      const lead = await fetchLead(leadgenId);
-      // Store the same way the lead integration does: upsert into leads,
-      // deduped by (org_id, external_source, external_id) so re-deliveries
-      // don't create duplicates.
-      await supabase.from("leads").upsert(
-        {
-          id: "meta-" + leadgenId,
-          org_id: ORG_ID,
-          name: lead.name,
-          suburb: lead.suburb,
-          project: lead.project,
-          source: "meta_ads",
-          stage: "new",
-          lead_date: new Date().toISOString().slice(0, 10),
-          external_source: "meta_leadgen",
-          external_id: leadgenId,
-          raw: lead.raw as any,
-        },
-        { onConflict: "org_id,external_source,external_id", ignoreDuplicates: true },
-      );
-    } catch (e) {
-      console.error("[meta-leadgen] failed to ingest lead", leadgenId, (e as Error).message);
-    }
-  }
-
   // Always 200 quickly so Meta doesn't retry/disable the webhook.
-  return NextResponse.json({ received: leadgenIds.length });
+  return NextResponse.json({ received });
 }

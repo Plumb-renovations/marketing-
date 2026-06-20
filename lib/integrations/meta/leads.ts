@@ -1,4 +1,4 @@
-import { graphGet } from "./client";
+import type { MetaClient } from "./client";
 import type { InboundLead } from "../types";
 
 // Lead retrieval. The leadgen webhook hands us a leadgen_id; we read the full
@@ -21,8 +21,8 @@ export function parseFieldData(fd: any): Record<string, string> {
   return out;
 }
 
-export async function fetchLead(leadgenId: string): Promise<InboundLead> {
-  const lead: any = await graphGet(`${leadgenId}`, {
+export async function fetchLead(client: MetaClient, leadgenId: string): Promise<InboundLead> {
+  const lead: any = await client.get(`${leadgenId}`, {
     fields: "id,created_time,ad_id,form_id,field_data",
   });
 
