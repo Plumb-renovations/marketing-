@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Lead, Quote } from "@/lib/domain/types";
-import { ORG_ID } from "@/lib/domain/seed";
+import { getOrgId } from "@/lib/data/org";
 
 // ---- Row -> UI mapping --------------------------------------------------
 function mapQuote(row: any): Quote {
@@ -45,10 +45,10 @@ function mapLead(row: any): Lead {
 }
 
 // ---- UI -> Row mapping --------------------------------------------------
-function leadRow(lead: Lead) {
+function leadRow(lead: Lead, orgId: string) {
   return {
     id: lead.id,
-    org_id: ORG_ID,
+    org_id: orgId,
     name: lead.name,
     suburb: lead.suburb,
     source: lead.source,
@@ -77,7 +77,8 @@ export async function fetchLeads(supabase: SupabaseClient): Promise<Lead[]> {
 // ---- Writes -------------------------------------------------------------
 // Upsert the lead row only (used by field-only actions + new leads).
 export async function upsertLeadRow(supabase: SupabaseClient, lead: Lead) {
-  const { error } = await supabase.from("leads").upsert(leadRow(lead));
+  const orgId = await getOrgId(supabase);
+  const { error } = await supabase.from("leads").upsert(leadRow(lead, orgId));
   if (error) throw error;
 }
 
@@ -114,9 +115,10 @@ export async function persistQuote(
   leadId: string,
   quote: Quote,
 ) {
+  const orgId = await getOrgId(supabase);
   const { error: qErr } = await supabase.from("quotes").upsert({
     id: quote.id,
-    org_id: ORG_ID,
+    org_id: orgId,
     lead_id: leadId,
     status: quote.status,
     created_at: quote.createdAt,

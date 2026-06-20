@@ -34,6 +34,7 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublic =
     pathname.startsWith("/login") ||
+    pathname.startsWith("/signup") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/privacy") || // public privacy policy (required by Meta/Google)
     pathname.startsWith("/api") || // API routes & webhooks do their own auth
@@ -46,7 +47,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && pathname === "/login") {
+  if (user && (pathname === "/login" || pathname === "/signup")) {
     const url = request.nextUrl.clone();
     url.pathname = "/leads";
     return NextResponse.redirect(url);
