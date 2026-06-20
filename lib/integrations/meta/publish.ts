@@ -54,11 +54,14 @@ export async function publishMetaAd(cfg: LaunchConfig, creative: CreativeInput):
     // b. Campaign. special_ad_categories is REQUIRED by the Marketing API
     //    (empty array = none). Passed as a real array; the Graph client
     //    JSON-encodes it. OUTCOME_LEADS is the current ODAX leads objective.
+    //    is_adset_budget_sharing_enabled must be explicitly set when the budget
+    //    lives at the ad-set level (no campaign budget) — false = ad-set budgets.
     const campaign: any = await graphPost(`${adAccountPath()}/campaigns`, {
       name: cfg.campaignName,
       objective: "OUTCOME_LEADS",
       status,
       special_ad_categories: [],
+      is_adset_budget_sharing_enabled: false,
     });
     const externalCampaignId = String(campaign?.id);
 
