@@ -10,6 +10,10 @@ function get(name: string) {
 export const meta = {
   appId: get("META_APP_ID"),
   appSecret: get("META_APP_SECRET"),
+  // Facebook Login for Business "configuration" id (optional). When set, the
+  // Connect-Meta dialog uses this configuration; otherwise it falls back to a
+  // scope-based dialog with the same permissions (handy for dev/testing).
+  loginConfigId: get("META_LOGIN_CONFIG_ID"),
   systemUserToken: get("META_SYSTEM_USER_TOKEN"),
   webhookVerifyToken: get("META_WEBHOOK_VERIFY_TOKEN"),
   graphVersion: get("META_GRAPH_VERSION") || "v23.0",
