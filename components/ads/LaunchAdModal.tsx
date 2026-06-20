@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, Rocket, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Eyebrow, Chip } from "@/components/ui/primitives";
 import type { Ad } from "@/lib/domain/types";
+import { createClient } from "@/lib/supabase/client";
+import { fetchBusinessProfile } from "@/lib/data/businessProfile";
 
 // Launch a saved Ad Creator draft straight to Meta or Google — live, or as a
 // paused draft to review in the platform first. Targeting/budget/schedule are
@@ -28,6 +30,24 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState("");
+
+  // Prefill targeting + campaign defaults from the org's Business Profile, so
+  // they fit this business rather than the renovation defaults above.
+  useEffect(() => {
+    (async () => {
+      try {
+        const p = await fetchBusinessProfile(createClient());
+        if (p.businessName) setCampaignName(`${p.businessName} — ${ad.goal || p.businessType || "Campaign"}`);
+        if (p.serviceAreaLat != null) setLat(p.serviceAreaLat);
+        if (p.serviceAreaLng != null) setLng(p.serviceAreaLng);
+        if (p.serviceRadiusKm) setRadiusKm(p.serviceRadiusKm);
+        if (p.audienceInterests.length) setInterests(p.audienceInterests.join(", "));
+      } catch {
+        // keep the built-in defaults
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const launch = async () => {
     setLoading(true);
