@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Star, Loader2, Send, MessageSquare, Plug, AlertTriangle } from "lucide-react";
 import { Panel, SectionHeader } from "@/components/ui/primitives";
+import RequestReview from "@/components/reviews/RequestReview";
 
 interface Review {
   id: string;
@@ -107,6 +108,8 @@ export default function ReviewsScreen() {
           </div>
         </div>
       </Panel>
+
+      <RequestReview />
 
       {data.error && (
         <div className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-300">
