@@ -84,6 +84,9 @@ export default function LoginPage() {
             <p className="text-center text-[11px] text-slate-600">No password — we email you a secure magic link.</p>
           </form>
         )}
+        <p className="mt-4 text-center text-[11px] text-slate-600">
+          <a href="/privacy" className="transition hover:text-slate-400">Privacy Policy</a>
+        </p>
       </div>
     </div>
   );
