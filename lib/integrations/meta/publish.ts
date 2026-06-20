@@ -51,12 +51,14 @@ export async function publishMetaAd(cfg: LaunchConfig, creative: CreativeInput):
       imageHash = firstKey ? images[firstKey]?.hash : undefined;
     }
 
-    // b. Campaign.
+    // b. Campaign. special_ad_categories is REQUIRED by the Marketing API
+    //    (empty array = none). Passed as a real array; the Graph client
+    //    JSON-encodes it. OUTCOME_LEADS is the current ODAX leads objective.
     const campaign: any = await graphPost(`${adAccountPath()}/campaigns`, {
       name: cfg.campaignName,
       objective: "OUTCOME_LEADS",
       status,
-      special_ad_categories: "[]",
+      special_ad_categories: [],
     });
     const externalCampaignId = String(campaign?.id);
 

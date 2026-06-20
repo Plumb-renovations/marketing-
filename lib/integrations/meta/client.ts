@@ -39,8 +39,17 @@ async function call(method: "GET" | "POST", path: string, params: Record<string,
   const res = await fetch(url, init);
   const data: any = await res.json().catch(() => ({}));
   if (!res.ok || data?.error) {
-    const msg = data?.error?.message || `${res.status} ${res.statusText}`;
-    throw new Error(`Meta Graph ${method} /${path} failed: ${msg}`);
+    const err = data?.error || {};
+    // Surface Meta's detailed error so the exact rejected parameter is visible.
+    const parts: string[] = [err.message || `${res.status} ${res.statusText}`];
+    if (err.error_user_title) parts.push(err.error_user_title);
+    if (err.error_user_msg) parts.push(err.error_user_msg);
+    if (err.code != null) parts.push(`code ${err.code}`);
+    if (err.error_subcode != null) parts.push(`subcode ${err.error_subcode}`);
+    const blame = err.error_data?.blame_field_specs;
+    if (blame) parts.push(`field: ${JSON.stringify(blame)}`);
+    if (err.fbtrace_id) parts.push(`fbtrace_id ${err.fbtrace_id}`);
+    throw new Error(`Meta Graph ${method} /${path} failed: ${parts.join(" — ")}`);
   }
   return data;
 }
