@@ -103,7 +103,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           fetchSettings(supabase),
         ]);
         if (!alive) return;
-        setLeads(L.length ? L : SEED_LEADS);
+        // Show the org's own data — including an empty board for a new org.
+        // (The seed fallback below is only for when Supabase isn't reachable.)
+        setLeads(L);
         setPosts(P);
         setAds(A);
         setSettings(S.settings);

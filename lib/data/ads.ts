@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Ad } from "@/lib/domain/types";
-import { ORG_ID } from "@/lib/domain/seed";
+import { getOrgId } from "@/lib/data/org";
 
 function mapAd(row: any): Ad {
   return {
@@ -14,10 +14,10 @@ function mapAd(row: any): Ad {
   };
 }
 
-function adRow(ad: Ad) {
+function adRow(ad: Ad, orgId: string) {
   return {
     id: ad.id,
-    org_id: ORG_ID,
+    org_id: orgId,
     kind: ad.type,
     goal: ad.goal,
     photo: ad.photo,
@@ -36,7 +36,8 @@ export async function fetchAds(supabase: SupabaseClient): Promise<Ad[]> {
 }
 
 export async function upsertAd(supabase: SupabaseClient, ad: Ad) {
-  const { error } = await supabase.from("ads").upsert(adRow(ad));
+  const orgId = await getOrgId(supabase);
+  const { error } = await supabase.from("ads").upsert(adRow(ad, orgId));
   if (error) throw error;
 }
 

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Post } from "@/lib/domain/types";
-import { ORG_ID } from "@/lib/domain/seed";
+import { getOrgId } from "@/lib/data/org";
 
 function mapPost(row: any): Post {
   return {
@@ -18,10 +18,10 @@ function mapPost(row: any): Post {
   };
 }
 
-function postRow(post: Post) {
+function postRow(post: Post, orgId: string) {
   return {
     id: post.id,
-    org_id: ORG_ID,
+    org_id: orgId,
     photo: post.photo,
     caption: post.caption ?? "",
     hashtags: post.hashtags ?? "",
@@ -42,7 +42,8 @@ export async function fetchPosts(supabase: SupabaseClient): Promise<Post[]> {
 }
 
 export async function upsertPost(supabase: SupabaseClient, post: Post) {
-  const { error } = await supabase.from("posts").upsert(postRow(post));
+  const orgId = await getOrgId(supabase);
+  const { error } = await supabase.from("posts").upsert(postRow(post, orgId));
   if (error) throw error;
 }
 

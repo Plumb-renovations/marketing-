@@ -1,15 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Settings, Metrics } from "@/lib/domain/types";
-import { ORG_ID } from "@/lib/domain/seed";
+import { getOrgId } from "@/lib/data/org";
 import { DEFAULT_SETTINGS, DEFAULT_METRICS } from "@/lib/domain/seed";
 
 export async function fetchSettings(
   supabase: SupabaseClient,
 ): Promise<{ settings: Settings; metrics: Metrics }> {
+  const orgId = await getOrgId(supabase);
   const { data, error } = await supabase
     .from("app_settings")
     .select("*")
-    .eq("org_id", ORG_ID)
+    .eq("org_id", orgId)
     .maybeSingle();
   if (error) throw error;
   if (!data) return { settings: DEFAULT_SETTINGS, metrics: DEFAULT_METRICS };
@@ -33,8 +34,9 @@ export async function saveSettings(
   settings: Settings,
   metrics: Metrics,
 ) {
+  const orgId = await getOrgId(supabase);
   const { error } = await supabase.from("app_settings").upsert({
-    org_id: ORG_ID,
+    org_id: orgId,
     jobs_target: settings.jobsTarget,
     revenue_target: settings.revenueTarget,
     lead_time_weeks: settings.leadTimeWeeks,
