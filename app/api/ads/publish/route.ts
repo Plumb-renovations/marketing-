@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { ORG_ID } from "@/lib/domain/seed";
-import { meta } from "@/lib/integrations/env";
+import { getOrgId } from "@/lib/data/org";
+import { getMetaConfig, markMetaExpired } from "@/lib/integrations/meta/config";
+import { metaClient, MetaAuthError } from "@/lib/integrations/meta/client";
 import type { LaunchConfig, PublishResult } from "@/lib/integrations/types";
 
 // Launch a saved Ad Creator draft to Meta — live, or as a PAUSED draft to review
@@ -37,8 +38,16 @@ export async function POST(req: Request) {
   if (!cfg.adId || !cfg.campaignName || !(cfg.dailyBudgetAud > 0)) {
     return NextResponse.json({ error: "missing adId, campaignName or dailyBudgetAud" }, { status: 400 });
   }
-  if (!meta.configured) {
-    return NextResponse.json({ error: "meta_not_configured" }, { status: 412 });
+
+  // Resolve this org's Meta connection (its own connected account, or the env
+  // System-User values for the default Plumb org). No usable connection → 412.
+  const orgId = await getOrgId(supabase);
+  const metaConfig = await getMetaConfig(orgId);
+  if (!metaConfig) {
+    return NextResponse.json(
+      { error: "meta_not_connected", message: "Connect a Meta account in Settings → Integrations first." },
+      { status: 412 },
+    );
   }
 
   // Load the local draft (RLS scopes to the member's org).
@@ -52,7 +61,8 @@ export async function POST(req: Request) {
   try {
     const v = ad.content?.variations?.[0] || {};
     const { publishMetaAd } = await import("@/lib/integrations/meta/publish");
-    result = await publishMetaAd(cfg, {
+    const client = metaClient(metaConfig);
+    result = await publishMetaAd(client, cfg, {
       primaryText: v.primaryText || ad.content?.primaryText || "",
       headline: v.headline || "",
       description: v.description || "",
@@ -60,13 +70,21 @@ export async function POST(req: Request) {
       imageDataUrl: ad.photo || null,
     });
   } catch (e: any) {
+    // A rejected token (expired/revoked) → flag the org for reconnect.
+    if (e instanceof MetaAuthError) {
+      await markMetaExpired(orgId);
+      return NextResponse.json(
+        { error: "meta_reconnect_required", message: "Your Meta connection has expired. Reconnect it in Settings → Integrations." },
+        { status: 412 },
+      );
+    }
     result = { ok: false, platform: "meta", status: "failed", error: e?.message || "publish failed" };
   }
 
   // Best-effort audit record (no-op if the published_ads table isn't there yet).
   try {
     await supabase.from("published_ads").insert({
-      org_id: ORG_ID,
+      org_id: orgId,
       ad_id: cfg.adId,
       platform: "meta",
       external_campaign_id: result.externalCampaignId ?? null,
