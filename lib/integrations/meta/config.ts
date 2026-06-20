@@ -81,6 +81,28 @@ export async function getMetaConfigForPage(
   return getMetaConfig(DEFAULT_ORG_ID);
 }
 
+// Raw integration row for an org (server-only; includes the token). Used by the
+// OAuth/status/picker routes — never returned to the browser verbatim.
+export async function getMetaIntegrationRow(orgId: string): Promise<any | null> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("org_integrations")
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("provider", "meta")
+    .maybeSingle();
+  return data ?? null;
+}
+
+// Create/update an org's Meta integration row.
+export async function saveMetaIntegration(orgId: string, patch: Record<string, any>): Promise<void> {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("org_integrations")
+    .upsert({ org_id: orgId, provider: "meta", ...patch }, { onConflict: "org_id,provider" });
+  if (error) throw error;
+}
+
 // Mark an org's Meta connection as expired (called when a token is rejected).
 export async function markMetaExpired(orgId: string): Promise<void> {
   const admin = createAdminClient();

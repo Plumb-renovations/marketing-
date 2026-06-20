@@ -11,7 +11,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
   const pathname = usePathname();
   const current = pathname.split("/")[1] || "leads";
-  const group = ["leads", "pipeline", "revenue"].includes(current) ? "Operations" : "Marketing";
+  const group = NAV.find((g) => g.items.some((i) => i.id === current))?.group || "Marketing";
 
   return (
     <div className="flex">

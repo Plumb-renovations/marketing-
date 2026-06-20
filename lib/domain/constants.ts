@@ -17,6 +17,7 @@ import {
   CalendarDays,
   Scale,
   Megaphone,
+  Plug,
   type LucideIcon,
 } from "lucide-react";
 
@@ -265,6 +266,12 @@ export const NAV: {
       { id: "assistants", label: "Assistants", icon: Bot },
     ],
   },
+  {
+    group: "Settings",
+    items: [
+      { id: "integrations", label: "Integrations", icon: Plug },
+    ],
+  },
 ];
 
 export const TITLES: Record<string, string> = {
@@ -283,6 +290,7 @@ export const TITLES: Record<string, string> = {
   compare: "Paid vs Organic",
   calendar: "Content Calendar",
   ads: "Ad Creator",
+  integrations: "Integrations",
 };
 
 /* --------------------------- STATUS / SOURCES -------------------------- */
