@@ -1,4 +1,5 @@
-import { ReviewsView } from "@/components/dashboards/Dashboards";
+import ReviewsScreen from "@/components/reviews/ReviewsScreen";
+
 export default function Page() {
-  return <ReviewsView />;
+  return <ReviewsScreen />;
 }
