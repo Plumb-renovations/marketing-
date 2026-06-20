@@ -18,6 +18,7 @@ import {
   Scale,
   Megaphone,
   Plug,
+  Building2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -269,6 +270,7 @@ export const NAV: {
   {
     group: "Settings",
     items: [
+      { id: "business", label: "Business Profile", icon: Building2 },
       { id: "integrations", label: "Integrations", icon: Plug },
     ],
   },
@@ -291,6 +293,7 @@ export const TITLES: Record<string, string> = {
   calendar: "Content Calendar",
   ads: "Ad Creator",
   integrations: "Integrations",
+  business: "Business Profile",
 };
 
 /* --------------------------- STATUS / SOURCES -------------------------- */

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getOrgId } from "@/lib/data/org";
 import { getMetaConfig, markMetaExpired } from "@/lib/integrations/meta/config";
 import { metaClient, MetaAuthError } from "@/lib/integrations/meta/client";
+import { getBusinessProfile } from "@/lib/business/profileServer";
 import type { LaunchConfig, PublishResult } from "@/lib/integrations/types";
 
 // Launch a saved Ad Creator draft to Meta — live, or as a PAUSED draft to review
@@ -49,6 +50,15 @@ export async function POST(req: Request) {
       { status: 412 },
     );
   }
+
+  // Fill targeting defaults from the org's Business Profile when the request
+  // didn't specify them (location centre/radius + audience interests), so the
+  // defaults are per-org instead of hardcoded renovation values.
+  const profile = await getBusinessProfile(orgId);
+  if (cfg.latitude == null && profile.serviceAreaLat != null) cfg.latitude = profile.serviceAreaLat;
+  if (cfg.longitude == null && profile.serviceAreaLng != null) cfg.longitude = profile.serviceAreaLng;
+  if (cfg.radiusKm == null && profile.serviceRadiusKm) cfg.radiusKm = profile.serviceRadiusKm;
+  if ((!cfg.interests || !cfg.interests.length) && profile.audienceInterests.length) cfg.interests = profile.audienceInterests;
 
   // Load the local draft (RLS scopes to the member's org).
   const { data: ad, error: adErr } = await supabase.from("ads").select("*").eq("id", cfg.adId).maybeSingle();

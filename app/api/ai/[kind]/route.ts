@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { runGenerator, VALID_KINDS } from "@/lib/ai/server";
 import { rateLimit } from "@/lib/ai/ratelimit";
+import { getOrgId } from "@/lib/data/org";
+import { getBusinessProfile } from "@/lib/business/profileServer";
 
 // Server-side AI generators (Milestone 2). Anthropic is called here with the
 // AD_PERSONA system prompt and multimodal photo input; the API key never
@@ -41,7 +43,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ kind: string }
   }
 
   try {
-    const result = await runGenerator(kind, payload);
+    const orgId = await getOrgId(supabase);
+    const profile = await getBusinessProfile(orgId);
+    const result = await runGenerator(kind, payload, profile);
     return NextResponse.json(result);
   } catch (e: any) {
     console.error(`[ai/${kind}] generation failed:`, e?.message || e);

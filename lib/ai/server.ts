@@ -3,8 +3,9 @@
 // model id come from env — neither is ever exposed to the browser.
 import Anthropic from "@anthropic-ai/sdk";
 import type { Lead } from "@/lib/domain/types";
+import type { BusinessProfile } from "@/lib/business/profile";
 import {
-  AD_PERSONA,
+  adPersona,
   postPrompt,
   ideasPrompt,
   metaAdPrompt,
@@ -29,12 +30,12 @@ const parseJSON = (t: string) =>
   JSON.parse((t || "").replace(/```json/gi, "").replace(/```/g, "").trim());
 
 // One Anthropic call: persona system prompt + a single multimodal user turn.
-async function callClaude(content: any[], maxTokens: number) {
+async function callClaude(content: any[], maxTokens: number, system: string) {
   const client = getClient();
   const res = await client.messages.create({
     model: model!,
     max_tokens: maxTokens,
-    system: AD_PERSONA,
+    system,
     messages: [{ role: "user", content }],
   });
   return (res.content || [])
@@ -43,10 +44,10 @@ async function callClaude(content: any[], maxTokens: number) {
 }
 
 // Call + parse with one retry (the model occasionally wraps JSON in prose).
-async function callJSON(content: any[], maxTokens: number) {
+async function callJSON(content: any[], maxTokens: number, system: string) {
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const text = await callClaude(content, maxTokens);
+    const text = await callClaude(content, maxTokens, system);
     try {
       return parseJSON(text);
     } catch (e) {
@@ -71,18 +72,21 @@ interface Payload {
   leads?: Lead[];
 }
 
-// Dispatch a generator by kind. Returns the parsed JSON the client expects.
-export async function runGenerator(kind: string, payload: Payload) {
+// Dispatch a generator by kind. The org's Business Profile drives the system
+// prompt + business context so copy fits any service business. Returns the
+// parsed JSON the client expects.
+export async function runGenerator(kind: string, payload: Payload, profile: BusinessProfile) {
   const leads = payload.leads || [];
+  const sys = adPersona(profile);
   switch (kind) {
     case "post":
-      return callJSON(buildContent(postPrompt(payload.channels || [], payload.goal || "", leads), payload.photoDataUrl), 1024);
+      return callJSON(buildContent(postPrompt(profile, payload.channels || [], payload.goal || "", leads), payload.photoDataUrl), 1024, sys);
     case "ideas":
-      return callJSON(buildContent(ideasPrompt(leads)), 700);
+      return callJSON(buildContent(ideasPrompt(profile, leads)), 700, sys);
     case "meta-ad":
-      return callJSON(buildContent(metaAdPrompt(payload.goal || "", leads), payload.photoDataUrl), 1400);
+      return callJSON(buildContent(metaAdPrompt(profile, payload.goal || "", leads), payload.photoDataUrl), 1400, sys);
     case "google-ad":
-      return callJSON(buildContent(googleAdPrompt(payload.goal || "", leads, !!payload.photoDataUrl), payload.photoDataUrl), 1800);
+      return callJSON(buildContent(googleAdPrompt(profile, payload.goal || "", leads, !!payload.photoDataUrl), payload.photoDataUrl), 1800, sys);
     default:
       return null;
   }
