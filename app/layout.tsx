@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Space_Grotesk, JetBrains_Mono, Fraunces, Nunito } from "next/font/google";
+import { Inter, Space_Grotesk, JetBrains_Mono, Fraunces, Nunito, Pinyon_Script, Cormorant_Garamond } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-body" });
@@ -7,6 +7,10 @@ const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], weight: ["500", "600", 
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-data" });
 const fraunces = Fraunces({ subsets: ["latin"], weight: ["600"], variable: "--font-serif" });
 const nunito = Nunito({ subsets: ["latin"], weight: ["700", "800", "900"], variable: "--font-nunito" });
+// Document fonts for the client-facing quote/invoice templates (the premium
+// template uses a script wordmark + a Garamond for headings).
+const pinyon = Pinyon_Script({ subsets: ["latin"], weight: ["400"], variable: "--font-script" });
+const cormorant = Cormorant_Garamond({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-cormorant" });
 
 export const metadata: Metadata = {
   title: "Hazel",
@@ -22,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} ${fraunces.variable} ${nunito.variable}`}
+      className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} ${fraunces.variable} ${nunito.variable} ${pinyon.variable} ${cormorant.variable}`}
     >
       <body className="font-body min-h-screen bg-slate-950 text-slate-200">{children}</body>
     </html>

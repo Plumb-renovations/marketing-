@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Eye, Pencil, Save, Send, Loader2, Plus, Trash2, GripVertical, Columns3, Copy, RefreshCw, AlertTriangle, ArrowLeft, CheckCircle2,
+  Eye, Pencil, Save, Send, Loader2, Plus, Trash2, GripVertical, Columns3, Copy, RefreshCw, AlertTriangle, ArrowLeft, CheckCircle2, Printer,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchQuote, saveQuote } from "@/lib/data/quotes";
@@ -172,6 +172,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
         <button onClick={() => doSave(false)} disabled={!!busy} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">{busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save &amp; continue</button>
         <button onClick={() => doSave(true)} disabled={!!busy} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800 disabled:opacity-50">{busy === "exit" ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Save &amp; exit</button>
         <button onClick={doSend} disabled={!!busy} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50">{busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Send</button>
+        <button title="Open the print dialog — choose “Save as PDF”" onClick={() => { setTab("preview"); setTimeout(() => window.print(), 120); }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800"><Printer className="h-4 w-4" /> Save as PDF</button>
         <div className="ml-auto flex items-center gap-2">
           {note && <span className="inline-flex items-center gap-1 text-sm text-emerald-400"><CheckCircle2 className="h-4 w-4" /> {note}</span>}
           <button onClick={() => addItem()} className="hidden" />
@@ -183,7 +184,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
       {error && <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}</div>}
 
       {tab === "preview" ? (
-        <div className="overflow-hidden rounded-xl border border-slate-800">
+        <div className="quote-print-root overflow-hidden rounded-xl border border-slate-800">
           <QuoteDocument quote={preview} brand={brand} businessName={businessName} />
         </div>
       ) : (

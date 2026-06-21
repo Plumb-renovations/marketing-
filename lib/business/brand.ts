@@ -9,9 +9,13 @@ export interface PaymentStagePreset {
 
 export interface BrandSettings {
   logoUrl: string | null;
-  brandColor: string; // primary accent on documents
-  brandColor2: string; // optional secondary
-  contactName: string; // sales contact shown on the quote
+  brandColor: string; // primary accent on documents (themes all the copper accents)
+  brandColor2: string; // optional secondary — themes the charcoal ink / dark accept block
+  tagline: string; // sub-line under the masthead (e.g. "Specialising in Bathroom Renovations")
+  regionLine: string; // service region line (e.g. "Gold Coast & Northern Rivers")
+  showRibbon: boolean; // the flowing ribbon-line motif on the masthead (default on)
+  quoteTemplate: string; // selected document template id (e.g. "premium")
+  contactName: string; // sales contact shown on the quote's accept block
   contactPhone: string;
   contactEmail: string;
   address: string;
@@ -32,6 +36,10 @@ export const DEFAULT_BRAND: BrandSettings = {
   logoUrl: null,
   brandColor: "#B8763E",
   brandColor2: "",
+  tagline: "",
+  regionLine: "",
+  showRibbon: true,
+  quoteTemplate: "premium",
   contactName: "",
   contactPhone: "",
   contactEmail: "",
@@ -55,6 +63,10 @@ export function rowToBrand(row: any): BrandSettings {
     logoUrl: row.logo_url ?? null,
     brandColor: row.brand_color || DEFAULT_BRAND.brandColor,
     brandColor2: row.brand_color2 ?? "",
+    tagline: row.tagline ?? "",
+    regionLine: row.region_line ?? "",
+    showRibbon: row.show_ribbon ?? true,
+    quoteTemplate: row.quote_template || "premium",
     contactName: row.doc_contact_name ?? "",
     contactPhone: row.doc_contact_phone ?? "",
     contactEmail: row.doc_contact_email ?? "",
@@ -80,6 +92,10 @@ export function brandToRow(orgId: string, b: BrandSettings): Record<string, any>
     logo_url: b.logoUrl,
     brand_color: b.brandColor.trim() || DEFAULT_BRAND.brandColor,
     brand_color2: b.brandColor2.trim() || null,
+    tagline: b.tagline.trim() || null,
+    region_line: b.regionLine.trim() || null,
+    show_ribbon: b.showRibbon,
+    quote_template: b.quoteTemplate || "premium",
     doc_contact_name: b.contactName.trim() || null,
     doc_contact_phone: b.contactPhone.trim() || null,
     doc_contact_email: b.contactEmail.trim() || null,
