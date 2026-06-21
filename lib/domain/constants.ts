@@ -21,6 +21,7 @@ import {
   Building2,
   Zap,
   Palette,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 
@@ -250,6 +251,7 @@ export const NAV: {
       { id: "leads", label: "Leads", icon: Workflow },
       { id: "pipeline", label: "Pipeline", icon: CalendarRange },
       { id: "revenue", label: "Job Revenue", icon: Banknote },
+      { id: "quotes", label: "Quotes", icon: FileText },
     ],
   },
   {
@@ -284,6 +286,7 @@ export const TITLES: Record<string, string> = {
   leads: "Leads",
   pipeline: "Pipeline",
   revenue: "Job Revenue",
+  quotes: "Quotes",
   funnel: "Lead Funnel",
   google: "Google Ads",
   meta: "Meta Ads",

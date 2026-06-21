@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   X, FileText, Pencil, Trophy, Banknote, Plus, Check, RotateCcw, Trash2, Send,
 } from "lucide-react";
@@ -104,6 +105,7 @@ function LeadDrawer({ lead, onClose, actions }: { lead: Lead; onClose: () => voi
         </div>
 
         <div className="border-t border-slate-800 p-4">
+          <Link href={`/quotes/new?lead=${lead.id}`} className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-4 py-2.5 text-sm font-medium text-cyan-200 transition hover:bg-cyan-500/20"><FileText className="h-4 w-4" /> Build branded quote</Link>
           {lead.stage === "new" && (
             <button onClick={() => actions.qualify(lead.id)} className="flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Check className="h-4 w-4" /> Qualify lead</button>
           )}
