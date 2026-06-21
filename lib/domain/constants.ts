@@ -19,6 +19,7 @@ import {
   Megaphone,
   Plug,
   Building2,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -271,6 +272,7 @@ export const NAV: {
     group: "Settings",
     items: [
       { id: "business", label: "Business Profile", icon: Building2 },
+      { id: "lead-response", label: "Speed to Lead", icon: Zap },
       { id: "integrations", label: "Integrations", icon: Plug },
     ],
   },
@@ -294,6 +296,7 @@ export const TITLES: Record<string, string> = {
   ads: "Ad Creator",
   integrations: "Integrations",
   business: "Business Profile",
+  "lead-response": "Speed to Lead",
 };
 
 /* --------------------------- STATUS / SOURCES -------------------------- */

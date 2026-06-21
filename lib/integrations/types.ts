@@ -61,6 +61,8 @@ export interface InboundLead {
   name: string;
   suburb: string;
   project: string;
+  phone?: string | null;
+  email?: string | null;
   source: "meta_ads";
   raw: unknown;
 }

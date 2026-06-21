@@ -51,11 +51,16 @@ export async function fetchLead(client: MetaClient, leadgenId: string): Promise<
     find((k) => k.includes("project") || k.includes("service") || k.includes("renovat")) ||
     "Bathroom";
 
+  const phone = find((k) => k.includes("phone") || k.includes("mobile") || k.includes("contact_number")) || null;
+  const email = find((k) => k.includes("email")) || null;
+
   return {
     externalId: String(lead?.id ?? leadgenId),
     name,
     suburb,
     project,
+    phone,
+    email,
     source: "meta_ads",
     raw: lead,
   };

@@ -3,6 +3,7 @@ import { meta } from "@/lib/integrations/env";
 import { metaClient, verifyWebhookSignature } from "@/lib/integrations/meta/client";
 import { getMetaConfigForPage } from "@/lib/integrations/meta/config";
 import { fetchLead } from "@/lib/integrations/meta/leads";
+import { respondToNewLead } from "@/lib/leads/respond";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // Meta Lead Ads webhook.
@@ -82,15 +83,18 @@ export async function POST(req: Request) {
     for (const leadgenId of leadgenIds) {
       try {
         const lead = await fetchLead(client, leadgenId);
+        const leadId = "meta-" + leadgenId;
         // Upsert into leads, deduped by (org_id, external_source, external_id)
         // so re-deliveries don't create duplicates.
         await supabase.from("leads").upsert(
           {
-            id: "meta-" + leadgenId,
+            id: leadId,
             org_id: config.orgId,
             name: lead.name,
             suburb: lead.suburb,
             project: lead.project,
+            phone: lead.phone ?? null,
+            email: lead.email ?? null,
             source: "meta_ads",
             stage: "new",
             lead_date: new Date().toISOString().slice(0, 10),
@@ -100,6 +104,8 @@ export async function POST(req: Request) {
           },
           { onConflict: "org_id,external_source,external_id", ignoreDuplicates: true },
         );
+        // Speed-to-lead: instant auto-reply + staff alert (idempotent).
+        await respondToNewLead(config.orgId, leadId);
         received += 1;
       } catch (e) {
         console.error("[meta-leadgen] failed to ingest lead", leadgenId, (e as Error).message);
