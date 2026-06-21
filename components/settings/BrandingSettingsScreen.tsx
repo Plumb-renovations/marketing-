@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchBrandSettings, saveBrandSettings } from "@/lib/data/brand";
 import { DEFAULT_BRAND, scheduleSum, type BrandSettings } from "@/lib/business/brand";
 import { fetchSavedItems, upsertSavedItem, deleteSavedItem, type SavedItem } from "@/lib/data/savedItems";
+import { QUOTE_TEMPLATES } from "@/lib/quotes/templates";
 
 const uid = () => crypto.randomUUID();
 
@@ -114,6 +115,37 @@ export default function BrandingSettingsScreen() {
         </div>
       )}
 
+      {/* Template picker — choose a document style; it themes to your brand. */}
+      <Panel className="p-5">
+        <h3 className="font-display text-base font-semibold text-slate-100">Quote template</h3>
+        <p className="mt-0.5 text-sm text-slate-500">Pick a style — it automatically themes to your logo, brand colour and details. More templates coming.</p>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {QUOTE_TEMPLATES.map((t) => {
+            const active = (b.quoteTemplate || "premium") === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => set("quoteTemplate", t.id)}
+                className={`flex gap-3 rounded-xl border p-3 text-left transition ${active ? "border-cyan-500/60 bg-cyan-500/5 ring-1 ring-cyan-500/30" : "border-slate-800 hover:border-slate-700"}`}
+              >
+                <span className="mt-0.5 h-12 w-9 shrink-0 rounded-sm border border-slate-700" style={{ background: t.paper }}>
+                  <span className="block h-1.5 w-5 rounded-sm" style={{ margin: "7px 0 0 6px", background: b.brandColor || t.accentSample }} />
+                  <span className="block h-px w-6" style={{ margin: "5px 0 0 6px", background: "#d8cfc0" }} />
+                  <span className="block h-px w-5" style={{ margin: "3px 0 0 6px", background: "#d8cfc0" }} />
+                </span>
+                <span className="min-w-0">
+                  <span className="flex items-center gap-2">
+                    <span className="font-display text-sm font-semibold text-slate-100">{t.name}</span>
+                    {active && <CheckCircle2 className="h-4 w-4 text-cyan-400" />}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-500">{t.blurb}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </Panel>
+
       <Panel className="p-5 space-y-5">
         {/* Logo + colours */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -134,9 +166,20 @@ export default function BrandingSettingsScreen() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Color label="Brand colour" value={b.brandColor} onChange={(v) => set("brandColor", v)} />
-            <Color label="Secondary (optional)" value={b.brandColor2 || "#000000"} onChange={(v) => set("brandColor2", v)} />
+            <Color label="Secondary (ink)" value={b.brandColor2 || "#242220"} onChange={(v) => set("brandColor2", v)} />
           </div>
         </div>
+
+        {/* Masthead wordmark sub-lines + the ribbon motif */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Txt label="Tagline / sub-line" value={b.tagline} onChange={(v) => set("tagline", v)} placeholder="e.g. Specialising in Bathroom Renovations" />
+          <Txt label="Service region line" value={b.regionLine} onChange={(v) => set("regionLine", v)} placeholder="e.g. Gold Coast & Northern Rivers" />
+        </div>
+        <label className="flex items-center gap-2 text-sm text-slate-300">
+          <input type="checkbox" checked={b.showRibbon} onChange={(e) => set("showRibbon", e.target.checked)} className="h-4 w-4 accent-cyan-500" />
+          Show the flowing ribbon-line motif on the masthead (drawn in your brand colour)
+        </label>
+        <p className="-mt-2 text-[11px] text-slate-500">No logo uploaded? Your business name renders as a script wordmark (first word in script, the rest as a spaced sub-label).</p>
 
         {/* Business document details */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
