@@ -23,15 +23,22 @@ export default function BrandingSettingsScreen() {
 
   useEffect(() => {
     (async () => {
-      try {
-        const [brand, lib] = await Promise.all([fetchBrandSettings(supabase), fetchSavedItems(supabase)]);
-        setB(brand);
-        setItems(lib);
-      } catch {
-        setError("Couldn't load your branding settings.");
-      } finally {
-        setLoading(false);
-      }
+      // Load each independently with a safe fallback. A first-time org (no row
+      // yet) or a not-yet-applied migration must NOT blank the page — show the
+      // empty form ready to fill in; "Save settings" then creates the row.
+      const [brand, lib] = await Promise.all([
+        fetchBrandSettings(supabase).catch((e) => {
+          console.error("[branding] load brand settings failed:", e?.message || e);
+          return DEFAULT_BRAND;
+        }),
+        fetchSavedItems(supabase).catch((e) => {
+          console.error("[branding] load saved items failed:", e?.message || e);
+          return [];
+        }),
+      ]);
+      setB(brand);
+      setItems(lib);
+      setLoading(false);
     })();
   }, [supabase]);
 

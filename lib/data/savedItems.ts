@@ -25,7 +25,12 @@ function mapItem(row: any): SavedItem {
 
 export async function fetchSavedItems(supabase: SupabaseClient): Promise<SavedItem[]> {
   const { data, error } = await supabase.from("saved_line_items").select("*").order("sort_order", { ascending: true });
-  if (error) throw error;
+  // Resilient: if the 0011 migration hasn't created saved_line_items yet, treat
+  // it as an empty library rather than failing the whole settings page.
+  if (error) {
+    console.error("[brand] fetchSavedItems:", error.message);
+    return [];
+  }
   return (data || []).map(mapItem);
 }
 
