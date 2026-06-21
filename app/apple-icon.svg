@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 120 120" role="img" aria-label="Hazel">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#46301E"/>
+      <stop offset="1" stop-color="#281609"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="26" fill="url(#tile)"/>
+  <g transform="translate(10.8,10.8) scale(0.82)">
+    <path d="M44,38 C31,35 21,46 22,61 C23,74 33,75 45,67 Z" fill="#8A5E38"/>
+    <path d="M76,38 C89,35 99,46 98,61 C97,74 87,75 75,67 Z" fill="#8A5E38"/>
+    <path d="M40,44 C33,43 28,50 29,59 C30,67 36,67 43,61 Z" fill="#5A3A22" opacity=".5"/>
+    <path d="M80,44 C87,43 92,50 91,59 C90,67 84,67 77,61 Z" fill="#5A3A22" opacity=".5"/>
+    <path d="M36,61 C35,47 37,39 42,36 Q45,30 50,36 Q55,29 60,36 Q65,29 70,36 Q75,30 78,36 C83,39 85,47 84,61 C83,81 72,91 60,92 C48,91 37,81 36,61 Z" fill="#8A5E38"/>
+    <path d="M54,75 Q60,73.5 66,75 Q68,83 60,87 Q52,83 54,75 Z" fill="#EAD6B2"/>
+    <ellipse cx="60" cy="67" rx="5.6" ry="4.4" fill="#42281A"/>
+    <circle cx="50" cy="55" r="4.1" fill="#241710"/>
+    <circle cx="70" cy="55" r="4.1" fill="#241710"/>
+    <circle cx="51.3" cy="53.7" r="1.1" fill="#FFF" opacity=".8"/>
+    <circle cx="71.3" cy="53.7" r="1.1" fill="#FFF" opacity=".8"/>
+  </g>
+</svg>

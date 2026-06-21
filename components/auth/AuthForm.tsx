@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Workflow, Loader2, LogIn, UserPlus, Mail } from "lucide-react";
+import { Loader2, LogIn, UserPlus, Mail } from "lucide-react";
+import { HazelLogo } from "@/components/brand/HazelLogo";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "signin" | "signup";
@@ -62,11 +63,8 @@ export default function AuthForm({ mode }: { mode: Mode }) {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-500 text-slate-950">
-            <Workflow className="h-5 w-5" />
-          </div>
-          <p className="font-serif text-2xl font-semibold leading-none tracking-tight text-slate-100">Hazel</p>
+        <div className="flex items-center">
+          <HazelLogo size={34} />
         </div>
 
         {status === "sent" ? (
