@@ -63,8 +63,9 @@ export default function AuthForm({ mode }: { mode: Mode }) {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl">
-        <div className="flex items-center">
-          <HazelLogo size={34} />
+        <div className="flex flex-col items-center text-center">
+          <HazelLogo size={38} />
+          <p className="mt-2 font-serif text-[15px] italic text-cyan-300">your best friend in marketing</p>
         </div>
 
         {status === "sent" ? (
