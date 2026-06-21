@@ -131,10 +131,17 @@ export async function POST(req: Request) {
           },
           { onConflict: "org_id,external_source,external_id", ignoreDuplicates: true },
         );
-        // Speed-to-lead: instant auto-reply + staff alert (idempotent).
-        await respondToNewLead(config.orgId, leadId);
         received += 1;
         console.log("[meta-leadgen] stored lead", JSON.stringify({ leadgenId, orgId: config.orgId, name: lead.name }));
+
+        // Speed-to-lead: instant auto-reply + staff alert (idempotent). In its
+        // own try/catch so a send issue is logged distinctly and never marks an
+        // already-stored lead as "dropped".
+        try {
+          await respondToNewLead(config.orgId, leadId);
+        } catch (e) {
+          console.error("[meta-leadgen] speed-to-lead response failed", leadgenId, (e as Error).message);
+        }
       } catch (e) {
         console.error("[meta-leadgen] failed to ingest lead", leadgenId, (e as Error).message);
         dropped.push({ pageId, reason: "fetch_failed", leads: 1 });
