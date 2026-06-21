@@ -20,6 +20,7 @@ import {
   Plug,
   Building2,
   Zap,
+  Palette,
   type LucideIcon,
 } from "lucide-react";
 
@@ -272,6 +273,7 @@ export const NAV: {
     group: "Settings",
     items: [
       { id: "business", label: "Business Profile", icon: Building2 },
+      { id: "branding", label: "Branding & Quotes", icon: Palette },
       { id: "lead-response", label: "Speed to Lead", icon: Zap },
       { id: "integrations", label: "Integrations", icon: Plug },
     ],
@@ -296,6 +298,7 @@ export const TITLES: Record<string, string> = {
   ads: "Ad Creator",
   integrations: "Integrations",
   business: "Business Profile",
+  branding: "Branding & Quotes",
   "lead-response": "Speed to Lead",
 };
 
