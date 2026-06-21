@@ -6,6 +6,7 @@ import { Panel, SectionHeader } from "@/components/ui/primitives";
 import { createClient } from "@/lib/supabase/client";
 import { fetchBusinessProfile, saveBusinessProfile } from "@/lib/data/businessProfile";
 import { DEFAULT_PROFILE, type BusinessProfile } from "@/lib/business/profile";
+import CapacityCard from "@/components/settings/CapacityCard";
 
 const toLines = (arr: string[]) => (arr || []).join("\n");
 const fromLines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
@@ -108,6 +109,8 @@ export default function BusinessProfileScreen() {
           {error && <span className="text-sm text-red-400">{error}</span>}
         </div>
       </Panel>
+
+      <CapacityCard />
     </div>
   );
 }

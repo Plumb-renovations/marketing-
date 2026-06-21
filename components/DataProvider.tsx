@@ -11,7 +11,7 @@ import React, {
 import { createClient } from "@/lib/supabase/client";
 import type { Lead, Post, Ad, Settings, Metrics, Quote } from "@/lib/domain/types";
 import { SEED_LEADS, SEED_POSTS, DEFAULT_SETTINGS, DEFAULT_METRICS } from "@/lib/domain/seed";
-import { uid, today, firstOfNextMonth } from "@/lib/domain/format";
+import { uid, today, firstOfNextMonth, quoteTotals } from "@/lib/domain/format";
 import { fetchLeads, patchLead, persistQuote, upsertLeadRow, resetLeads } from "@/lib/data/leads";
 import { fetchPosts, upsertPost, deletePost } from "@/lib/data/posts";
 import { fetchAds, upsertAd, deleteAd } from "@/lib/data/ads";
@@ -196,6 +196,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     },
     markWon: (id, qid) => {
       const l = findLead(id);
+      // Capture the accepted-quote value on the won job (feeds capacity +
+      // cost-per-won-job). quoteTotals returns the GST-inclusive total.
+      const wonQuote = l?.quotes.find((q) => q.id === qid) || null;
+      const jobValue = wonQuote ? quoteTotals(wonQuote).total : (l?.jobValue ?? null);
       const fields: Partial<Lead> = {
         stage: "won",
         wonQuoteId: qid,
@@ -203,6 +207,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         jobStatus: l?.jobStatus || "scheduled",
         durationWeeks: l?.durationWeeks || 2,
         startDate: l?.startDate || firstOfNextMonth(),
+        jobValue,
       };
       patchLocal(id, fields);
       persist(id, fields);

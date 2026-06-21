@@ -41,6 +41,7 @@ export interface Lead {
   startDate?: string;
   durationWeeks?: number;
   jobStatus?: JobStatus;
+  jobValue?: number | null; // captured on a won job (= accepted quote total)
 }
 
 export type PostStatus = "draft" | "scheduled" | "posted";
