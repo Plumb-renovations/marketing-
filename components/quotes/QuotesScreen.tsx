@@ -19,11 +19,21 @@ const STATUS_CLS: Record<string, string> = {
   expired: "bg-amber-500/10 text-amber-300 border-amber-500/30",
 };
 
+// Status filters live as tabs inside this page (not separate nav items).
+// Each tab maps to one or more quote statuses.
+const TABS: { id: string; label: string; match: (s: string) => boolean }[] = [
+  { id: "all", label: "All", match: () => true },
+  { id: "draft", label: "Drafts", match: (s) => s === "draft" },
+  { id: "sent", label: "Sent", match: (s) => s === "sent" || s === "viewed" },
+  { id: "accepted", label: "Accepted", match: (s) => s === "accepted" },
+];
+
 export default function QuotesScreen() {
   const supabase = useMemo(() => createClient(), []);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [currency, setCurrency] = useState("AUD");
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("all");
 
   useEffect(() => {
     (async () => {
@@ -34,6 +44,9 @@ export default function QuotesScreen() {
     })();
   }, [supabase]);
 
+  const active = TABS.find((t) => t.id === tab) ?? TABS[0];
+  const visible = quotes.filter((q) => active.match(q.status));
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
@@ -42,6 +55,28 @@ export default function QuotesScreen() {
           <Plus className="h-4 w-4" /> New quote
         </Link>
       </div>
+
+      {!loading && quotes.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {TABS.map((t) => {
+            const n = quotes.filter((q) => t.match(q.status)).length;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`rounded-lg px-3 py-1.5 text-sm transition ${
+                  tab === t.id
+                    ? "bg-cyan-500 text-slate-950"
+                    : "border border-slate-700 text-slate-400 hover:bg-slate-800"
+                }`}
+              >
+                {t.label}
+                <span className={`ml-1.5 font-data text-xs ${tab === t.id ? "text-slate-950/70" : "text-slate-500"}`}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center gap-2 py-12 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading quotes…</div>
@@ -65,7 +100,10 @@ export default function QuotesScreen() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">
-              {quotes.map((q) => (
+              {visible.length === 0 && (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">No {active.label.toLowerCase()} quotes.</td></tr>
+              )}
+              {visible.map((q) => (
                 <tr key={q.id} className="transition hover:bg-slate-800/30">
                   <td className="px-4 py-3"><Link href={`/quotes/${q.id}`} className="font-data text-cyan-300 hover:text-cyan-200">{q.quoteNumber || "Draft"}</Link></td>
                   <td className="px-4 py-3 text-slate-200">{q.clientName || "—"}</td>

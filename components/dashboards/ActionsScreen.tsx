@@ -1,10 +1,57 @@
 "use client";
 
-import { useState } from "react";
-import { ListChecks, Check, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ListChecks, Check, X, CalendarClock } from "lucide-react";
 import { Panel, Eyebrow, Chip, Dot, SectionHeader, Dial } from "@/components/ui/primitives";
 import { ACTIONS, AI_RECS } from "@/lib/domain/constants";
 import { useData } from "@/components/DataProvider";
+import { createClient } from "@/lib/supabase/client";
+import { fetchCapacity } from "@/lib/data/capacity";
+import { computeCapacity, DEFAULT_CAPACITY, type CapacitySettings } from "@/lib/business/capacity";
+
+// Capacity banner — the headline that modulates the (Part B) ad alerts:
+// booked solid → ease off spend; running thin → ramp up.
+const CAP_BANNER: Record<string, { tone: string; head: string; note: string }> = {
+  empty: { tone: "slate", head: "No work booked", note: "Set your job capacity and win some quotes to start tracking how booked-out you are." },
+  thin: { tone: "amber", head: "Running thin", note: "Below your healthy booked range — a good time to ramp up marketing." },
+  healthy: { tone: "emerald", head: "Healthy", note: "Booked within your target range — keep marketing steady." },
+  booked: { tone: "cyan", head: "Booked solid", note: "Above your healthy range — consider easing off ad spend until the backlog clears." },
+};
+
+function CapacityBanner() {
+  const { leads } = useData();
+  const supabase = useMemo(() => createClient(), []);
+  const [capacity, setCapacity] = useState<CapacitySettings>(DEFAULT_CAPACITY);
+  useEffect(() => {
+    fetchCapacity(supabase).then(setCapacity);
+  }, [supabase]);
+  const cap = computeCapacity(leads, capacity);
+  const b = CAP_BANNER[cap.state];
+  return (
+    <Panel className="p-5">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-slate-900 text-cyan-400">
+          <CalendarClock className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="font-data text-xl font-semibold text-slate-100">
+              {cap.activeJobs === 0 ? "—" : `${cap.weeksInBank.toFixed(1)} weeks`}
+            </span>
+            <span className="text-sm text-slate-400">of work in the bank</span>
+            <Chip status={b.tone}>{b.head}</Chip>
+          </div>
+          <p className="mt-1 text-sm text-slate-500">
+            {b.note}
+            {cap.bookedOutUntil && (
+              <> Booked out until {new Date(cap.bookedOutUntil).toLocaleDateString()}.</>
+            )}
+          </p>
+        </div>
+      </div>
+    </Panel>
+  );
+}
 
 export default function ActionsScreen() {
   const { done, toggleDone } = useData();
@@ -25,6 +72,8 @@ export default function ActionsScreen() {
   return (
     <div className="space-y-6">
       <SectionHeader icon={ListChecks} title="Action Centre" desc="Your marketing chief’s read on the data, then every move ranked by impact." />
+
+      <CapacityBanner />
 
       <Panel glow className="bg-cyan-500/5 p-5">
         <div className="flex items-center gap-2"><span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-300">Priority</span><span className="text-[10px] uppercase tracking-wider text-slate-500 font-display">{priority.area} · confidence {priority.confidence}%</span></div>

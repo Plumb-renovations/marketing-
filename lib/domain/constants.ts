@@ -2,8 +2,6 @@
 // datasets — transcribed from the prototype. The dashboard datasets remain
 // static here in M1; Milestone 8 swaps them for live Supabase-backed data.
 import {
-  Workflow,
-  Banknote,
   Filter,
   Search,
   Facebook,
@@ -22,6 +20,11 @@ import {
   Zap,
   Palette,
   FileText,
+  Home,
+  Inbox,
+  Receipt,
+  Trophy,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 
@@ -241,38 +244,96 @@ export const ASSISTANTS: {
 ];
 
 /* ----------------------------- NAV ------------------------------------- */
-export const NAV: {
-  group: string;
-  items: { id: string; label: string; icon: LucideIcon }[];
-}[] = [
+// ONE nav structure, rendered two ways (grouped sidebar on desktop, bottom
+// tab bar on mobile). Each `item.id` maps directly to a route `/{id}`.
+// `tier` drives placement: primary groups sit at the top (and are the mobile
+// bottom tabs); secondary + settings sit lower (under "More" on mobile).
+export type NavTier = "primary" | "secondary" | "settings";
+
+export interface NavItem {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+export interface NavGroup {
+  id: string; // group key + mobile-tab identity
+  label: string;
+  icon: LucideIcon; // shown on the mobile tab bar / collapsed states
+  tier: NavTier;
+  items: NavItem[];
+}
+
+export const NAV: NavGroup[] = [
   {
-    group: "Operations",
+    id: "home",
+    label: "Home",
+    icon: Home,
+    tier: "primary",
+    items: [{ id: "home", label: "Home", icon: Home }],
+  },
+  {
+    id: "leads",
+    label: "Leads",
+    icon: Inbox,
+    tier: "primary",
     items: [
-      { id: "leads", label: "Leads", icon: Workflow },
+      { id: "leads", label: "Inbox", icon: Inbox },
       { id: "pipeline", label: "Pipeline", icon: CalendarRange },
-      { id: "revenue", label: "Job Revenue", icon: Banknote },
-      { id: "quotes", label: "Quotes", icon: FileText },
+      { id: "revenue", label: "Won jobs", icon: Trophy },
     ],
   },
   {
-    group: "Marketing",
+    id: "quotes",
+    label: "Quotes",
+    icon: FileText,
+    tier: "primary",
     items: [
-      { id: "funnel", label: "Lead Funnel", icon: Filter },
-      { id: "compare", label: "Paid vs Organic", icon: Scale },
+      { id: "quotes", label: "Quotes", icon: FileText },
+      { id: "invoices", label: "Invoices", icon: Receipt },
+    ],
+  },
+  {
+    id: "marketing",
+    label: "Marketing",
+    icon: Megaphone,
+    tier: "primary",
+    items: [
+      { id: "compare", label: "Performance", icon: Scale },
       { id: "google", label: "Google Ads", icon: Search },
       { id: "meta", label: "Meta Ads", icon: Facebook },
-      { id: "content", label: "Content Engine", icon: Sparkles },
+      { id: "content", label: "Content & Social", icon: Sparkles },
       { id: "calendar", label: "Content Calendar", icon: CalendarDays },
       { id: "ads", label: "Ad Creator", icon: Megaphone },
       { id: "seo", label: "SEO", icon: TrendingUp },
-      { id: "reviews", label: "Reviews", icon: Star },
-      { id: "competitor", label: "Competitors", icon: Swords },
-      { id: "actions", label: "Action Centre", icon: ListChecks },
-      { id: "assistants", label: "Assistants", icon: Bot },
+      { id: "funnel", label: "Lead Funnel", icon: Filter },
     ],
   },
   {
-    group: "Settings",
+    id: "reputation",
+    label: "Reputation",
+    icon: Star,
+    tier: "secondary",
+    items: [
+      { id: "reviews", label: "Reviews", icon: Star },
+      { id: "competitor", label: "Competitors", icon: Swords },
+    ],
+  },
+  {
+    id: "assistant",
+    label: "Assistant",
+    icon: Bot,
+    tier: "secondary",
+    items: [
+      { id: "assistants", label: "Assistants", icon: Bot },
+      { id: "actions", label: "Action Centre", icon: ListChecks },
+    ],
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    icon: Settings,
+    tier: "settings",
     items: [
       { id: "business", label: "Business Profile", icon: Building2 },
       { id: "branding", label: "Branding & Quotes", icon: Palette },
@@ -282,28 +343,23 @@ export const NAV: {
   },
 ];
 
-export const TITLES: Record<string, string> = {
-  leads: "Leads",
-  pipeline: "Pipeline",
-  revenue: "Job Revenue",
-  quotes: "Quotes",
-  funnel: "Lead Funnel",
-  google: "Google Ads",
-  meta: "Meta Ads",
-  content: "Content Engine",
-  seo: "SEO",
-  reviews: "Reviews",
-  competitor: "Competitors",
-  actions: "Action Centre",
-  assistants: "Assistants",
-  compare: "Paid vs Organic",
-  calendar: "Content Calendar",
-  ads: "Ad Creator",
-  integrations: "Integrations",
-  business: "Business Profile",
-  branding: "Branding & Quotes",
-  "lead-response": "Speed to Lead",
-};
+// Groups that appear as bottom tabs on mobile; everything else lives in "More".
+export const MOBILE_TAB_GROUPS = ["home", "leads", "quotes", "marketing"];
+
+// The route a group tab/header points at (its first item).
+export function groupHome(group: NavGroup): string {
+  return group.items[0]?.id ?? group.id;
+}
+
+// Flat lookup: every nav item by route id (label used for the header title).
+export const NAV_ITEMS: Record<string, { label: string; group: NavGroup }> =
+  Object.fromEntries(
+    NAV.flatMap((g) => g.items.map((i) => [i.id, { label: i.label, group: g }])),
+  );
+
+export const TITLES: Record<string, string> = Object.fromEntries(
+  Object.entries(NAV_ITEMS).map(([id, v]) => [id, v.label]),
+);
 
 /* --------------------------- STATUS / SOURCES -------------------------- */
 type StatusEntry = { dot: string; text: string; chip: string };
