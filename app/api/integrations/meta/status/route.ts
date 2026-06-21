@@ -32,6 +32,7 @@ export async function GET() {
       adAccountName: row.details?.adAccountName ?? null,
       pageName: row.details?.pageName ?? null,
       userName: row.details?.userName ?? null,
+      webhookSubscribed: row.details?.webhook_subscribed ?? null,
       scopes: row.scopes || [],
       expiresAt: row.token_expires_at,
     });
@@ -46,6 +47,7 @@ export async function GET() {
       status: "connected",
       adAccountId: envCfg.adAccountId ?? null,
       pageId: envCfg.pageId ?? null,
+      webhookSubscribed: null, // unknown for env source — use the check/subscribe button
     });
   }
 
