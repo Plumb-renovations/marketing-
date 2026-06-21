@@ -9,6 +9,7 @@ import {
   Plug,
   RefreshCw,
   Link2Off,
+  Webhook,
 } from "lucide-react";
 import { Panel, SectionHeader } from "@/components/ui/primitives";
 import GoogleBusinessCard from "@/components/settings/GoogleBusinessCard";
@@ -22,6 +23,7 @@ interface MetaStatus {
   adAccountName?: string | null;
   pageName?: string | null;
   userName?: string | null;
+  webhookSubscribed?: boolean | null;
   scopes?: string[];
   expiresAt?: string | null;
 }
@@ -139,6 +141,7 @@ function MetaBody({
         <div>
           Connected with a system-user token (managed in the deployment environment).
           {status.adAccountId && <div className="mt-1 text-xs text-slate-500">Ad account act_{status.adAccountId}{status.pageId ? ` · Page ${status.pageId}` : ""}</div>}
+          {status.pageId && <div className="mt-3"><LeadWebhook status={status} setBanner={setBanner} /></div>}
         </div>
       </div>
     );
@@ -155,6 +158,7 @@ function MetaBody({
           {status.userName && <Field label="Connected by" value={status.userName} />}
           {status.expiresAt && <Field label="Token valid until" value={new Date(status.expiresAt).toLocaleDateString()} />}
         </dl>
+        {status.pageId && <LeadWebhook status={status} setBanner={setBanner} />}
         <div className="flex flex-wrap gap-2">
           <a href={CONNECT_URL} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800">
             <RefreshCw className="h-4 w-4" /> Reconnect
@@ -183,6 +187,90 @@ function MetaBody({
       {status.status === "disconnected" && status.source === "org" && (
         <p className="text-xs text-slate-500">You'll be sent to Facebook to grant access, then pick your ad account and Page.</p>
       )}
+    </div>
+  );
+}
+
+// Subscribe the connected Page to Meta's leadgen webhook — leads don't flow
+// until this is done. Shows current state with a one-click subscribe/re-check.
+function LeadWebhook({
+  status,
+  setBanner,
+}: {
+  status: MetaStatus;
+  setBanner: (b: { kind: "error" | "info"; text: string } | null) => void;
+}) {
+  const [subscribed, setSubscribed] = useState<boolean | null>(status.webhookSubscribed ?? null);
+  const [busy, setBusy] = useState(false);
+
+  const subscribe = async () => {
+    setBusy(true);
+    setBanner(null);
+    try {
+      const res = await fetch("/api/integrations/meta/subscribe", { method: "POST" });
+      const b = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBanner({
+          kind: "error",
+          text: b?.error === "reconnect_required" ? "Connection expired — reconnect, then subscribe." : b?.message || "Couldn't subscribe the Page.",
+        });
+        return;
+      }
+      setSubscribed(true);
+      setBanner({ kind: "info", text: "Page subscribed — lead notifications are on. Send a test lead to confirm." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const check = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/integrations/meta/subscribe", { cache: "no-store" });
+      const b = await res.json().catch(() => ({}));
+      if (res.ok) setSubscribed(!!b.subscribed);
+      else if (b?.error) setBanner({ kind: "error", text: "Couldn't check subscription — try reconnecting." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const on = subscribed === true;
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2">
+          <Webhook className={`mt-0.5 h-4 w-4 shrink-0 ${on ? "text-emerald-400" : "text-amber-400"}`} />
+          <div>
+            <p className="text-sm font-medium text-slate-200">Lead webhooks</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {on
+                ? "Lead notifications are on for this Page."
+                : subscribed === false
+                  ? "Not subscribed — new leads won't arrive until you subscribe the Page."
+                  : "Subscribe the Page so Meta sends new leads here."}
+            </p>
+          </div>
+        </div>
+        {on && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          onClick={subscribe}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Webhook className="h-4 w-4" />}
+          {on ? "Re-subscribe Page" : "Subscribe Page to lead webhooks"}
+        </button>
+        <button
+          onClick={check}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800 disabled:opacity-50"
+        >
+          Check status
+        </button>
+      </div>
     </div>
   );
 }

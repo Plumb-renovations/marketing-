@@ -60,23 +60,50 @@ export async function POST(req: Request) {
 
   const supabase = createAdminClient();
   let received = 0;
+  const dropped: { pageId?: string; reason: string; leads: number }[] = [];
+
+  // Diagnostics: confirm the webhook was hit and which Pages it carried. Visible
+  // in the Vercel function logs for /api/webhooks/meta-leadgen.
+  const entries: any[] = Array.isArray(body?.entry) ? body.entry : [];
+  console.log(
+    "[meta-leadgen] POST received:",
+    JSON.stringify({
+      object: body?.object,
+      entries: entries.length,
+      pages: entries.map((e: any) => e?.id).filter(Boolean),
+    }),
+  );
 
   // Process per page entry. entry.id is the Page id, which routes the lead to
   // the org that connected that Page (falling back to the default Plumb org's
   // env config). Each org's leads are fetched with that org's own token and
   // stored under that org — no cross-org leakage.
-  for (const entry of body?.entry || []) {
+  for (const entry of entries) {
     const leadgenIds = (entry?.changes || [])
       .filter((c: any) => c?.field === "leadgen" && c?.value?.leadgen_id)
       .map((c: any) => String(c.value.leadgen_id));
-    if (!leadgenIds.length) continue;
-
     const pageId = entry?.id ? String(entry.id) : undefined;
-    const config = await getMetaConfigForPage(pageId);
-    if (!config) {
-      console.error("[meta-leadgen] no Meta config for page", pageId);
+    if (!leadgenIds.length) {
+      console.log("[meta-leadgen] entry has no leadgen changes", JSON.stringify({ pageId }));
       continue;
     }
+
+    const config = await getMetaConfigForPage(pageId);
+    if (!config) {
+      // The Page maps to no connected org AND no env fallback (default org needs
+      // META_SYSTEM_USER_TOKEN). The leads are dropped here — this is the most
+      // common silent failure after multi-tenancy.
+      console.error(
+        "[meta-leadgen] DROPPED — no Meta config for page",
+        JSON.stringify({ pageId, leads: leadgenIds.length }),
+      );
+      dropped.push({ pageId, reason: "no_config_for_page", leads: leadgenIds.length });
+      continue;
+    }
+    console.log(
+      "[meta-leadgen] page mapped",
+      JSON.stringify({ pageId, orgId: config.orgId, source: config.source, leads: leadgenIds.length }),
+    );
     const client = metaClient(config);
 
     for (const leadgenId of leadgenIds) {
@@ -101,12 +128,15 @@ export async function POST(req: Request) {
           { onConflict: "org_id,external_source,external_id", ignoreDuplicates: true },
         );
         received += 1;
+        console.log("[meta-leadgen] stored lead", JSON.stringify({ leadgenId, orgId: config.orgId, name: lead.name }));
       } catch (e) {
         console.error("[meta-leadgen] failed to ingest lead", leadgenId, (e as Error).message);
+        dropped.push({ pageId, reason: "fetch_failed", leads: 1 });
       }
     }
   }
 
+  console.log("[meta-leadgen] done:", JSON.stringify({ received, dropped }));
   // Always 200 quickly so Meta doesn't retry/disable the webhook.
-  return NextResponse.json({ received });
+  return NextResponse.json({ received, dropped: dropped.length });
 }
