@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Home as HomeIcon,
@@ -12,9 +13,12 @@ import {
   ListChecks,
 } from "lucide-react";
 import { Panel, SectionHeader, Dot } from "@/components/ui/primitives";
+import { createClient } from "@/lib/supabase/client";
 import { useData } from "@/components/DataProvider";
 import { AI_RECS, ACTIONS } from "@/lib/domain/constants";
 import { audFmt, leadValue } from "@/lib/domain/format";
+import { fetchCapacity } from "@/lib/data/capacity";
+import { computeCapacity, DEFAULT_CAPACITY, type CapacitySettings } from "@/lib/business/capacity";
 
 // A snapshot tile. `accent` lifts the headline number for the hero metrics.
 function Tile({
@@ -51,8 +55,24 @@ function Tile({
   return href ? <Link href={href}>{inner}</Link> : inner;
 }
 
+const CAP_STATE: Record<string, { sub: string; accent: boolean }> = {
+  empty: { sub: "No jobs booked yet", accent: false },
+  thin: { sub: "Running thin — ramp up", accent: true },
+  healthy: { sub: "Healthy booked range", accent: true },
+  booked: { sub: "Booked solid — ease off ads", accent: true },
+};
+
 export default function HomeScreen() {
   const { leads, metrics } = useData();
+  const supabase = useMemo(() => createClient(), []);
+  const [capacity, setCapacity] = useState<CapacitySettings>(DEFAULT_CAPACITY);
+
+  useEffect(() => {
+    fetchCapacity(supabase).then(setCapacity);
+  }, [supabase]);
+
+  const cap = computeCapacity(leads, capacity);
+  const capState = CAP_STATE[cap.state];
 
   const newLeads = leads.filter((l) => l.stage === "new").length;
   const open = leads.filter((l) => l.stage === "qualified" || l.stage === "quote");
@@ -91,8 +111,13 @@ export default function HomeScreen() {
         <Tile
           icon={CalendarClock}
           label="Weeks of work booked"
-          value="—"
-          sub="Set capacity to track booked-out"
+          value={cap.activeJobs === 0 ? "—" : cap.weeksInBank.toFixed(1)}
+          sub={
+            cap.bookedOutUntil
+              ? `Booked out to ${new Date(cap.bookedOutUntil).toLocaleDateString()} · ${capState.sub}`
+              : capState.sub
+          }
+          href="/business"
           accent
         />
         <Tile
