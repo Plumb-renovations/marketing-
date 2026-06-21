@@ -2,9 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---- Hazel design system — warm, light "interiors" palette ---- */
+/* ---- Hazel "Kennel" design system — dark espresso palette ---- */
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 html,
@@ -14,9 +14,12 @@ body {
 
 body {
   margin: 0;
-  background: #faf6ef; /* warm cream (slate-950 token) */
+  background: #1f1a16; /* espresso page background (slate-950 token) */
 }
 
+.font-wordmark {
+  font-family: var(--font-nunito), "Nunito", system-ui, -apple-system, sans-serif;
+}
 .font-serif {
   font-family: var(--font-serif), "Fraunces", Georgia, ui-serif, serif;
 }
@@ -38,14 +41,14 @@ body {
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #e7decd; /* hairline taupe */
+  background: #3d332c; /* divider */
   border-radius: 8px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 *:focus-visible {
-  outline: 2px solid #b17a3c; /* hazel */
+  outline: 2px solid #d89248; /* amber primary */
   outline-offset: 2px;
   border-radius: 6px;
 }

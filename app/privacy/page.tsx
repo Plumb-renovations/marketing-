@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Workflow } from "lucide-react";
+import { HazelLogo } from "@/components/brand/HazelLogo";
 
 export const metadata: Metadata = {
   title: "Privacy Policy — Hazel",
@@ -28,11 +28,8 @@ export default function PrivacyPage() {
     <div className="min-h-screen">
       <header className="border-b border-slate-800 bg-slate-950/80">
         <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-6">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-500 text-slate-950">
-              <Workflow className="h-5 w-5" />
-            </div>
-            <span className="font-serif text-2xl font-semibold leading-none tracking-tight text-slate-100">Hazel</span>
+          <Link href="/" className="flex items-center">
+            <HazelLogo size={30} />
           </Link>
           <Link href="/login" className="text-sm text-cyan-300 transition hover:text-cyan-400">
             Sign in

@@ -1,28 +1,23 @@
 import type { Config } from "tailwindcss";
 
-// Warm, light "interiors" design system for Hazel.
+// "Kennel" — the dark Hazel design system.
 //
-// The app was authored against a dark "cockpit" palette that leans on two
-// Tailwind scales everywhere: `slate` for neutrals/surfaces and `cyan` for the
-// accent. Rather than touch hundreds of class strings, we recolour centrally by
-// REDEFINING those two scales here, plus the semantic accents.
+// The app recolours centrally through two Tailwind scales used everywhere:
+// `slate` for neutrals/surfaces and `cyan` for the accent. We redefine those
+// scales (plus the semantic accents) so no class strings need to change.
 //
-//  • slate — inverted & warmed. In the original (dark) usage a HIGH index meant
-//    a DARK surface (bg-slate-950 = page) and a LOW index meant LIGHT text
-//    (text-slate-100 = heading). We keep that contract but flip the lightness:
-//    high index = light surface (cream/white/taupe), low index = dark warm ink.
-//    So every existing `bg-slate-950 / border-slate-800 / text-slate-100` lands
-//    correctly on the light theme with no markup changes.
+//  • slate — a dark, warm espresso scale. The usage contract is "high index =
+//    page-ground surface, low index = text": bg-slate-950 = page (#1F1A16),
+//    bg-slate-900 = surface (#2A231E), border-slate-800 = divider (#3D332C),
+//    and text-slate-100/200 = the cream foreground. text-slate-950 is the dark
+//    on-primary text used on amber buttons.
 //
-//  • cyan — becomes "hazel": a warm amber accent (#B17A3C family). Solid fills
-//    (bg-cyan-500) are deepened enough to carry cream text at AA; text/links
-//    (text-cyan-300/400) read as dark hazel on light surfaces; hover
-//    (bg-cyan-400) is a touch darker than the base, as the markup expects.
+//  • cyan — the Hazel amber accent. bg-cyan-500 = primary (#D89248), hover
+//    bg-cyan-400 is the brighter tone (#E3A55F), and text-cyan-300 = the amber
+//    link/accent colour.
 //
-//  • emerald / amber / red / indigo / sky / fuchsia / blue / teal — only the
-//    light text shades (200–400) and the solid/tint base (500) are overridden
-//    to stay legible on a light background. `extend` merges, so the unused
-//    shades keep their defaults.
+//  • semantic accents — brightened to read on the dark surfaces (success uses
+//    the Kennel green #6FAE5A). `extend` merges, so unused shades keep defaults.
 const config: Config = {
   content: [
     "./app/**/*.{ts,tsx}",
@@ -32,50 +27,51 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        // Serif wordmark / display for the warm "interiors" feel.
+        // Brand wordmark — Nunito (loaded 700/800/900).
+        wordmark: ["var(--font-nunito)", "Nunito", "system-ui", "sans-serif"],
         serif: ["var(--font-serif)", "Fraunces", "Georgia", "ui-serif", "serif"],
         display: ["var(--font-display)", "Space Grotesk", "system-ui", "sans-serif"],
         body: ["var(--font-body)", "Inter", "system-ui", "sans-serif"],
         data: ["var(--font-data)", "JetBrains Mono", "ui-monospace", "monospace"],
       },
       colors: {
-        // Warm neutrals — inverted (high index = light surface, low index = dark ink).
+        // Warm espresso neutrals (high index = dark surface, low index = cream text).
         slate: {
-          50: "#1a1509", // darkest warm ink
-          100: "#241e13", // headings (text-slate-100)
-          200: "#352e1f", // primary body text (text-slate-200)
-          300: "#463c2d", // secondary text
-          400: "#5e5240", // muted text / strong dots
-          500: "#7e6f56", // muted labels (the workhorse)
-          600: "#b7a78b", // faint text / placeholders / soft borders
-          700: "#d8cdb8", // borders, inputs, dividers
-          800: "#e7decd", // hairline taupe borders
-          900: "#fffdf8", // card / raised surfaces (lift gently off the page)
-          950: "#faf6ef", // page background (warm cream) + cream text on accent
+          50: "#fbf7ef", // near-white (rare)
+          100: "#f7f1e6", // headings
+          200: "#f2ebdd", // foreground / body text
+          300: "#dcd3c4", // secondary text
+          400: "#c9bead", // text
+          500: "#b3a693", // muted text (the workhorse)
+          600: "#8a7e6d", // faint text / placeholders / faint borders
+          700: "#4a3e34", // strong borders / inputs / chip fills
+          800: "#3d332c", // border / divider / hover surface
+          900: "#2a231e", // surface / cards (bark)
+          950: "#1f1a16", // page background (espresso) + dark on-primary text
         },
-        // Hazel — warm amber accent.
+        // Hazel amber accent.
         cyan: {
-          50: "#fbf4ea",
-          100: "#f3e4cf", // accent tint
-          200: "#7e5224", // dark hazel text on pale tints
-          300: "#8c5e2c", // links / active text (brand hover tone)
-          400: "#835527", // hover fill (slightly darker than base) + dark icon text
-          500: "#9c6a30", // PRIMARY accent fill — carries cream text at AA
-          600: "#5a3a1a",
-          700: "#4a2f14",
-          800: "#39240f",
-          900: "#291a0a",
-          950: "#1a1006",
+          50: "#2a1e12",
+          100: "#34261a", // dark accent tint
+          200: "#eec08a", // bright amber text on tints
+          300: "#e3a55f", // links / active / accent text
+          400: "#e3a55f", // hover fill (brighter than base)
+          500: "#d89248", // PRIMARY accent fill
+          600: "#c97c53", // secondary accent / pressed
+          700: "#a8633c",
+          800: "#7e4a2c",
+          900: "#5a3420",
+          950: "#3a2114",
         },
-        // Semantic accents — darkened light shades for legibility on cream.
-        emerald: { 200: "#0c6b4a", 300: "#0a7150", 400: "#0b8a5e", 500: "#0a7150" },
-        amber: { 100: "#7a4a12", 200: "#8a5410", 300: "#92580e", 400: "#b5730c", 500: "#b5730c" },
-        red: { 200: "#9a2018", 300: "#b42318", 400: "#c0392b", 500: "#c0392b" },
-        indigo: { 300: "#4f46ba", 400: "#5b52c9", 500: "#5b52c9" },
-        sky: { 300: "#0369a1", 400: "#0284c7", 500: "#0284c7" },
-        fuchsia: { 300: "#a21caf", 400: "#c026d3", 500: "#c026d3" },
-        blue: { 300: "#1d4ed8", 400: "#2563eb", 500: "#2563eb" },
-        teal: { 300: "#0f766e", 400: "#0d9488", 500: "#0d9488" },
+        // Semantic accents — bright enough to read on the dark surfaces.
+        emerald: { 200: "#a6d399", 300: "#8fc47e", 400: "#6fae5a", 500: "#6fae5a" }, // success
+        amber: { 100: "#e8c58a", 200: "#ecc06a", 300: "#ecc06a", 400: "#e0a33a", 500: "#e0a33a" },
+        red: { 200: "#f0a593", 300: "#ec8770", 400: "#e0664e", 500: "#e0664e" },
+        indigo: { 300: "#a9a4f2", 400: "#8c86e8", 500: "#8c86e8" },
+        sky: { 300: "#6fb8e8", 400: "#4aa3e0", 500: "#4aa3e0" },
+        fuchsia: { 300: "#e58cdd", 400: "#d45fcb", 500: "#d45fcb" },
+        blue: { 300: "#8aaef2", 400: "#5b8de8", 500: "#5b8de8" },
+        teal: { 300: "#5fc9bd", 400: "#3db3a6", 500: "#3db3a6" },
       },
     },
   },

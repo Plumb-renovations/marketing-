@@ -3,9 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Workflow, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import { NAV, TITLES } from "@/lib/domain/constants";
 import Drawers from "@/components/leads/Drawers";
+import { HazelLogo } from "@/components/brand/HazelLogo";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
@@ -16,9 +17,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex">
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 transform flex-col border-r border-slate-800 bg-slate-900/80 transition-transform lg:static lg:translate-x-0 ${navOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="flex h-16 items-center gap-2.5 border-b border-slate-800 px-5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-500 text-slate-950"><Workflow className="h-5 w-5" /></div>
-          <p className="font-serif text-2xl font-semibold leading-none tracking-tight text-slate-100">Hazel</p>
+        <div className="flex h-16 items-center border-b border-slate-800 px-5">
+          <HazelLogo size={30} />
         </div>
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           {NAV.map((grp) => (
