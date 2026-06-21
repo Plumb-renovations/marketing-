@@ -17,8 +17,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex">
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 transform flex-col border-r border-slate-800 bg-slate-900/80 transition-transform lg:static lg:translate-x-0 ${navOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="flex h-16 items-center border-b border-slate-800 px-5">
-          <HazelLogo size={30} />
+        <div className="flex h-16 flex-col justify-center border-b border-slate-800 px-5">
+          <HazelLogo size={28} />
+          <p className="mt-0.5 font-serif text-[11px] italic leading-tight text-cyan-300">your best friend in marketing</p>
         </div>
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           {NAV.map((grp) => (
