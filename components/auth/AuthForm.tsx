@@ -40,7 +40,7 @@ export default function AuthForm({ mode }: { mode: Mode }) {
       }
       // Session present → confirmation is disabled, go straight in.
       if (data.session) {
-        window.location.assign("/leads");
+        window.location.assign("/home");
         return;
       }
       setStatus("sent"); // confirmation email sent
@@ -57,7 +57,7 @@ export default function AuthForm({ mode }: { mode: Mode }) {
       return;
     }
     // Full navigation so the server picks up the new session cookie.
-    window.location.assign("/leads");
+    window.location.assign("/home");
   };
 
   return (
