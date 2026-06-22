@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Wand2, ImagePlus, X, Loader2, Send, CheckCircle2, AlertTriangle, Facebook, Instagram } from "lucide-react";
 import { Panel, SectionHeader } from "@/components/ui/primitives";
 import { useData } from "@/components/DataProvider";
 import { downscaleImage, generatePost, fallbackPost } from "@/lib/ai/generators";
+import { takeComposerDraft } from "@/lib/content/handoff";
 import { POST_GOALS } from "@/lib/domain/constants";
 
 type PResult = { status: "published" | "failed" | "pending"; id?: string; error?: string; note?: string };
@@ -24,6 +25,12 @@ export default function SocialComposer() {
   const [publishing, setPublishing] = useState(false);
   const [results, setResults] = useState<Record<string, PResult> | null>(null);
   const [error, setError] = useState("");
+
+  // Pick up copy handed off from elsewhere (e.g. Competitor Intelligence).
+  useEffect(() => {
+    const draft = takeComposerDraft();
+    if (draft) setCaption(draft);
+  }, []);
 
   const togglePlatform = (id: string) =>
     setPlatforms((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));

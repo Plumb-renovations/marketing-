@@ -103,6 +103,25 @@ export async function generateGoogleAd(args: {
   };
 }
 
+// Analyse pasted competitor ad(s) and generate stronger, differentiated copy.
+export async function generateCompetitorBeat(args: {
+  competitorAds: string;
+  competitorName?: string;
+  platform: string;
+  format: string;
+  leads: Lead[];
+}) {
+  const j = await callAi("competitor-beat", args);
+  return {
+    analysis: Array.isArray(j.analysis) ? j.analysis : [],
+    positioning: j.positioning || "",
+    caption: j.caption || "",
+    hashtags: Array.isArray(j.hashtags) ? j.hashtags : [],
+    cta: j.cta || "",
+    variations: Array.isArray(j.variations) ? j.variations : [],
+  };
+}
+
 // ---- Offline template fallbacks (ported verbatim) ----------------------
 const GOAL_LINE: Record<string, string> = {
   "Book quotes / enquiries": "Ready to start yours? Book a free on-site measure and fixed-price quote.",

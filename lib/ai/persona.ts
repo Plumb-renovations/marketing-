@@ -98,3 +98,33 @@ Business + ad-performance context: ${adContext(p, leads)}
 3) Ad extensions: 4-6 callouts (each <= 25 chars) and 4 sitelinks (each with short link text <= 25 chars and a one-line description <= 35 chars).${withAssets ? "\n4) Performance Max / Display assets: 5 short headlines (<= 30 chars), 1 long headline (<= 90 chars) and 3-4 descriptions (<= 90 chars)." : ""}
 Return ONLY valid JSON: {"headlines":string[],"descriptions":string[],"keywords":string[],"negatives":string[],"callouts":string[],"sitelinks":[{"text":string,"description":string}]${withAssets ? ',"pmax":{"shortHeadlines":string[],"longHeadline":string,"descriptions":string[]}' : ""}}`;
 }
+
+// "Paste & beat": analyse a competitor's pasted live ad(s), then out-position
+// them with stronger, differentiated copy in our voice for the chosen target.
+export function competitorBeatPrompt(
+  p: BusinessProfile,
+  competitorAds: string,
+  competitorName: string,
+  platform: string,
+  format: string,
+  leads: Lead[],
+) {
+  const plat = platform === "instagram" ? "Instagram" : "Facebook";
+  const wantsTags = format === "post";
+  return `You are given one or more LIVE ADS from a competitor${competitorName ? ` (${competitorName})` : ""}, copied from the Meta Ad Library.
+
+COMPETITOR AD(S):
+"""
+${(competitorAds || "").slice(0, 4000)}
+"""
+
+Our business + conversion context: ${format === "ad" ? adContext(p, leads) : bizContext(p, leads)}
+Target to produce: a ${plat} ${format}.
+
+Do two things:
+1) Briefly analyse what the competitor is doing — the main angles, hooks and offers they use, and any weakness we can exploit. 3-5 short, concrete bullets.
+2) Write differentiated, STRONGER copy for OUR business that out-positions them — in our voice, leaning on our real differentiators (e.g. fixed-price, licensed, workmanship warranty, winning suburbs, current offer). Do NOT copy their wording: beat it with a sharper hook, clearer value and ONE low-friction call to action.${format === "ad" ? " Keep the primary text around 125 characters where you can." : ""}
+
+Return ONLY valid JSON, exactly these keys:
+{"analysis": string[], "positioning": string (one line on how we win against them), "caption": string (the ready-to-use ${format} text), "hashtags": string[] (${wantsTags ? "6-10 relevant tags WITH leading #" : "empty array"}), "cta": string, "variations": string[] (1-2 alternative versions of the caption)}`;
+}
