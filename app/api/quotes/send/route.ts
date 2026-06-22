@@ -2,12 +2,15 @@ import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getOrgId } from "@/lib/data/org";
+import { rowToBrand } from "@/lib/business/brand";
+import { emailConfigured, sendEmail } from "@/lib/email/send";
+import { buildQuoteEmail } from "@/lib/quotes/email";
 
-// Finalise + "send" a quote: assign its number from the business's numbering
-// settings (incrementing next_number), set status=sent + sent_at, and mint a
-// public token for the tracked link. Org-scoped via RLS (the user's client).
-// The public client page + PDF + email delivery land in the next PR; this
-// finalises the record so it's ready to deliver.
+// Send a quote end-to-end: assign its number, mint a public token for the
+// tracked link, mark it Sent (+ sent_at), then email the client the branded
+// link via Resend. Org-scoped via RLS (the user's client). Resilient — a
+// finalised quote is always returned even if the email can't go out, with a
+// clear reason so the UI can tell the user what to fix.
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
@@ -30,7 +33,7 @@ export async function POST(req: Request) {
 
   const { data: quote, error: qErr } = await supabase
     .from("quote_docs")
-    .select("id, quote_number, public_token")
+    .select("id, quote_number, public_token, client_name, client_email, total")
     .eq("id", id)
     .maybeSingle();
   if (qErr || !quote) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -57,6 +60,46 @@ export async function POST(req: Request) {
     .eq("id", id);
   if (upErr) return NextResponse.json({ error: "update_failed", message: upErr.message }, { status: 502 });
 
-  console.log(`[quotes] sent org=${orgId} id=${id} number=${quoteNumber}`);
-  return NextResponse.json({ ok: true, quoteNumber, publicToken, status: "sent" });
+  // Build the tracked client link. Prefer the configured app URL; fall back to
+  // the request origin so it's correct on any deployment.
+  const base = (process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin).replace(/\/$/, "");
+  const link = `${base}/q/${publicToken}`;
+
+  // Email the client the branded link (best-effort; never blocks the send).
+  let emailed = false;
+  let emailReason: string | undefined;
+  const clientEmail = (quote.client_email || "").trim();
+  if (!clientEmail) {
+    emailReason = "no_client_email";
+  } else if (!emailConfigured()) {
+    emailReason = "email_not_configured";
+  } else {
+    try {
+      const { data: prof } = await supabase.from("business_profiles").select("*").eq("org_id", orgId).maybeSingle();
+      const brand = rowToBrand(prof);
+      const businessName = prof?.business_name || "";
+      const { subject, html, text } = buildQuoteEmail({
+        businessName,
+        brand,
+        clientName: quote.client_name || "",
+        quoteNumber: quoteNumber!,
+        total: Number(quote.total) || 0,
+        link,
+      });
+      console.log(`[quotes] sending email org=${orgId} id=${id} to=${clientEmail}`);
+      await sendEmail(clientEmail, subject, text, {
+        html,
+        fromName: businessName || undefined,
+        replyTo: brand.contactEmail || undefined,
+      });
+      emailed = true;
+      await supabase.from("quote_docs").update({ email_sent_at: new Date().toISOString(), email_to: clientEmail }).eq("id", id);
+    } catch (e: any) {
+      emailReason = "send_failed";
+      console.error(`[quotes] email send failed org=${orgId} id=${id}: ${e?.message || e}`);
+    }
+  }
+
+  console.log(`[quotes] sent org=${orgId} id=${id} number=${quoteNumber} emailed=${emailed}${emailReason ? ` reason=${emailReason}` : ""}`);
+  return NextResponse.json({ ok: true, quoteNumber, publicToken, status: "sent", link, emailed, emailReason });
 }

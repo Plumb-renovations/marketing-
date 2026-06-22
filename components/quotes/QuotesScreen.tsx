@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FileText, Plus, Loader2 } from "lucide-react";
+import { FileText, Plus, Loader2, Eye } from "lucide-react";
 import { Panel, SectionHeader } from "@/components/ui/primitives";
 import { createClient } from "@/lib/supabase/client";
 import { listQuotes } from "@/lib/data/quotes";
@@ -109,7 +109,12 @@ export default function QuotesScreen() {
                   <td className="px-4 py-3 text-slate-200">{q.clientName || "—"}</td>
                   <td className="px-4 py-3 text-slate-400">{q.quoteDate ? new Date(q.quoteDate).toLocaleDateString() : "—"}</td>
                   <td className="px-4 py-3 text-right font-data text-slate-200">{money(q.total, currency)}</td>
-                  <td className="px-4 py-3"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize ${STATUS_CLS[q.status] || STATUS_CLS.draft}`}>{q.status}</span></td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize ${STATUS_CLS[q.status] || STATUS_CLS.draft}`}>{q.status}</span>
+                    {q.status !== "draft" && q.viewCount > 0 && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-[11px] text-slate-500"><Eye className="h-3 w-3" /> {q.viewCount}</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

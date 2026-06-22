@@ -37,6 +37,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/privacy") || // public privacy policy (required by Meta/Google)
+    pathname.startsWith("/q/") || // public client-facing quote links (token-gated)
     pathname.startsWith("/api") || // API routes & webhooks do their own auth
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico";
