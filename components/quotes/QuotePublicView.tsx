@@ -30,7 +30,19 @@ export default function QuotePublicView({
       body: JSON.stringify({ token }),
       keepalive: true,
     }).catch(() => {});
-  }, [token]);
+
+    // Reconcile: if the quote is already accepted, ping the (idempotent) accept
+    // endpoint so a deposit invoice that was never raised (e.g. accepted before
+    // the invoice table existed) gets created + emailed now. Safe — an
+    // already-sent invoice is skipped, and accept fields aren't overwritten.
+    if (quote.status === "accepted") {
+      fetch("/api/quotes/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      }).catch(() => {});
+    }
+  }, [token, quote.status]);
 
   const accent = brand.brandColor || "#A86A45";
   const ccy = brand.currency || "AUD";
