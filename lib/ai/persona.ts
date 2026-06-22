@@ -128,3 +128,32 @@ Do two things:
 Return ONLY valid JSON, exactly these keys:
 {"analysis": string[], "positioning": string (one line on how we win against them), "caption": string (the ready-to-use ${format} text), "hashtags": string[] (${wantsTags ? "6-10 relevant tags WITH leading #" : "empty array"}), "cta": string, "variations": string[] (1-2 alternative versions of the caption)}`;
 }
+
+// "Why they're winning": given top local rivals with their Google ratings,
+// review counts and sample reviews, explain per-competitor why they're ahead and
+// how we beat them, plus one overall market pattern. Read-based, not ad copy.
+export function competitorReviewsPrompt(
+  p: BusinessProfile,
+  competitors: { name: string; rating?: number | null; reviewCount?: number | null; reviews?: string[] }[],
+) {
+  const block = competitors
+    .map((c, i) => {
+      const meta = `${c.rating != null ? `${c.rating}★` : "no rating"} · ${c.reviewCount ?? 0} reviews`;
+      const revs = (c.reviews || []).slice(0, 5).map((r) => `   - "${r.replace(/\s+/g, " ").slice(0, 280)}"`).join("\n");
+      return `${i + 1}. ${c.name} (${meta})${revs ? `\n${revs}` : "\n   - (no review text available)"}`;
+    })
+    .join("\n");
+
+  return `Our business: ${bizContext(p, [])}
+
+Below are the top local competitors in our trade and area, with their Google rating, review count and a sample of recent reviews:
+${block}
+
+For EACH competitor, using their reviews + ratings as evidence, write:
+- "whyAhead": 1-2 sentences on what's actually winning them customers and trust (what reviewers praise — speed, finish, communication, price, reliability, etc.), grounded in the reviews.
+- "howToBeat": 1-2 sentences on how WE out-position them, leaning on our real differentiators${p.sellingPoints.length ? ` (${p.sellingPoints.slice(0, 4).join(", ")})` : ""} and any weakness their reviews reveal.
+Then write "marketSummary": 2-3 sentences on the pattern across the whole market — what wins in this trade/area and the single biggest opportunity for us.
+
+Match competitors by name. Be specific and concrete, never generic. Return ONLY valid JSON:
+{"competitors":[{"name":string,"whyAhead":string,"howToBeat":string}],"marketSummary":string}`;
+}

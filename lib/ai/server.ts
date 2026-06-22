@@ -11,6 +11,7 @@ import {
   metaAdPrompt,
   googleAdPrompt,
   competitorBeatPrompt,
+  competitorReviewsPrompt,
 } from "@/lib/ai/persona";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -75,6 +76,7 @@ interface Payload {
   competitorName?: string;
   platform?: string;
   format?: string;
+  competitors?: { name: string; rating?: number | null; reviewCount?: number | null; reviews?: string[] }[];
 }
 
 // Dispatch a generator by kind. The org's Business Profile drives the system
@@ -94,9 +96,11 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
       return callJSON(buildContent(googleAdPrompt(profile, payload.goal || "", leads, !!payload.photoDataUrl), payload.photoDataUrl), 1800, sys);
     case "competitor-beat":
       return callJSON(buildContent(competitorBeatPrompt(profile, payload.competitorAds || "", payload.competitorName || "", payload.platform || "facebook", payload.format || "post", leads)), 1400, sys);
+    case "competitor-reviews":
+      return callJSON(buildContent(competitorReviewsPrompt(profile, payload.competitors || [])), 2200, sys);
     default:
       return null;
   }
 }
 
-export const VALID_KINDS = ["post", "ideas", "meta-ad", "google-ad", "competitor-beat"];
+export const VALID_KINDS = ["post", "ideas", "meta-ad", "google-ad", "competitor-beat", "competitor-reviews"];
