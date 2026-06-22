@@ -1,4 +1,5 @@
-import { CompetitorView } from "@/components/dashboards/Dashboards";
+import CompetitorsScreen from "@/components/competitors/CompetitorsScreen";
+
 export default function Page() {
-  return <CompetitorView />;
+  return <CompetitorsScreen />;
 }
