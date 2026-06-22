@@ -91,6 +91,15 @@ export const fx = {
   apiBase: get("FX_API_BASE") || "https://api.exchangerate.host",
 };
 
+// Google Places (New) — Competitor Intelligence uses it to find local rivals and
+// read their ratings/reviews. Separate key from the Ads/Business credentials.
+export const googlePlaces = {
+  apiKey: get("GOOGLE_PLACES_API_KEY"),
+  get configured() {
+    return !!this.apiKey;
+  },
+};
+
 export const app = {
   url: get("NEXT_PUBLIC_APP_URL") || "http://localhost:3000",
   cronSecret: get("CRON_SECRET"),

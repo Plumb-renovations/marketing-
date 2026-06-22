@@ -12,6 +12,7 @@ import { listCompetitors, upsertCompetitor, deleteCompetitor, type Competitor } 
 import { adLibraryUrl, canLinkAdLibrary } from "@/lib/competitors/adLibrary";
 import { generateCompetitorBeat } from "@/lib/ai/generators";
 import { setComposerDraft } from "@/lib/content/handoff";
+import WhyTheyreWinning from "@/components/competitors/WhyTheyreWinning";
 
 const uid = () => crypto.randomUUID();
 // Ad Library country. Defaults to AU; ready to read a business-profile country
@@ -69,10 +70,13 @@ export default function CompetitorsScreen() {
       <SectionHeader
         icon={Swords}
         title="Competitor Intelligence"
-        desc="Learn from your rivals' live ads, then let Hazel write copy that out-positions them."
+        desc="See why rivals are winning, learn from their live ads, then let Hazel write copy that out-positions them."
       />
 
-      {/* ---------------- Competitors list ---------------- */}
+      {/* ---------------- Section 1: Why they're winning ---------------- */}
+      <WhyTheyreWinning />
+
+      {/* ---------------- Section 2: Your competitors + paste & beat ---------------- */}
       <Panel className="p-5">
         <div className="flex items-center justify-between">
           <div>
