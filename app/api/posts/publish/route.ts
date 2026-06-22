@@ -7,10 +7,12 @@ import { getMetaConfig, markMetaExpired } from "@/lib/integrations/meta/config";
 import { MetaAuthError } from "@/lib/integrations/meta/client";
 import { getPageClient } from "@/lib/integrations/meta/page";
 import { publishToFacebook, explainMetaError } from "@/lib/integrations/meta/publishPost";
+import { publishToInstagram, explainInstagramError } from "@/lib/integrations/meta/publishInstagram";
 
-// Publish an organic social post now. PR 1: Facebook Page (feed/photos).
-// Instagram is recorded as pending and wired up in PR 2. Org-scoped; every
-// attempt is logged (see Vercel logs, filter `[social]`).
+// Publish an organic social post now — to the Facebook Page and/or the linked
+// Instagram Business account. Each platform publishes independently so one
+// failure never blocks the other. Org-scoped; every attempt is logged (see
+// Vercel logs, filter `[social]`).
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -67,14 +69,34 @@ export async function POST(req: Request) {
     }
   }
 
-  // --- Instagram (wired up in PR 2) ---
+  // --- Instagram (now) ---
   if (platforms.includes("instagram")) {
-    platform_results.instagram = { status: "pending", note: "Instagram publishing ships in the next update." };
-    console.log(`[social] instagram queued (pending PR2) org=${orgId} post=${id}`);
+    if (!imageUrl) {
+      // Instagram has no text-only post — an image is required.
+      platform_results.instagram = { status: "failed", error: "Instagram needs an image. Add a photo to your post, then publish." };
+      console.warn(`[social] instagram skipped (no image) org=${orgId} post=${id}`);
+    } else {
+      try {
+        const page = await getPageClient(config);
+        const r = await publishToInstagram(page, config.pageId, { caption, imageUrl });
+        platform_results.instagram = { status: "published", id: r.id };
+        console.log(`[social] instagram published org=${orgId} post=${id} igId=${r.id}`);
+      } catch (e) {
+        if (e instanceof MetaAuthError) {
+          await markMetaExpired(orgId);
+          platform_results.instagram = { status: "failed", error: "Meta connection expired — reconnect in Settings → Integrations." };
+        } else {
+          platform_results.instagram = { status: "failed", error: explainInstagramError((e as Error).message) };
+        }
+        console.error(`[social] instagram publish FAILED org=${orgId} post=${id}: ${(e as Error).message}`);
+      }
+    }
   }
 
-  const anyPublished = Object.values(platform_results).some((r) => r.status === "published");
-  const status = anyPublished ? "published" : platform_results.facebook?.status === "failed" ? "failed" : "pending";
+  const results = Object.values(platform_results);
+  const anyPublished = results.some((r) => r.status === "published");
+  const anyFailed = results.some((r) => r.status === "failed");
+  const status = anyPublished ? "published" : anyFailed ? "failed" : "pending";
 
   // Record the post (service role; org-scoped). channels mirrors platforms so the
   // existing Calendar UI shows it.
@@ -92,8 +114,9 @@ export async function POST(req: Request) {
   });
   if (insErr) console.error(`[social] post record insert failed org=${orgId} post=${id}: ${insErr.message}`);
 
+  // 200 when anything published; 502 when every selected platform failed.
   return NextResponse.json(
     { ok: anyPublished, id, status, platform_results },
-    { status: anyPublished ? 200 : platforms.includes("facebook") ? 502 : 200 },
+    { status: anyPublished ? 200 : anyFailed ? 502 : 200 },
   );
 }

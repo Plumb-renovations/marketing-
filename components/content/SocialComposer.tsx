@@ -153,7 +153,7 @@ export default function SocialComposer() {
                 })}
               </div>
               {igWithoutImage && (
-                <p className="mt-2 text-[11px] text-amber-300">Instagram requires an image — add one above (Instagram publishing arrives in the next update).</p>
+                <p className="mt-2 text-[11px] text-amber-300">Instagram requires an image — add one above before publishing.</p>
               )}
             </div>
           </div>
