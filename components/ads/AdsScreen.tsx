@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, ImagePlus, Wand2, Copy, Plus, Facebook, Search, Loader2, Trash2, Megaphone, PlugZap, Rocket } from "lucide-react";
 import { Panel, Eyebrow, Chip, SectionHeader, CharCount, copyText } from "@/components/ui/primitives";
 import { POST_GOALS, AD_STATUS } from "@/lib/domain/constants";
 import { uid, today } from "@/lib/domain/format";
 import { downscaleImage, generateMetaAd, generateGoogleAd, fallbackMetaAd, fallbackGoogleAd } from "@/lib/ai/generators";
+import { takeAdDraft } from "@/lib/content/handoff";
 import { useData } from "@/components/DataProvider";
 import LaunchAdModal from "@/components/ads/LaunchAdModal";
 import type { Ad } from "@/lib/domain/types";
@@ -15,15 +16,23 @@ function MetaAdStudio({
   leads,
   onClose,
   onSave,
+  seedPrimaryText,
 }: {
   leads: any[];
   onClose: () => void;
   onSave: (a: Ad) => void;
+  seedPrimaryText?: string | null;
 }) {
   const [photo, setPhoto] = useState<string | null>(null);
   const [goal, setGoal] = useState(POST_GOALS[0]);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  // Prefill: copy handed off from Competitor "Paste & beat" lands as a starting
+  // variation the user can edit, save or regenerate.
+  const [result, setResult] = useState<any>(
+    seedPrimaryText
+      ? { variations: [{ primaryText: seedPrimaryText, headline: "", description: "", cta: "Get Quote" }] }
+      : null,
+  );
   const [offline, setOffline] = useState(false);
   const [aiError, setAiError] = useState("");
   const pick = async (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files && e.target.files[0]; if (f) { try { setPhoto(await downscaleImage(f)); } catch {} } };
@@ -201,8 +210,19 @@ function AdViewer({
 export default function AdsScreen() {
   const { ads, setAds, leads } = useData();
   const [studio, setStudio] = useState<"meta" | "google" | null>(null);
+  const [adSeed, setAdSeed] = useState<string | null>(null);
   const [viewing, setViewing] = useState<Ad | null>(null);
   const [launching, setLaunching] = useState<Ad | null>(null);
+
+  // Copy handed off from Competitor "Paste & beat" (Paid ad) opens the Meta ad
+  // studio prefilled with it.
+  useEffect(() => {
+    const draft = takeAdDraft();
+    if (draft) {
+      setAdSeed(draft);
+      setStudio("meta");
+    }
+  }, []);
   const saveAd = (a: Ad) => { setAds((prev) => [a, ...prev]); setStudio(null); };
   const setStatus = (id: string, s: string) => setAds((prev) => prev.map((a) => a.id === id ? { ...a, status: s } : a));
   const delAd = (id: string) => { setAds((prev) => prev.filter((a) => a.id !== id)); setViewing(null); };
@@ -240,7 +260,7 @@ export default function AdsScreen() {
 
       <div className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-3 text-[11px] text-slate-500"><PlugZap className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-400" />Generating the copy works now — paste it into Meta Ads Manager or Google Ads. Later (in Claude Code): push campaigns and pull performance via the Meta Marketing and Google Ads APIs.</div>
 
-      {studio === "meta" && <MetaAdStudio leads={leads} onClose={() => setStudio(null)} onSave={saveAd} />}
+      {studio === "meta" && <MetaAdStudio leads={leads} seedPrimaryText={adSeed} onClose={() => { setStudio(null); setAdSeed(null); }} onSave={saveAd} />}
       {studio === "google" && <GoogleAdStudio leads={leads} onClose={() => setStudio(null)} onSave={saveAd} />}
       {viewing && <AdViewer ad={viewing} onClose={() => setViewing(null)} onStatus={setStatus} onDelete={delAd} onLaunch={(a) => { setViewing(null); setLaunching(a); }} />}
       {launching && <LaunchAdModal ad={launching} onClose={() => setLaunching(null)} />}

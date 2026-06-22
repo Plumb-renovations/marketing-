@@ -11,7 +11,7 @@ import { useData } from "@/components/DataProvider";
 import { listCompetitors, upsertCompetitor, deleteCompetitor, type Competitor } from "@/lib/data/competitors";
 import { adLibraryUrl, canLinkAdLibrary } from "@/lib/competitors/adLibrary";
 import { generateCompetitorBeat } from "@/lib/ai/generators";
-import { setComposerDraft } from "@/lib/content/handoff";
+import { setComposerDraft, setAdDraft } from "@/lib/content/handoff";
 
 const uid = () => crypto.randomUUID();
 // Ad Library country. Defaults to AU; ready to read a business-profile country
@@ -123,7 +123,20 @@ export default function CompetitorsScreen() {
       </Panel>
 
       {/* ---------------- Paste & beat ---------------- */}
-      <PasteAndBeat competitors={items} leads={leads} onSendToComposer={(text) => { setComposerDraft(text); router.push("/content"); }} />
+      <PasteAndBeat
+        competitors={items}
+        leads={leads}
+        onSend={(text, format) => {
+          // Follow the Format toggle: paid ad → Ad Creator; organic → composer.
+          if (format === "ad") {
+            setAdDraft(text);
+            router.push("/ads");
+          } else {
+            setComposerDraft(text);
+            router.push("/content");
+          }
+        }}
+      />
     </div>
   );
 }
@@ -131,11 +144,11 @@ export default function CompetitorsScreen() {
 function PasteAndBeat({
   competitors,
   leads,
-  onSendToComposer,
+  onSend,
 }: {
   competitors: Competitor[];
   leads: ReturnType<typeof useData>["leads"];
-  onSendToComposer: (text: string) => void;
+  onSend: (text: string, format: "post" | "ad") => void;
 }) {
   const [ads, setAds] = useState("");
   const [competitorId, setCompetitorId] = useState("");
@@ -166,6 +179,8 @@ function PasteAndBeat({
 
   const fullCopy = (caption: string, hashtags: string[]) =>
     [caption, hashtags.length ? hashtags.join(" ") : ""].filter(Boolean).join("\n\n");
+  // Button label follows where it sends (paid ad → Ad Creator; organic → composer).
+  const sendLabel = format === "ad" ? "Send to ad creator" : "Send to composer";
 
   return (
     <Panel className="p-5">
@@ -243,8 +258,8 @@ function PasteAndBeat({
               {result.cta && <p className="mt-2 text-xs text-slate-500">CTA: {result.cta}</p>}
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              <button onClick={() => onSendToComposer(fullCopy(result.caption, result.hashtags))} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400">
-                Send to composer <ArrowRight className="h-3.5 w-3.5" />
+              <button onClick={() => onSend(fullCopy(result.caption, result.hashtags), format)} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400">
+                {sendLabel} <ArrowRight className="h-3.5 w-3.5" />
               </button>
               <button onClick={() => copyText(fullCopy(result.caption, result.hashtags))} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800"><Copy className="h-3.5 w-3.5" /> Copy</button>
             </div>
@@ -258,7 +273,7 @@ function PasteAndBeat({
                   <div key={i} className="flex items-start justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
                     <p className="whitespace-pre-wrap text-sm text-slate-300">{v}</p>
                     <div className="flex shrink-0 gap-1.5">
-                      <button onClick={() => onSendToComposer(v)} title="Send to composer" className="rounded-md border border-slate-700 p-1.5 text-slate-300 transition hover:border-cyan-500/50"><ArrowRight className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => onSend(v, format)} title={sendLabel} className="rounded-md border border-slate-700 p-1.5 text-slate-300 transition hover:border-cyan-500/50"><ArrowRight className="h-3.5 w-3.5" /></button>
                       <button onClick={() => copyText(v)} title="Copy" className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><Copy className="h-3.5 w-3.5" /></button>
                     </div>
                   </div>
