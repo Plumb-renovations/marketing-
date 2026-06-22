@@ -28,6 +28,7 @@ export interface BrandSettings {
   quoteNext: number;
   invoicePrefix: string;
   invoiceNext: number;
+  depositPercent: number; // lock-in deposit % invoiced automatically on accept
   defaultTerms: string;
   defaultPaymentSchedule: PaymentStagePreset[];
 }
@@ -53,6 +54,7 @@ export const DEFAULT_BRAND: BrandSettings = {
   quoteNext: 1,
   invoicePrefix: "INV-",
   invoiceNext: 1,
+  depositPercent: 5,
   defaultTerms: "",
   defaultPaymentSchedule: [],
 };
@@ -80,6 +82,7 @@ export function rowToBrand(row: any): BrandSettings {
     quoteNext: row.quote_next_number ?? 1,
     invoicePrefix: row.invoice_number_prefix ?? "INV-",
     invoiceNext: row.invoice_next_number ?? 1,
+    depositPercent: row.deposit_percent != null ? Number(row.deposit_percent) : 5,
     defaultTerms: row.default_terms ?? "",
     defaultPaymentSchedule: Array.isArray(row.default_payment_schedule) ? row.default_payment_schedule : [],
   };
@@ -109,6 +112,7 @@ export function brandToRow(orgId: string, b: BrandSettings): Record<string, any>
     quote_next_number: Math.max(1, Math.floor(b.quoteNext || 1)),
     invoice_number_prefix: b.invoicePrefix,
     invoice_next_number: Math.max(1, Math.floor(b.invoiceNext || 1)),
+    deposit_percent: Math.max(0, Math.min(100, Number(b.depositPercent) || 0)),
     default_terms: b.defaultTerms,
     default_payment_schedule: (b.defaultPaymentSchedule || []).map((s) => ({ label: s.label, percent: Number(s.percent) || 0 })),
   };

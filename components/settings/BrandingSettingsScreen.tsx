@@ -208,6 +208,11 @@ export default function BrandingSettingsScreen() {
           </div>
         </div>
 
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          <Num label="Deposit % (on accept)" value={b.depositPercent} onChange={(v) => set("depositPercent", v)} />
+          <p className="self-end pb-2 text-[11px] text-slate-500 sm:col-span-3">When a client accepts a quote online, a lock-in deposit invoice for this % of the total is auto-emailed.</p>
+        </div>
+
         <Area label="Default terms (prefilled on new quotes)" value={b.defaultTerms} onChange={(v) => set("defaultTerms", v)} rows={3} />
 
         {/* Default payment schedule */}
