@@ -9,8 +9,20 @@ export async function fetchBusinessProfile(supabase: SupabaseClient): Promise<Bu
   return data ? rowToProfile(data) : { ...DEFAULT_PROFILE };
 }
 
-export async function saveBusinessProfile(supabase: SupabaseClient, profile: BusinessProfile): Promise<void> {
+export async function saveBusinessProfile(
+  supabase: SupabaseClient,
+  profile: BusinessProfile,
+): Promise<BusinessProfile> {
   const orgId = await getOrgId(supabase);
-  const { error } = await supabase.from("business_profiles").upsert(profileToRow(orgId, profile), { onConflict: "org_id" });
+  // Org-scoped upsert keyed on the org_id PK: updates the row if it exists,
+  // inserts it for a brand-new org. `.select()` reads the persisted row back so
+  // the caller can confirm the write and refresh from it — and any RLS/column
+  // error surfaces here instead of being swallowed.
+  const { data, error } = await supabase
+    .from("business_profiles")
+    .upsert(profileToRow(orgId, profile), { onConflict: "org_id" })
+    .select("*")
+    .maybeSingle();
   if (error) throw error;
+  return data ? rowToProfile(data) : profile;
 }

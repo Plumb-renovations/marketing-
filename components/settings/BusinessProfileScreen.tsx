@@ -14,15 +14,28 @@ const fromLines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boole
 export default function BusinessProfileScreen() {
   const supabase = useMemo(() => createClient(), []);
   const [p, setP] = useState<BusinessProfile>(DEFAULT_PROFILE);
+  // The one-per-line list fields are edited as raw text (so spaces + Enter work
+  // normally) and only parsed into arrays on save.
+  const [servicesText, setServicesText] = useState("");
+  const [sellingText, setSellingText] = useState("");
+  const [interestsText, setInterestsText] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
+  // Load the loaded profile into both `p` and the raw-text list fields.
+  const hydrate = (prof: BusinessProfile) => {
+    setP(prof);
+    setServicesText(toLines(prof.services));
+    setSellingText(toLines(prof.sellingPoints));
+    setInterestsText(toLines(prof.audienceInterests));
+  };
+
   useEffect(() => {
     (async () => {
       try {
-        setP(await fetchBusinessProfile(supabase));
+        hydrate(await fetchBusinessProfile(supabase));
       } catch {
         setError("Couldn't load your business profile.");
       } finally {
@@ -35,15 +48,27 @@ export default function BusinessProfileScreen() {
     setP((prev) => ({ ...prev, [k]: v }));
     setSaved(false);
   };
+  // Raw-text setter for the list fields (clears the "saved" flag on edit).
+  const setText = (fn: (v: string) => void) => (v: string) => {
+    fn(v);
+    setSaved(false);
+  };
 
   const save = async () => {
     setSaving(true);
     setError("");
     try {
-      await saveBusinessProfile(supabase, p);
+      const toSave: BusinessProfile = {
+        ...p,
+        services: fromLines(servicesText),
+        sellingPoints: fromLines(sellingText),
+        audienceInterests: fromLines(interestsText),
+      };
+      // Refresh from the persisted row so what's on screen matches the DB.
+      hydrate(await saveBusinessProfile(supabase, toSave));
       setSaved(true);
-    } catch {
-      setError("Couldn't save. Please try again.");
+    } catch (e: any) {
+      setError(e?.message ? `Couldn't save: ${e.message}` : "Couldn't save. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -71,7 +96,7 @@ export default function BusinessProfileScreen() {
           <Text label="Business / service type" value={p.businessType} onChange={(v) => set("businessType", v)} placeholder="e.g. pressure washing, plumbing, landscaping" />
         </div>
 
-        <Area label="Services offered" hint="One per line" value={toLines(p.services)} onChange={(v) => set("services", fromLines(v))} placeholder={"Driveway & path cleaning\nRoof & gutter cleaning\nHouse soft-washing"} />
+        <Area label="Services offered" hint="One per line — can be multiple words, e.g. Bathroom renovations" value={servicesText} onChange={setText(setServicesText)} placeholder={"Driveway & path cleaning\nRoof & gutter cleaning\nHouse soft-washing"} />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Text label="Service area (suburbs / region)" value={p.serviceAreaLabel} onChange={(v) => set("serviceAreaLabel", v)} placeholder="e.g. Gold Coast & Northern Rivers" />
@@ -85,13 +110,13 @@ export default function BusinessProfileScreen() {
           The centre + radius set the default location for paid ads. Leave lat/long blank if unsure.
         </p>
 
-        <Area label="Key selling points" hint="One per line — your differentiators" value={toLines(p.sellingPoints)} onChange={(v) => set("sellingPoints", fromLines(v))} placeholder={"Fully licensed & insured\nFixed-price quotes, no surprises\n100% satisfaction guarantee"} />
+        <Area label="Key selling points" hint="One per line — your differentiators" value={sellingText} onChange={setText(setSellingText)} placeholder={"Fully licensed & insured\nFixed-price quotes, no surprises\n100% satisfaction guarantee"} />
 
         <Text label="Tone of voice" value={p.tone} onChange={(v) => set("tone", v)} placeholder="e.g. friendly, down-to-earth, trustworthy" />
 
         <Area label="Current offer / promo" hint="Optional — featured in copy when set" value={p.offer} onChange={(v) => set("offer", v)} placeholder="e.g. $50 off your first service this month" rows={2} />
 
-        <Area label="Audience interests (paid targeting)" hint="One per line — Meta detailed-targeting interests" value={toLines(p.audienceInterests)} onChange={(v) => set("audienceInterests", fromLines(v))} placeholder={"Home improvement\nHome Ownership\nGardening"} />
+        <Area label="Audience interests (paid targeting)" hint="One per line — Meta detailed-targeting interests" value={interestsText} onChange={setText(setInterestsText)} placeholder={"Home improvement\nHome Ownership\nGardening"} />
 
         <div className="flex items-center gap-3 border-t border-slate-800 pt-4">
           <button
