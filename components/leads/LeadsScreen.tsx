@@ -14,7 +14,8 @@ import { useData } from "@/components/DataProvider";
 
 function AiBanner({ onOpen, dismissed, setDismissed }: { onOpen: () => void; dismissed: boolean; setDismissed: (v: boolean) => void }) {
   if (dismissed) return null;
-  const r = AI_RECS.find((x) => x.priority)!;
+  const r = AI_RECS.find((x) => x.priority);
+  if (!r) return null; // no fabricated priority rec — banner only shows for real recs
   return (
     <Panel glow className="mb-5 bg-cyan-500/5">
       <div className="flex items-start gap-3 p-4">
