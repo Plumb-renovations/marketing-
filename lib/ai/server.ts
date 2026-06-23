@@ -11,6 +11,7 @@ import {
   metaAdPrompt,
   googleAdPrompt,
   competitorBeatPrompt,
+  campaignPlanPrompt,
 } from "@/lib/ai/persona";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -94,9 +95,11 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
       return callJSON(buildContent(googleAdPrompt(profile, payload.goal || "", leads, !!payload.photoDataUrl), payload.photoDataUrl), 1800, sys);
     case "competitor-beat":
       return callJSON(buildContent(competitorBeatPrompt(profile, payload.competitorAds || "", payload.competitorName || "", payload.platform || "facebook", payload.format || "post", leads)), 1400, sys);
+    case "campaign-plan":
+      return callJSON(buildContent(campaignPlanPrompt(profile, payload.goal || "")), 600, sys);
     default:
       return null;
   }
 }
 
-export const VALID_KINDS = ["post", "ideas", "meta-ad", "google-ad", "competitor-beat"];
+export const VALID_KINDS = ["post", "ideas", "meta-ad", "google-ad", "competitor-beat", "campaign-plan"];

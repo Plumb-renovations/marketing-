@@ -8,6 +8,8 @@ export interface LaunchConfig {
   platform: Platform;
   mode: "launch" | "paused"; // launch live, or create paused for review
   campaignName: string;
+  objective?: string; // Meta campaign objective (default OUTCOME_LEADS)
+  adSetName?: string; // optional ad-set name (defaults to "<campaign> — Ad Set")
   dailyBudgetAud: number;
   startTime?: string; // ISO
   endTime?: string; // ISO

@@ -99,6 +99,19 @@ Business + ad-performance context: ${adContext(p, leads)}
 Return ONLY valid JSON: {"headlines":string[],"descriptions":string[],"keywords":string[],"negatives":string[],"callouts":string[],"sitelinks":[{"text":string,"description":string}]${withAssets ? ',"pmax":{"shortHeadlines":string[],"longHeadline":string,"descriptions":string[]}' : ""}}`;
 }
 
+// Suggests the campaign + ad-set SETUP (not copy) for a new Meta lead campaign:
+// objective, a sensible starting daily budget, audience interests and names.
+export function campaignPlanPrompt(p: BusinessProfile, goal: string) {
+  return `Plan a new Meta (Facebook/Instagram) ad campaign setup for this business. Goal: ${goal || "book quotes / enquiries"}.
+Business: ${bizContext(p, [])}
+You are choosing the campaign STRUCTURE, not the ad copy. Apply lead-gen best practice for a local service business:
+- Objective: pick from exactly this list (OUTCOME_LEADS, OUTCOME_TRAFFIC, OUTCOME_ENGAGEMENT, OUTCOME_AWARENESS, OUTCOME_SALES). For a tradie chasing enquiries this is almost always OUTCOME_LEADS.
+- Daily budget (AUD): a sensible, conservative STARTING budget for one ad set in a single metro service area (typically $20–$60/day) — enough to exit Meta's learning phase without overspending while testing.
+- Interests: 4–6 Meta detailed-targeting interest names matched to this business's likely buyers.
+- Names: a short campaign name and ad-set name a tradie would recognise.
+Return ONLY valid JSON: {"objective": string, "dailyBudgetAud": number, "interests": string[], "campaignName": string, "adSetName": string, "rationale": string (one plain-English line on why this budget + objective)}`;
+}
+
 // "Paste & beat": analyse a competitor's pasted live ad(s), then out-position
 // them with stronger, differentiated copy in our voice for the chosen target.
 export function competitorBeatPrompt(

@@ -92,7 +92,7 @@ export async function publishMetaAd(
     //    lives at the ad-set level (no campaign budget) — false = ad-set budgets.
     const campaign: any = await client.post(`${client.adAccountPath()}/campaigns`, {
       name: cfg.campaignName,
-      objective: "OUTCOME_LEADS",
+      objective: cfg.objective || "OUTCOME_LEADS",
       status,
       special_ad_categories: [],
       is_adset_budget_sharing_enabled: false,
@@ -139,7 +139,7 @@ export async function publishMetaAd(
     if (endSec && startSec && endSec <= startSec) endSec = undefined;
 
     const adsetParams: any = {
-      name: `${cfg.campaignName} — Ad Set`,
+      name: cfg.adSetName?.trim() || `${cfg.campaignName} — Ad Set`,
       campaign_id: externalCampaignId,
       daily_budget: String(Math.round(cfg.dailyBudgetAud * 100)),
       billing_event: "IMPRESSIONS",
