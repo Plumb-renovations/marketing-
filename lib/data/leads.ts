@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Lead, Quote } from "@/lib/domain/types";
 import { getOrgId } from "@/lib/data/org";
+import { extractEmail, extractPhone, extractFormFields } from "@/lib/leads/formData";
 
 // ---- Row -> UI mapping --------------------------------------------------
 function mapQuote(row: any): Quote {
@@ -43,6 +44,9 @@ function mapLead(row: any): Lead {
     jobStatus: row.job_status ?? undefined,
     jobValue: row.job_value ?? null,
     archivedAt: row.archived_at ?? null,
+    email: extractEmail(row.raw),
+    phone: extractPhone(row.raw),
+    formFields: extractFormFields(row.raw),
   };
 }
 

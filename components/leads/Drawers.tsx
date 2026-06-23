@@ -4,10 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   X, FileText, Pencil, Trophy, Banknote, Plus, Check, RotateCcw, Trash2, Send,
+  Phone, Mail, ClipboardList,
 } from "lucide-react";
 import { Chip, SrcChip, Eyebrow, Field } from "@/components/ui/primitives";
 import { STAGES, LOST_REASONS, JOB_STATUSES, PAID_KEYS, ORGANIC_KEYS, SOURCES } from "@/lib/domain/constants";
 import { audFmt, quoteTotals, leadValue, uid } from "@/lib/domain/format";
+import { telHref } from "@/lib/leads/formData";
 import type { Lead, Quote, LineItem } from "@/lib/domain/types";
 import { useData } from "@/components/DataProvider";
 
@@ -25,6 +27,23 @@ function LeadDrawer({ lead, onClose, actions }: { lead: Lead; onClose: () => voi
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-5">
           <h3 className="font-display text-xl font-semibold text-slate-100">{lead.name}</h3>
+
+          {/* Speed-to-lead: phone + email up top, phone as a tappable click-to-call. */}
+          {(lead.phone || lead.email) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {lead.phone && (
+                <a href={telHref(lead.phone)} className="inline-flex items-center gap-2 rounded-lg bg-cyan-500 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400">
+                  <Phone className="h-4 w-4" /> {lead.phone}
+                </a>
+              )}
+              {lead.email && (
+                <a href={`mailto:${lead.email}`} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800">
+                  <Mail className="h-4 w-4" /> {lead.email}
+                </a>
+              )}
+            </div>
+          )}
+
           <div className="mt-4 grid grid-cols-2 gap-4">
             <Field label="Suburb" value={lead.suburb} />
             <Field label="Project" value={lead.project} />
@@ -37,6 +56,21 @@ function LeadDrawer({ lead, onClose, actions }: { lead: Lead; onClose: () => voi
               </select>
             </div>
           </div>
+
+          {/* The full lead-form submission, exactly as the lead filled it in. */}
+          {lead.formFields && lead.formFields.length > 0 && (
+            <div className="mt-6">
+              <Eyebrow icon={ClipboardList}>Lead form answers</Eyebrow>
+              <dl className="mt-3 divide-y divide-slate-800 overflow-hidden rounded-xl border border-slate-800 bg-slate-950/40">
+                {lead.formFields.map((f) => (
+                  <div key={f.key} className="px-3 py-2">
+                    <dt className="text-[11px] uppercase tracking-wider text-slate-500 font-display">{f.label}</dt>
+                    <dd className="mt-0.5 break-words text-sm text-slate-200">{f.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
 
           {(lead.quotes.length > 0 || lead.stage === "quote" || lead.stage === "won" || lead.stage === "lost") && (
             <div className="mt-6">

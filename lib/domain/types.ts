@@ -43,6 +43,9 @@ export interface Lead {
   jobStatus?: JobStatus;
   jobValue?: number | null; // captured on a won job (= accepted quote total)
   archivedAt?: string | null; // soft-delete: archived (test/junk) leads, excluded from lists + metrics
+  email?: string; // pulled from the lead-form submission (raw.field_data)
+  phone?: string; // pulled from the lead-form submission (raw.field_data)
+  formFields?: import("@/lib/leads/formData").LeadFormField[]; // every Q&A answer exactly as submitted
 }
 
 export type PostStatus = "draft" | "scheduled" | "posted";
