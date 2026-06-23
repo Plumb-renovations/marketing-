@@ -103,6 +103,19 @@ export async function generateGoogleAd(args: {
   };
 }
 
+// Suggest the campaign + ad-set setup (objective, budget, interests, names).
+export async function generateCampaignPlan(args: { goal: string }) {
+  const j = await callAi("campaign-plan", args);
+  return {
+    objective: j.objective || "OUTCOME_LEADS",
+    dailyBudgetAud: Number(j.dailyBudgetAud) || 0,
+    interests: Array.isArray(j.interests) ? j.interests : [],
+    campaignName: j.campaignName || "",
+    adSetName: j.adSetName || "",
+    rationale: j.rationale || "",
+  };
+}
+
 // Analyse pasted competitor ad(s) and generate stronger, differentiated copy.
 export async function generateCompetitorBeat(args: {
   competitorAds: string;
