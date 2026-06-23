@@ -1,4 +1,5 @@
-import { MetaView } from "@/components/dashboards/Dashboards";
+import MetaManagerScreen from "@/components/meta/MetaManagerScreen";
+
 export default function Page() {
-  return <MetaView />;
+  return <MetaManagerScreen />;
 }
