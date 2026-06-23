@@ -42,6 +42,7 @@ function mapLead(row: any): Lead {
     durationWeeks: row.duration_weeks ?? undefined,
     jobStatus: row.job_status ?? undefined,
     jobValue: row.job_value ?? null,
+    archivedAt: row.archived_at ?? null,
   };
 }
 
@@ -63,6 +64,7 @@ function leadRow(lead: Lead, orgId: string) {
     duration_weeks: lead.durationWeeks ?? null,
     job_status: lead.jobStatus ?? null,
     job_value: lead.jobValue ?? null,
+    archived_at: lead.archivedAt ?? null,
   };
 }
 
@@ -95,6 +97,7 @@ const FIELD_MAP: Record<string, string> = {
   durationWeeks: "duration_weeks",
   jobStatus: "job_status",
   jobValue: "job_value",
+  archivedAt: "archived_at",
 };
 
 export async function patchLead(

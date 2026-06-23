@@ -33,11 +33,14 @@ interface LeadActions {
   reopen: (id: string) => void;
   setTradify: (id: string, v: string) => void;
   setSource: (id: string, src: string) => void;
+  archive: (id: string) => void;
+  unarchive: (id: string) => void;
 }
 
 interface DataCtx {
   hydrated: boolean;
-  leads: Lead[];
+  leads: Lead[]; // ACTIVE leads only (archived excluded — so every tally skips them)
+  archivedLeads: Lead[];
   posts: Post[];
   setPosts: React.Dispatch<React.SetStateAction<Post[]>>;
   ads: Ad[];
@@ -234,6 +237,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       patchLocal(id, { source: src as Lead["source"] });
       persist(id, { source: src });
     },
+    archive: (id) => {
+      const archivedAt = new Date().toISOString();
+      patchLocal(id, { archivedAt });
+      persist(id, { archivedAt });
+      if (selId === id) setSelId(null); // close the drawer if it was open
+    },
+    unarchive: (id) => {
+      patchLocal(id, { archivedAt: null });
+      persist(id, { archivedAt: null });
+    },
   };
 
   const addLead = (f: { name: string; suburb: string; source: string; project: string }) => {
@@ -269,9 +282,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       return n;
     });
 
+  // Archived leads are soft-deleted: exclude them from the leads everything
+  // reads (board, sidebar count, Home metrics, capacity), expose them
+  // separately for the Archived view.
+  const activeLeads = leads.filter((l) => !l.archivedAt);
+  const archivedLeads = leads.filter((l) => l.archivedAt);
+
   const value: DataCtx = {
     hydrated,
-    leads,
+    leads: activeLeads,
+    archivedLeads,
     posts,
     setPosts,
     ads,
