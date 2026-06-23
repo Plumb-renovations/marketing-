@@ -42,6 +42,7 @@ export interface Lead {
   durationWeeks?: number;
   jobStatus?: JobStatus;
   jobValue?: number | null; // captured on a won job (= accepted quote total)
+  archivedAt?: string | null; // soft-delete: archived (test/junk) leads, excluded from lists + metrics
 }
 
 export type PostStatus = "draft" | "scheduled" | "posted";
