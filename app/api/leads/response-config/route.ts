@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { smsConfigured } from "@/lib/sms/twilio";
+import { smsConfigured } from "@/lib/sms/clicksend";
 import { emailConfigured } from "@/lib/email/send";
 
 // Which delivery channels are available (server env), for the Settings UI to

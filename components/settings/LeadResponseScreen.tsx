@@ -65,7 +65,7 @@ export default function LeadResponseScreen() {
 
       {/* Channel availability */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <ChannelState ok={config.sms} icon={MessageSquare} label="SMS (Twilio)" hint="Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM to enable texts." />
+        <ChannelState ok={config.sms} icon={MessageSquare} label="SMS (ClickSend)" hint="Set CLICKSEND_USERNAME and CLICKSEND_API_KEY to enable texts." />
         <ChannelState ok={config.email} icon={Mail} label="Email (Resend)" hint="Set RESEND_API_KEY (and LEAD_FROM_EMAIL) to enable emails." />
       </div>
 
@@ -100,10 +100,10 @@ export default function LeadResponseScreen() {
       <Panel className="p-5 space-y-5">
         <p className="text-sm font-medium text-slate-200">Missed-call text-back &amp; inbound SMS</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Text label="Twilio number (receives replies)" value={s.twilioNumber} onChange={(v) => set("twilioNumber", v)} placeholder="+61480000000" />
+          <Text label="SMS sender ID / number" value={s.twilioNumber} onChange={(v) => set("twilioNumber", v)} placeholder="+61480000000 or HAZEL" />
           <Text label="Business forwarding number" value={s.forwardingNumber} onChange={(v) => set("forwardingNumber", v)} placeholder="+61755000000" />
         </div>
-        <p className="-mt-2 text-[11px] text-slate-500">Point your Twilio number's SMS &amp; Voice webhooks at Hazel to capture replies and text back missed calls.</p>
+        <p className="-mt-2 text-[11px] text-slate-500">The sender ID shown on outgoing texts (your ClickSend number, or an alphanumeric sender like HAZEL). Leave blank to use ClickSend's shared number.</p>
       </Panel>
 
       <div className="flex items-center gap-3">
