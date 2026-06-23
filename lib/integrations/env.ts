@@ -68,12 +68,12 @@ export const googleBusiness = {
   },
 };
 
-export const twilio = {
-  accountSid: get("TWILIO_ACCOUNT_SID"),
-  authToken: get("TWILIO_AUTH_TOKEN"),
-  from: get("TWILIO_FROM"), // sending number, e.g. +61...
+export const clicksend = {
+  username: get("CLICKSEND_USERNAME"),
+  apiKey: get("CLICKSEND_API_KEY"),
   get configured() {
-    return !!(this.accountSid && this.authToken && this.from);
+    // Sender ID lives in Speed-to-Lead settings, not env — creds alone gate sends.
+    return !!(this.username && this.apiKey);
   },
 };
 

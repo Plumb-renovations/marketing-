@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getBusinessProfile } from "@/lib/business/profileServer";
-import { sendSms, smsConfigured, normalisePhone } from "@/lib/sms/twilio";
+import { sendSms, smsConfigured, normalisePhone } from "@/lib/sms/clicksend";
 import { sendEmail, emailConfigured } from "@/lib/email/send";
 import { SOURCES } from "@/lib/domain/constants";
 import {
@@ -128,7 +128,8 @@ export async function respondToNewLead(orgId: string, leadId: string): Promise<v
   if (settings.replySmsEnabled && smsOk && phone) {
     const body = buildAckMessage(profile, settings, lead.name, "sms");
     try {
-      const r = await sendSms(phone, body);
+      const r = await sendSms(phone, body, settings.twilioNumber);
+      console.log(`${tag} customer auto-reply SMS sent via ClickSend (id=${r.sid ?? "?"}, status=${r.status ?? "?"}) to ${phone}`);
       await logLeadMessage(admin, orgId, leadId, { direction: "out", channel: "sms", body, to: phone, externalId: r.sid, status: "sent" });
     } catch (e) {
       console.error(`${tag} customer auto-reply SMS FAILED: ${(e as Error).message}`);
@@ -182,8 +183,8 @@ export async function alertStaff(
 
   if (settings.alertSmsEnabled && smsOk && alertPhone) {
     try {
-      await sendSms(alertPhone, text);
-      console.log(`${tag} staff SMS alert sent to ${alertPhone}`);
+      const r = await sendSms(alertPhone, text, settings.twilioNumber);
+      console.log(`${tag} staff SMS alert sent via ClickSend (id=${r.sid ?? "?"}, status=${r.status ?? "?"}) to ${alertPhone}`);
     } catch (e) {
       console.error(`${tag} staff SMS alert FAILED: ${(e as Error).message}`);
     }
