@@ -9,6 +9,7 @@ import { downscaleImage, generateMetaAd, generateGoogleAd, fallbackMetaAd, fallb
 import { takeAdDraft } from "@/lib/content/handoff";
 import { useData } from "@/components/DataProvider";
 import LaunchAdModal from "@/components/ads/LaunchAdModal";
+import CreativeReviewer from "@/components/ads/CreativeReviewer";
 import type { Ad } from "@/lib/domain/types";
 
 /* --- Meta paid ad studio --- */
@@ -35,7 +36,6 @@ function MetaAdStudio({
   );
   const [offline, setOffline] = useState(false);
   const [aiError, setAiError] = useState("");
-  const pick = async (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files && e.target.files[0]; if (f) { try { setPhoto(await downscaleImage(f)); } catch {} } };
   const run = async () => { setLoading(true); setOffline(false); setAiError(""); try { setResult(await generateMetaAd({ photoDataUrl: photo, goal, leads })); } catch (e) { setResult(fallbackMetaAd({ goal, leads })); setOffline(true); setAiError((e as Error).message || "AI request failed"); } setLoading(false); };
   const vText = (v: any) => `${v.primaryText}\n\nHeadline: ${v.headline}\nDescription: ${v.description}\nCTA: ${v.cta}`;
   return (
@@ -45,8 +45,7 @@ function MetaAdStudio({
         <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><Eyebrow icon={Facebook}>Meta paid ad — AI copywriter</Eyebrow><p className="mt-1 text-xs text-slate-500">Facebook / Instagram. Upload a photo + pick a goal, then let AI write 2–3 ad-copy variations to A/B test.</p></div><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
         <div className="grid flex-1 gap-5 overflow-y-auto px-5 py-4 md:grid-cols-2">
           <div className="space-y-4">
-            {photo ? <div className="relative"><img src={photo} alt="" className="max-h-56 w-full rounded-lg object-cover" /><button onClick={() => setPhoto(null)} className="absolute right-2 top-2 rounded-md bg-slate-950/80 p-1 text-slate-300 hover:text-red-300"><X className="h-3.5 w-3.5" /></button></div>
-              : <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-700 px-3 py-10 text-sm text-slate-400 transition hover:border-cyan-500/40 hover:text-cyan-300"><ImagePlus className="h-5 w-5" /> Upload the ad image<span className="text-[11px] text-slate-600">Writes copy for your image — doesn't make it</span><input type="file" accept="image/*" onChange={pick} className="hidden" /></label>}
+            <CreativeReviewer onLeadImage={setPhoto} />
             <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Goal</p><select value={goal} onChange={(e) => setGoal(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-cyan-500/50">{POST_GOALS.map((g) => <option key={g} value={g}>{g}</option>)}</select></div>
             <button onClick={run} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">{loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating with AI…</> : <><Wand2 className="h-4 w-4" /> {result ? "Regenerate with AI" : "Generate ad copy with AI"}</>}</button>
             <p className="text-[11px] text-slate-500">Lengths follow Meta's recommendations: primary text ≤125, headline ≤40, link description ≤30.</p>

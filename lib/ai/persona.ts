@@ -8,6 +8,20 @@ import type { BusinessProfile } from "@/lib/business/profile";
 
 export const META_CTAS = ["Book Now", "Get Quote", "Learn More", "Contact Us", "Send Message", "Sign Up"];
 
+// The controlled vocabulary of photo "styles" the reviewer classifies into, so
+// the learning loop can aggregate real performance by style. Keep these stable —
+// they are stored and matched against actuals over time.
+export const CREATIVE_STYLES = [
+  "before/after",
+  "single-room hero",
+  "fixture/detail",
+  "wide room",
+  "lifestyle/in-use",
+  "materials/flatlay",
+  "team/at-work",
+  "other",
+] as const;
+
 const businessName = (p: BusinessProfile) => p.businessName?.trim() || "this business";
 const businessType = (p: BusinessProfile) => p.businessType?.trim() || "local services";
 const area = (p: BusinessProfile) => p.serviceAreaLabel?.trim();
@@ -110,6 +124,30 @@ You are choosing the campaign STRUCTURE, not the ad copy. Apply lead-gen best pr
 - Interests: 4–6 Meta detailed-targeting interest names matched to this business's likely buyers.
 - Names: a short campaign name and ad-set name a tradie would recognise.
 Return ONLY valid JSON: {"objective": string, "dailyBudgetAud": number, "interests": string[], "campaignName": string, "adSetName": string, "rationale": string (one plain-English line on why this budget + objective)}`;
+}
+
+// Creative reviewer: judges the ACTUAL uploaded photo(s) like a world-class
+// creative director, BEFORE money is spent — would a homeowner's thumb stop on
+// this in a busy feed, or scroll past? Tailored to home-renovation/bathroom
+// feed advertising. `learned` (optional) is this account's own real
+// style-vs-performance truth, which overrides generic best-practice when present.
+export function creativeReviewPrompt(p: BusinessProfile, count: number, learned: string) {
+  const biz = `${businessName(p)} — ${businessType(p)}${area(p) ? ` serving ${area(p)}` : ""}`;
+  const multi = count > 1;
+  return `You are a world-class creative director and paid-social media buyer for ${biz}. You are judging ${count} ad photo${multi ? "s" : ""} the owner is about to put behind paid Facebook/Instagram ads. The owner is a tradie, NOT a marketer — explain everything in plain, concrete English a builder gets, never jargon.
+
+Your one question for each image: would a real homeowner scrolling a busy feed STOP their thumb on this, or scroll straight past? Judge it as a scroll-stopper for THIS business (home renovation / bathroom transformations), where the buyer is dreaming of the result but worried about cost, mess and trusting the wrong tradie.
+
+Judge each photo on: focal point (is there one obvious hero?), lighting (bright natural light vs dark/dingy), before/after clarity (does a transformation land?), premium vs dated (does the space look high-end or old?), clutter, framing (straight-on vs awkward angle), mobile legibility (does it read at thumbnail size?), and whether there's an obvious "wow".
+
+Give SPECIFIC, actionable fixes — never vague praise. Good: "shoot straight-on, not at an angle", "the toilet shouldn't be the hero — lead with the freestanding bath", "too dark, this needs natural light", "add a before shot so the transformation lands". Bad: "make it pop", "looks great".
+
+Classify each image's style as EXACTLY one of: ${CREATIVE_STYLES.join(", ")}.
+
+Score each: "strong" (thumb-stopper), "ok" (works but won't stand out), or "weak" (will be scrolled past). Also give a 0-100 score. Be honest about confidence — this is an expert PREDICTION, not a guarantee.${multi ? "\n\nThen RANK all images best-to-worst as scroll-stoppers and say which ONE to lead with and why." : ""}
+${learned ? `\nTHIS ACCOUNT'S REAL RESULTS SO FAR (trust this over generic best-practice — say so when it applies): ${learned}\n` : ""}
+Images are provided in order (index 0 first). Return ONLY valid JSON, no markdown, exactly:
+{"images":[{"index":number,"verdict":"strong"|"ok"|"weak","score":number,"style":string,"gut":string (one line: stop or scroll, and the single biggest reason),"reasons":[{"factor":string,"rating":"good"|"weak","note":string}],"fixes":string[],"wow":string (the one thing that would most lift it),"confidence":"high"|"medium"|"low"}],"ranking":number[] (image indices best-to-worst${multi ? "" : "; single element"}),"leadWith":{"index":number,"why":string},"note":string (one honest line that this is a prediction, plus any data caveat)}`;
 }
 
 // "Paste & beat": analyse a competitor's pasted live ad(s), then out-position
