@@ -89,6 +89,7 @@ interface Payload {
   images?: string[];
   learned?: string;
   media?: string; // 'image' | 'video' (creative-review)
+  context?: string; // 'paid' | 'organic' (creative-review framing)
   frameTimes?: number[];
   durationSec?: number;
   channels?: string[];
@@ -122,10 +123,11 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
     case "creative-review": {
       const images = (payload.images || []).filter(Boolean).slice(0, 6);
       if (!images.length) return null;
+      const ctx = payload.context === "organic" ? "organic" : "paid";
       const prompt =
         payload.media === "video"
-          ? creativeVideoReviewPrompt(profile, payload.durationSec || 0, payload.frameTimes || [], payload.learned || "")
-          : creativeReviewPrompt(profile, images.length, payload.learned || "");
+          ? creativeVideoReviewPrompt(profile, payload.durationSec || 0, payload.frameTimes || [], payload.learned || "", ctx)
+          : creativeReviewPrompt(profile, images.length, payload.learned || "", ctx);
       return callJSON(buildMultiImageContent(prompt, images), 2000, sys);
     }
     default:

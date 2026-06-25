@@ -45,6 +45,7 @@ export async function POST(req: Request) {
   // (frame 0) so the row matches the ad's stored poster (ads.photo) for the
   // learning loop, and mark it media_type='video'.
   const isVideo = body?.media === "video";
+  const context = body?.context === "organic" ? "organic" : "paid";
   const frameTimes: number[] = Array.isArray(body?.frameTimes) ? body.frameTimes.map(Number) : [];
   const durationSec = Number(body?.durationSec) || 0;
 
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
 
     const result: any = await runGenerator(
       "creative-review",
-      { images, learned, media: isVideo ? "video" : "image", frameTimes, durationSec },
+      { images, learned, media: isVideo ? "video" : "image", context, frameTimes, durationSec },
       profile,
     );
     if (!result || !Array.isArray(result.images)) {

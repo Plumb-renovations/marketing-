@@ -10,16 +10,17 @@ import { downscaleImage } from "@/lib/ai/generators";
 import { sampleVideoFrames } from "@/lib/ai/videoFrames";
 import {
   reviewCreatives, reviewVideoCreative, refreshCreativePerformance,
-  type CreativeReview, type CreativeVerdictImage,
+  type CreativeReview, type CreativeVerdictImage, type ReviewContext,
 } from "@/lib/ai/creativeReview";
 
 const MAX = 4;
 
-const VERDICT: Record<string, { status: string; label: string }> = {
-  strong: { status: "emerald", label: "Strong scroll-stopper" },
-  ok: { status: "amber", label: "OK — won't stand out" },
-  weak: { status: "red", label: "Weak — likely scrolled past" },
-};
+// Strong/OK/Weak — colour is shared; wording flexes for paid vs organic context.
+function verdictMeta(verdict: string, organic: boolean): { status: string; label: string } {
+  if (verdict === "strong") return { status: "emerald", label: organic ? "Strong — feed-stopping" : "Strong scroll-stopper" };
+  if (verdict === "weak") return { status: "red", label: organic ? "Weak — gets scrolled past" : "Weak — likely scrolled past" };
+  return { status: "amber", label: "OK — won't stand out" };
+}
 
 export interface SelectedMedia {
   type: "image" | "video";
@@ -43,7 +44,8 @@ interface VideoState {
 // Hazel's AI creative director: judges the actual ad photo(s) OR a video BEFORE
 // spend, and learns which styles really perform for this account. The chosen
 // media is handed back to the studio via onMedia.
-export default function CreativeReviewer({ onMedia }: { onMedia: (m: SelectedMedia | null) => void }) {
+export default function CreativeReviewer({ onMedia, context = "paid" }: { onMedia: (m: SelectedMedia | null) => void; context?: ReviewContext }) {
+  const organic = context === "organic";
   const [candidates, setCandidates] = useState<string[]>([]); // image data URLs
   const [video, setVideo] = useState<VideoState | null>(null);
   const [review, setReview] = useState<CreativeReview | null>(null);
@@ -113,11 +115,11 @@ export default function CreativeReviewer({ onMedia }: { onMedia: (m: SelectedMed
     setLoading(true); setError(""); setSyncMsg("");
     try {
       if (video) {
-        const r = await reviewVideoCreative(video.frames, video.times, video.durationSec);
+        const r = await reviewVideoCreative(video.frames, video.times, video.durationSec, context);
         setReview(r);
         setLeadIndex(0);
       } else if (candidates.length) {
-        const r = await reviewCreatives(candidates);
+        const r = await reviewCreatives(candidates, context);
         setReview(r);
         setLeadIndex(Math.min(Math.max(0, r.leadWith?.index ?? 0), candidates.length - 1));
       }
@@ -198,7 +200,7 @@ export default function CreativeReviewer({ onMedia }: { onMedia: (m: SelectedMed
           <label className="flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-700 px-3 py-6 text-sm text-slate-400 transition hover:border-cyan-500/40 hover:text-cyan-300">
             <span className="flex items-center gap-2"><ImagePlus className="h-5 w-5" /> / <Film className="h-5 w-5" /></span>
             {candidates.length ? "Add another photo to compare" : "Upload photo(s) or a video"}
-            <span className="text-[11px] text-slate-600">Hazel judges scroll-stopping power before you spend · photos up to {MAX}, or one MP4/MOV</span>
+            <span className="text-[11px] text-slate-600">{organic ? "Hazel judges how it'll land on your feed/profile" : "Hazel judges scroll-stopping power before you spend"} · photos up to {MAX}, or one MP4/MOV</span>
             <input type="file" accept="image/*,video/mp4,video/quicktime" multiple onChange={pick} className="hidden" />
           </label>
         )}
@@ -229,7 +231,7 @@ export default function CreativeReviewer({ onMedia }: { onMedia: (m: SelectedMed
       {review && order.map((i, rank) => {
         const v = byIndex(i);
         if (!v) return null;
-        const meta = VERDICT[v.verdict] || VERDICT.ok;
+        const meta = verdictMeta(v.verdict, organic);
         const actual = review.actuals[i];
         return (
           <div key={i} className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/40 p-3">

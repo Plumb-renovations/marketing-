@@ -127,16 +127,23 @@ Return ONLY valid JSON: {"objective": string, "dailyBudgetAud": number, "interes
 }
 
 // Creative reviewer: judges the ACTUAL uploaded photo(s) like a world-class
-// creative director, BEFORE money is spent — would a homeowner's thumb stop on
-// this in a busy feed, or scroll past? Tailored to home-renovation/bathroom
-// feed advertising. `learned` (optional) is this account's own real
-// style-vs-performance truth, which overrides generic best-practice when present.
-export function creativeReviewPrompt(p: BusinessProfile, count: number, learned: string) {
+// creative director, BEFORE money is spent (paid) or before it goes on the feed
+// (organic). `context` reframes the judgement for paid scroll-stopping vs an
+// organic feed/profile post — same engine + Strong/OK/Weak format either way.
+// `learned` (optional) is this account's own real style-vs-performance truth.
+export function creativeReviewPrompt(p: BusinessProfile, count: number, learned: string, context: "paid" | "organic" = "paid") {
   const biz = `${businessName(p)} — ${businessType(p)}${area(p) ? ` serving ${area(p)}` : ""}`;
   const multi = count > 1;
-  return `You are a world-class creative director and paid-social media buyer for ${biz}. You are judging ${count} ad photo${multi ? "s" : ""} the owner is about to put behind paid Facebook/Instagram ads. The owner is a tradie, NOT a marketer — explain everything in plain, concrete English a builder gets, never jargon.
+  const organic = context === "organic";
+  const intro = organic
+    ? `You are a world-class creative director and social content strategist for ${biz}. You are judging ${count} photo${multi ? "s" : ""} the owner is about to post ORGANICALLY to their Facebook/Instagram feed and profile (NOT a paid ad). The owner is a tradie, NOT a marketer — explain everything in plain, concrete English a builder gets, never jargon.
 
-Your one question for each image: would a real homeowner scrolling a busy feed STOP their thumb on this, or scroll straight past? Judge it as a scroll-stopper for THIS business (home renovation / bathroom transformations), where the buyer is dreaming of the result but worried about cost, mess and trusting the wrong tradie.
+Your one question for each image: scrolling their feed — or landing on this business's profile grid — would a homeowner stop, look, and want to engage (like, save, comment or enquire)? Judge it as a feed/profile post for THIS business (home renovation / bathroom transformations): it should both catch the eye AND build trust and credibility for the brand (this is organic reach + reputation, not paid).`
+    : `You are a world-class creative director and paid-social media buyer for ${biz}. You are judging ${count} ad photo${multi ? "s" : ""} the owner is about to put behind paid Facebook/Instagram ads. The owner is a tradie, NOT a marketer — explain everything in plain, concrete English a builder gets, never jargon.
+
+Your one question for each image: would a real homeowner scrolling a busy feed STOP their thumb on this, or scroll straight past? Judge it as a scroll-stopper for THIS business (home renovation / bathroom transformations), where the buyer is dreaming of the result but worried about cost, mess and trusting the wrong tradie.`;
+  const strong = organic ? "strong (feed-stopping / makes the profile look great)" : "strong (thumb-stopper)";
+  return `${intro}
 
 Judge each photo on: focal point (is there one obvious hero?), lighting (bright natural light vs dark/dingy), before/after clarity (does a transformation land?), premium vs dated (does the space look high-end or old?), clutter, framing (straight-on vs awkward angle), mobile legibility (does it read at thumbnail size?), and whether there's an obvious "wow".
 
@@ -144,7 +151,7 @@ Give SPECIFIC, actionable fixes — never vague praise. Good: "shoot straight-on
 
 Classify each image's style as EXACTLY one of: ${CREATIVE_STYLES.join(", ")}.
 
-Score each: "strong" (thumb-stopper), "ok" (works but won't stand out), or "weak" (will be scrolled past). Also give a 0-100 score. Be honest about confidence — this is an expert PREDICTION, not a guarantee.${multi ? "\n\nThen RANK all images best-to-worst as scroll-stoppers and say which ONE to lead with and why." : ""}
+Score each: "strong" ${strong}, "ok" (works but won't stand out), or "weak" (will be scrolled past). Also give a 0-100 score. Be honest about confidence — this is an expert PREDICTION, not a guarantee.${multi ? "\n\nThen RANK all images best-to-worst and say which ONE to lead with and why." : ""}
 ${learned ? `\nTHIS ACCOUNT'S REAL RESULTS SO FAR (trust this over generic best-practice — say so when it applies): ${learned}\n` : ""}
 Images are provided in order (index 0 first). Return ONLY valid JSON, no markdown, exactly:
 {"images":[{"index":number,"verdict":"strong"|"ok"|"weak","score":number,"style":string,"gut":string (one line: stop or scroll, and the single biggest reason),"reasons":[{"factor":string,"rating":"good"|"weak","note":string}],"fixes":string[],"wow":string (the one thing that would most lift it),"confidence":"high"|"medium"|"low"}],"ranking":number[] (image indices best-to-worst${multi ? "" : "; single element"}),"leadWith":{"index":number,"why":string},"note":string (one honest line that this is a prediction, plus any data caveat)}`;
@@ -154,14 +161,21 @@ Images are provided in order (index 0 first). Return ONLY valid JSON, no markdow
 // motion) from one video — weighted to the opening seconds — and judges it as a
 // feed scroll-stopper for this business. Same JSON shape as the photo reviewer
 // (single-element images array) so the client/server reuse one parser.
-export function creativeVideoReviewPrompt(p: BusinessProfile, durationSec: number, frameTimes: number[], learned: string) {
+export function creativeVideoReviewPrompt(p: BusinessProfile, durationSec: number, frameTimes: number[], learned: string, context: "paid" | "organic" = "paid") {
   const biz = `${businessName(p)} — ${businessType(p)}${area(p) ? ` serving ${area(p)}` : ""}`;
   const stamps = frameTimes.length ? frameTimes.map((t) => `${t}s`).join(", ") : "the opening seconds";
-  return `You are a world-class creative director and paid-social media buyer for ${biz}. You are judging ONE video the owner is about to put behind paid Facebook/Instagram (Reels/feed) ads. The owner is a tradie, NOT a marketer — explain everything in plain, concrete English a builder gets, never jargon.
+  const organic = context === "organic";
+  const role = organic
+    ? `You are a world-class creative director and social content strategist for ${biz}. You are judging ONE video the owner is about to post ORGANICALLY as a Facebook/Instagram Reel / feed video (NOT a paid ad). The owner is a tradie, NOT a marketer — explain everything in plain, concrete English a builder gets, never jargon.`
+    : `You are a world-class creative director and paid-social media buyer for ${biz}. You are judging ONE video the owner is about to put behind paid Facebook/Instagram (Reels/feed) ads. The owner is a tradie, NOT a marketer — explain everything in plain, concrete English a builder gets, never jargon.`;
+  const question = organic
+    ? `Your one question: as an organic Reel/feed video, would it hook a homeowner in the FIRST 3 SECONDS and make them watch, engage (like/save/comment) or follow? For this business (home renovation / bathroom transformations), it should grab attention AND build trust in the brand.`
+    : `Your one question: in a busy feed, would a homeowner's thumb STOP in the FIRST 3 SECONDS, or scroll past? For this business (home renovation / bathroom transformations), the buyer is dreaming of the result but worried about cost, mess and trusting the wrong tradie.`;
+  return `${role}
 
-IMPORTANT METHOD: you are NOT watching the full video. You are shown ${frameTimes.length || "a few"} still FRAMES sampled at ${stamps} from a ${durationSec ? `${durationSec}-second` : "short"} clip (Image 0 is the very start). Judge what these frames tell you about the video as a scroll-stopper, and SAY clearly that this is based on sampled frames, not full motion — so your confidence should reflect that.
+IMPORTANT METHOD: you are NOT watching the full video. You are shown ${frameTimes.length || "a few"} still FRAMES sampled at ${stamps} from a ${durationSec ? `${durationSec}-second` : "short"} clip (Image 0 is the very start). Judge what these frames tell you about the video as a feed-stopper, and SAY clearly that this is based on sampled frames, not full motion — so your confidence should reflect that.
 
-Your one question: in a busy feed, would a homeowner's thumb STOP in the FIRST 3 SECONDS, or scroll past? For this business (home renovation / bathroom transformations), the buyer is dreaming of the result but worried about cost, mess and trusting the wrong tradie.
+${question}
 
 Judge it on: the HOOK in the first ~3 seconds (does the opening frame grab — a transformation, a striking finished space, a clear promise?), whether it's instantly clear what it's about on a muted mobile feed, whether the spaces look premium vs dated, lighting, framing for vertical mobile, and whether there's an obvious "wow" moment.
 
