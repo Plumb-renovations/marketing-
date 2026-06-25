@@ -62,6 +62,8 @@ export interface Post {
   reach: number | null;
   engagement: number | null;
   why: string;
+  mediaType?: "image" | "video";
+  videoUrl?: string | null;
 }
 
 export type AdKind = "meta" | "google";
@@ -70,10 +72,12 @@ export interface Ad {
   id: string;
   type: AdKind;
   goal: string;
-  photo: string | null;
+  photo: string | null; // image media, or the poster/first-frame for a video
   status: string; // 'draft' | 'live' | 'archived'
   createdAt: string;
   content: any;
+  mediaType?: "image" | "video";
+  videoUrl?: string | null; // public URL of the uploaded video (when mediaType==='video')
 }
 
 export interface Settings {

@@ -15,6 +15,7 @@ export interface PredictionInput {
   verdict?: string | null;
   score?: number | null;
   style?: string | null;
+  mediaType?: "image" | "video";
   review: any;
 }
 
@@ -45,6 +46,7 @@ export async function upsertPredictions(
     verdict: it.verdict ?? null,
     score: it.score ?? null,
     style: it.style ?? null,
+    media_type: it.mediaType ?? "image",
     review: it.review ?? {},
     model,
     thumb: it.thumb ?? null,

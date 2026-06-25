@@ -13,6 +13,7 @@ import {
   competitorBeatPrompt,
   campaignPlanPrompt,
   creativeReviewPrompt,
+  creativeVideoReviewPrompt,
 } from "@/lib/ai/persona";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -87,6 +88,9 @@ interface Payload {
   photoDataUrl?: string | null;
   images?: string[];
   learned?: string;
+  media?: string; // 'image' | 'video' (creative-review)
+  frameTimes?: number[];
+  durationSec?: number;
   channels?: string[];
   goal?: string;
   leads?: Lead[];
@@ -116,9 +120,12 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
     case "campaign-plan":
       return callJSON(buildContent(campaignPlanPrompt(profile, payload.goal || "")), 600, sys);
     case "creative-review": {
-      const images = (payload.images || []).filter(Boolean).slice(0, 4);
+      const images = (payload.images || []).filter(Boolean).slice(0, 6);
       if (!images.length) return null;
-      const prompt = creativeReviewPrompt(profile, images.length, payload.learned || "");
+      const prompt =
+        payload.media === "video"
+          ? creativeVideoReviewPrompt(profile, payload.durationSec || 0, payload.frameTimes || [], payload.learned || "")
+          : creativeReviewPrompt(profile, images.length, payload.learned || "");
       return callJSON(buildMultiImageContent(prompt, images), 2000, sys);
     }
     default:

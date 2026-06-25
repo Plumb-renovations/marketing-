@@ -21,6 +21,23 @@ export async function publishToFacebook(
   return { id: String(r?.id || "") };
 }
 
+// Organic Facebook Page VIDEO. Meta fetches file_url and transcodes async, so
+// this kicks off the upload and returns the video id; poll its status (see
+// getVideoStatus) until ready — the post then appears on the Page.
+export async function publishVideoToFacebook(
+  page: MetaClient,
+  pageId: string,
+  opts: { description: string; fileUrl: string },
+): Promise<{ id: string }> {
+  const r: any = await page.post(`${pageId}/videos`, {
+    file_url: opts.fileUrl,
+    description: opts.description || "",
+  });
+  const id = String(r?.id || "");
+  if (!id) throw new Error("Facebook didn't return a video id. Please try again.");
+  return { id };
+}
+
 // Turn a raw Graph error into a clearer, actionable message — especially the
 // common missing-permission case — so failures aren't cryptic.
 export function explainMetaError(message: string): string {

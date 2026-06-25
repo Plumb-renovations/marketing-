@@ -1,5 +1,6 @@
 import type { MetaClient } from "./client";
 import type { LaunchConfig, PublishResult } from "../types";
+import { uploadAdVideo, uploadAdImageDataUrl, getAdVideoThumbnail } from "./video";
 
 // Service-area default: a radius centred on the Gold Coast / Tweed Heads border
 // (Coolangatta), covering the Gold Coast QLD down through Tweed/Byron/Ballina NSW.
@@ -32,10 +33,6 @@ async function resolveInterests(client: MetaClient, names: string[]): Promise<{ 
   return out;
 }
 
-// Builds the full Meta ad hierarchy (image → campaign → ad set → creative → ad)
-// from a single LaunchConfig + creative payload. Everything runs server-side
-// with the System User token.
-
 interface CreativeInput {
   primaryText: string;
   headline: string;
@@ -64,6 +61,76 @@ export function mapCta(cta: string): string {
   }
 }
 
+// Create the campaign + ad set (everything up to the creative). Shared by the
+// image and video ad flows so targeting/budget/schedule behave identically.
+async function createCampaignAndAdset(
+  client: MetaClient,
+  cfg: LaunchConfig,
+  status: "ACTIVE" | "PAUSED",
+): Promise<{ externalCampaignId: string; externalAdsetId: string; pageId?: string }> {
+  const pageId = cfg.pageId || client.pageId;
+
+  // Campaign. special_ad_categories is REQUIRED (empty array = none).
+  const campaign: any = await client.post(`${client.adAccountPath()}/campaigns`, {
+    name: cfg.campaignName,
+    objective: cfg.objective || "OUTCOME_LEADS",
+    status,
+    special_ad_categories: [],
+    is_adset_budget_sharing_enabled: false,
+  });
+  const externalCampaignId = String(campaign?.id);
+
+  // LOCATION: a radius around lat/lng — defaults to the Gold Coast / Tweed
+  // service area, capped at Meta's 80km custom-location max.
+  const lat = cfg.latitude ?? DEFAULT_GEO.latitude;
+  const lng = cfg.longitude ?? DEFAULT_GEO.longitude;
+  const radiusKm = Math.min(80, Math.max(1, cfg.radiusKm ?? DEFAULT_GEO.radiusKm));
+  const interests = await resolveInterests(client, cfg.interests?.length ? cfg.interests : DEFAULT_INTERESTS);
+  const advantage = cfg.advantageAudience !== false;
+
+  const targeting: any = {
+    geo_locations: {
+      custom_locations: [{ latitude: lat, longitude: lng, radius: radiusKm, distance_unit: "kilometer" }],
+    },
+    age_min: cfg.ageMin ?? 30,
+    age_max: cfg.ageMax ?? 65,
+    publisher_platforms: ["facebook", "instagram"],
+  };
+  if (interests.length) targeting.flexible_spec = [{ interests }];
+  if (advantage) targeting.targeting_automation = { advantage_audience: 1 };
+
+  // SCHEDULE (optional): only send start/end when they're a real future window.
+  const nowSec = Math.floor(Date.now() / 1000);
+  const toFutureSec = (iso?: string) => {
+    if (!iso) return undefined;
+    const t = Date.parse(iso);
+    if (Number.isNaN(t)) return undefined;
+    const sec = Math.floor(t / 1000);
+    return sec > nowSec + 60 ? sec : undefined;
+  };
+  const startSec = toFutureSec(cfg.startTime);
+  let endSec = toFutureSec(cfg.endTime);
+  if (endSec && startSec && endSec <= startSec) endSec = undefined;
+
+  const adsetParams: any = {
+    name: cfg.adSetName?.trim() || `${cfg.campaignName} — Ad Set`,
+    campaign_id: externalCampaignId,
+    daily_budget: String(Math.round(cfg.dailyBudgetAud * 100)),
+    billing_event: "IMPRESSIONS",
+    optimization_goal: "LEAD_GENERATION",
+    bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+    status,
+    targeting,
+    promoted_object: { page_id: pageId },
+  };
+  if (startSec) adsetParams.start_time = startSec;
+  if (endSec) adsetParams.end_time = endSec;
+
+  const adset: any = await client.post(`${client.adAccountPath()}/adsets`, adsetParams);
+  return { externalCampaignId, externalAdsetId: String(adset?.id), pageId };
+}
+
+// Builds the full Meta IMAGE ad (image → campaign → ad set → creative → ad).
 export async function publishMetaAd(
   client: MetaClient,
   cfg: LaunchConfig,
@@ -72,88 +139,13 @@ export async function publishMetaAd(
   try {
     const status = cfg.mode === "launch" ? "ACTIVE" : "PAUSED";
     const link = cfg.link || cfg.finalUrl || "https://waterplumb.com.au";
-    const pageId = cfg.pageId || client.pageId;
 
-    // a. Upload the image (if supplied) and grab its hash. The adimages
-    //    response keys by an arbitrary name, so take the first entry.
+    // a. Upload the image (if supplied) and grab its hash.
     let imageHash: string | undefined;
-    if (creative.imageDataUrl) {
-      const base64 = creative.imageDataUrl.replace(/^data:[^;]+;base64,/, "");
-      const imgRes: any = await client.post(`${client.adAccountPath()}/adimages`, { bytes: base64 });
-      const images = imgRes?.images || {};
-      const firstKey = Object.keys(images)[0];
-      imageHash = firstKey ? images[firstKey]?.hash : undefined;
-    }
+    if (creative.imageDataUrl) imageHash = await uploadAdImageDataUrl(client, creative.imageDataUrl);
 
-    // b. Campaign. special_ad_categories is REQUIRED by the Marketing API
-    //    (empty array = none). Passed as a real array; the Graph client
-    //    JSON-encodes it. OUTCOME_LEADS is the current ODAX leads objective.
-    //    is_adset_budget_sharing_enabled must be explicitly set when the budget
-    //    lives at the ad-set level (no campaign budget) — false = ad-set budgets.
-    const campaign: any = await client.post(`${client.adAccountPath()}/campaigns`, {
-      name: cfg.campaignName,
-      objective: cfg.objective || "OUTCOME_LEADS",
-      status,
-      special_ad_categories: [],
-      is_adset_budget_sharing_enabled: false,
-    });
-    const externalCampaignId = String(campaign?.id);
-
-    // c. Ad set.
-    // LOCATION (hard constraint): a radius around lat/lng — defaults to the
-    // Gold Coast / Tweed service area, capped at Meta's 80km custom-location max.
-    const lat = cfg.latitude ?? DEFAULT_GEO.latitude;
-    const lng = cfg.longitude ?? DEFAULT_GEO.longitude;
-    const radiusKm = Math.min(80, Math.max(1, cfg.radiusKm ?? DEFAULT_GEO.radiusKm));
-    // AUDIENCE (soft suggestions): resolve interest names → ids, pass via
-    // flexible_spec with Advantage+ audience so Meta can expand beyond them.
-    const interests = await resolveInterests(client, cfg.interests?.length ? cfg.interests : DEFAULT_INTERESTS);
-    const advantage = cfg.advantageAudience !== false;
-
-    const targeting: any = {
-      geo_locations: {
-        custom_locations: [{ latitude: lat, longitude: lng, radius: radiusKm, distance_unit: "kilometer" }],
-      },
-      age_min: cfg.ageMin ?? 30,
-      age_max: cfg.ageMax ?? 65,
-      publisher_platforms: ["facebook", "instagram"],
-    };
-    if (interests.length) targeting.flexible_spec = [{ interests }];
-    if (advantage) targeting.targeting_automation = { advantage_audience: 1 };
-
-    // SCHEDULE (optional): only send start/end when they're a real future
-    // window — as Unix seconds. Blank/past/equal → omit entirely so the ad set
-    // runs continuously. (Passing undefined would serialize to the literal
-    // "undefined", which Meta rejects.)
-    const nowSec = Math.floor(Date.now() / 1000);
-    const toFutureSec = (iso?: string) => {
-      if (!iso) return undefined;
-      const t = Date.parse(iso);
-      if (Number.isNaN(t)) return undefined;
-      const sec = Math.floor(t / 1000);
-      return sec > nowSec + 60 ? sec : undefined; // must be in the future
-    };
-    const startSec = toFutureSec(cfg.startTime);
-    let endSec = toFutureSec(cfg.endTime);
-    // End must be after start; otherwise drop it (treat as continuous).
-    if (endSec && startSec && endSec <= startSec) endSec = undefined;
-
-    const adsetParams: any = {
-      name: cfg.adSetName?.trim() || `${cfg.campaignName} — Ad Set`,
-      campaign_id: externalCampaignId,
-      daily_budget: String(Math.round(cfg.dailyBudgetAud * 100)),
-      billing_event: "IMPRESSIONS",
-      optimization_goal: "LEAD_GENERATION",
-      bid_strategy: "LOWEST_COST_WITHOUT_CAP",
-      status,
-      targeting,
-      promoted_object: { page_id: pageId },
-    };
-    if (startSec) adsetParams.start_time = startSec;
-    if (endSec) adsetParams.end_time = endSec;
-
-    const adset: any = await client.post(`${client.adAccountPath()}/adsets`, adsetParams);
-    const externalAdsetId = String(adset?.id);
+    // b+c. Campaign + ad set.
+    const { externalCampaignId, externalAdsetId, pageId } = await createCampaignAndAdset(client, cfg, status);
 
     // d. Creative.
     const adcreative: any = await client.post(`${client.adAccountPath()}/adcreatives`, {
@@ -166,10 +158,7 @@ export async function publishMetaAd(
           name: creative.headline,
           description: creative.description,
           ...(imageHash ? { image_hash: imageHash } : {}),
-          call_to_action: {
-            type: mapCta(creative.cta),
-            value: { link },
-          },
+          call_to_action: { type: mapCta(creative.cta), value: { link } },
         },
       },
     });
@@ -182,7 +171,6 @@ export async function publishMetaAd(
       creative: { creative_id: externalCreativeId },
       status,
     });
-    const externalAdId = String(ad?.id);
 
     return {
       ok: true,
@@ -190,11 +178,99 @@ export async function publishMetaAd(
       status: cfg.mode === "launch" ? "active" : "paused",
       externalCampaignId,
       externalAdsetId,
-      externalAdId,
+      externalAdId: String(ad?.id),
       externalCreativeId,
-      raw: { image: imageHash, campaign, adset, adcreative, ad },
+      raw: { image: imageHash, adsetId: externalAdsetId, adcreative, ad },
     };
   } catch (e) {
     return { ok: false, platform: "meta", status: "failed", error: String(e) };
   }
+}
+
+// Context a video-ad job stores so it can finish (create creative + ad) once the
+// uploaded video has finished processing at Meta.
+export interface VideoAdContext {
+  campaignName: string;
+  externalCampaignId: string;
+  externalAdsetId: string;
+  pageId?: string;
+  videoId: string;
+  imageHash?: string; // poster/first-frame uploaded as the required thumbnail
+  primaryText: string;
+  headline: string;
+  description: string;
+  cta: string;
+  link: string;
+  mode: "launch" | "paused";
+}
+
+// Kick off a VIDEO ad: campaign + ad set + advideo upload. The creative + ad are
+// created later (finishMetaVideoAd) once the video reports "ready", because
+// processing is asynchronous. Returns the context the job needs to finish.
+export async function startMetaVideoAd(
+  client: MetaClient,
+  cfg: LaunchConfig,
+  creative: CreativeInput,
+  videoUrl: string,
+): Promise<VideoAdContext> {
+  const status = cfg.mode === "launch" ? "ACTIVE" : "PAUSED";
+  const link = cfg.link || cfg.finalUrl || "https://waterplumb.com.au";
+
+  const videoId = await uploadAdVideo(client, videoUrl, `${cfg.campaignName} — Video`);
+  const imageHash = creative.imageDataUrl ? await uploadAdImageDataUrl(client, creative.imageDataUrl) : undefined;
+  const { externalCampaignId, externalAdsetId, pageId } = await createCampaignAndAdset(client, cfg, status);
+
+  return {
+    campaignName: cfg.campaignName,
+    externalCampaignId,
+    externalAdsetId,
+    pageId,
+    videoId,
+    imageHash,
+    primaryText: creative.primaryText,
+    headline: creative.headline,
+    description: creative.description,
+    cta: creative.cta,
+    link,
+    mode: cfg.mode,
+  };
+}
+
+// Finish a VIDEO ad once the video is ready: video creative + ad. Returns the
+// created ids (used to flip the draft live + write the audit row).
+export async function finishMetaVideoAd(
+  client: MetaClient,
+  ctx: VideoAdContext,
+): Promise<{ externalAdId: string; externalCreativeId: string }> {
+  const status = ctx.mode === "launch" ? "ACTIVE" : "PAUSED";
+
+  // A thumbnail is required for a video creative. Prefer the poster we uploaded;
+  // otherwise fall back to the frame Meta generated for the processed video.
+  let imageHash = ctx.imageHash;
+  let thumbUrl: string | undefined;
+  if (!imageHash) thumbUrl = await getAdVideoThumbnail(client, ctx.videoId);
+
+  const videoData: any = {
+    video_id: ctx.videoId,
+    message: ctx.primaryText,
+    title: ctx.headline,
+    link_description: ctx.description,
+    call_to_action: { type: mapCta(ctx.cta), value: { link: ctx.link } },
+  };
+  if (imageHash) videoData.image_hash = imageHash;
+  else if (thumbUrl) videoData.image_url = thumbUrl;
+
+  const adcreative: any = await client.post(`${client.adAccountPath()}/adcreatives`, {
+    name: `${ctx.campaignName} — Creative`,
+    object_story_spec: { page_id: ctx.pageId, video_data: videoData },
+  });
+  const externalCreativeId = String(adcreative?.id);
+
+  const ad: any = await client.post(`${client.adAccountPath()}/ads`, {
+    name: `${ctx.campaignName} — Ad`,
+    adset_id: ctx.externalAdsetId,
+    creative: { creative_id: externalCreativeId },
+    status,
+  });
+  return { externalAdId: String(ad?.id), externalCreativeId };
 }

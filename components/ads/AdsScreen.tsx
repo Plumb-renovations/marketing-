@@ -9,7 +9,7 @@ import { downscaleImage, generateMetaAd, generateGoogleAd, fallbackMetaAd, fallb
 import { takeAdDraft } from "@/lib/content/handoff";
 import { useData } from "@/components/DataProvider";
 import LaunchAdModal from "@/components/ads/LaunchAdModal";
-import CreativeReviewer from "@/components/ads/CreativeReviewer";
+import CreativeReviewer, { type SelectedMedia } from "@/components/ads/CreativeReviewer";
 import type { Ad } from "@/lib/domain/types";
 
 /* --- Meta paid ad studio --- */
@@ -24,7 +24,7 @@ function MetaAdStudio({
   onSave: (a: Ad) => void;
   seedPrimaryText?: string | null;
 }) {
-  const [photo, setPhoto] = useState<string | null>(null);
+  const [media, setMedia] = useState<SelectedMedia | null>(null);
   const [goal, setGoal] = useState(POST_GOALS[0]);
   const [loading, setLoading] = useState(false);
   // Prefill: copy handed off from Competitor "Paste & beat" lands as a starting
@@ -36,16 +36,18 @@ function MetaAdStudio({
   );
   const [offline, setOffline] = useState(false);
   const [aiError, setAiError] = useState("");
-  const run = async () => { setLoading(true); setOffline(false); setAiError(""); try { setResult(await generateMetaAd({ photoDataUrl: photo, goal, leads })); } catch (e) { setResult(fallbackMetaAd({ goal, leads })); setOffline(true); setAiError((e as Error).message || "AI request failed"); } setLoading(false); };
+  // The image data URL the copywriter looks at — the image itself, or a video's poster frame.
+  const copyPhoto = media?.type === "image" ? media.imageDataUrl ?? null : media?.posterDataUrl ?? null;
+  const run = async () => { setLoading(true); setOffline(false); setAiError(""); try { setResult(await generateMetaAd({ photoDataUrl: copyPhoto, goal, leads })); } catch (e) { setResult(fallbackMetaAd({ goal, leads })); setOffline(true); setAiError((e as Error).message || "AI request failed"); } setLoading(false); };
   const vText = (v: any) => `${v.primaryText}\n\nHeadline: ${v.headline}\nDescription: ${v.description}\nCTA: ${v.cta}`;
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div onClick={onClose} className="absolute inset-0 bg-stone-900/40" />
       <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><Eyebrow icon={Facebook}>Meta paid ad — AI copywriter</Eyebrow><p className="mt-1 text-xs text-slate-500">Facebook / Instagram. Upload a photo + pick a goal, then let AI write 2–3 ad-copy variations to A/B test.</p></div><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><Eyebrow icon={Facebook}>Meta paid ad — AI copywriter</Eyebrow><p className="mt-1 text-xs text-slate-500">Facebook / Instagram. Upload a photo or video + pick a goal, then let AI write 2–3 ad-copy variations to A/B test.</p></div><button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button></div>
         <div className="grid flex-1 gap-5 overflow-y-auto px-5 py-4 md:grid-cols-2">
           <div className="space-y-4">
-            <CreativeReviewer onLeadImage={setPhoto} />
+            <CreativeReviewer onMedia={setMedia} />
             <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Goal</p><select value={goal} onChange={(e) => setGoal(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-cyan-500/50">{POST_GOALS.map((g) => <option key={g} value={g}>{g}</option>)}</select></div>
             <button onClick={run} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">{loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating with AI…</> : <><Wand2 className="h-4 w-4" /> {result ? "Regenerate with AI" : "Generate ad copy with AI"}</>}</button>
             <p className="text-[11px] text-slate-500">Lengths follow Meta's recommendations: primary text ≤125, headline ≤40, link description ≤30.</p>
@@ -64,7 +66,7 @@ function MetaAdStudio({
                 <div className="flex items-center gap-2"><span className="text-[10px] uppercase tracking-wider text-slate-500">Button</span><Chip status="cyan">{v.cta}</Chip></div>
               </div>
             ))}
-            {result && <button onClick={() => onSave({ id: uid(), type: "meta", goal, photo, status: "draft", createdAt: today(), content: { variations: result.variations } })} className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Plus className="h-4 w-4" /> Save as draft</button>}
+            {result && <button onClick={() => onSave({ id: uid(), type: "meta", goal, photo: media?.type === "video" ? (media.posterDataUrl ?? null) : (media?.imageDataUrl ?? null), status: "draft", createdAt: today(), content: { variations: result.variations }, mediaType: media?.type ?? "image", videoUrl: media?.type === "video" ? (media.videoUrl ?? null) : null })} className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Plus className="h-4 w-4" /> Save as draft</button>}
           </div>
         </div>
       </div>
@@ -178,7 +180,9 @@ function AdViewer({
           <button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button>
         </div>
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
-          {ad.photo && <img src={ad.photo} alt="" className="max-h-48 w-full rounded-lg object-cover" />}
+          {ad.mediaType === "video" && ad.videoUrl
+            ? <video src={ad.videoUrl} poster={ad.photo || undefined} controls className="max-h-48 w-full rounded-lg bg-black object-contain" />
+            : ad.photo && <img src={ad.photo} alt="" className="max-h-48 w-full rounded-lg object-cover" />}
           {ad.type === "meta" ? g.variations.map((v: any, i: number) => (
             <div key={i} className="space-y-1 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
               <div className="flex items-center justify-between"><span className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Variation {i + 1}</span><button onClick={() => copyText(`${v.primaryText}\n\nHeadline: ${v.headline}\nDescription: ${v.description}\nCTA: ${v.cta}`)} className="rounded-md border border-slate-700 p-1 text-slate-400 transition hover:text-cyan-300"><Copy className="h-3 w-3" /></button></div>

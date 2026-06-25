@@ -64,6 +64,37 @@ export async function reviewCreatives(images: string[]): Promise<CreativeReview>
   };
 }
 
+// Judge a VIDEO from sampled frames (weighted to the opening seconds). Returns
+// the same verdict shape (single image) as the photo reviewer.
+export async function reviewVideoCreative(
+  frames: string[],
+  frameTimes: number[],
+  durationSec: number,
+): Promise<CreativeReview> {
+  const res = await fetch("/api/ads/creative-review", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ images: frames, media: "video", frameTimes, durationSec }),
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const e = await res.json();
+      detail = e?.message || e?.error || "";
+    } catch {}
+    throw new Error(`Video review failed (${res.status})${detail ? ": " + detail : ""}`);
+  }
+  const j = await res.json();
+  return {
+    images: Array.isArray(j.images) ? j.images : [],
+    ranking: Array.isArray(j.ranking) ? j.ranking : [0],
+    leadWith: j.leadWith || { index: 0, why: "" },
+    note: j.note || "",
+    learned: j.learned || "",
+    actuals: j.actuals || {},
+  };
+}
+
 export async function refreshCreativePerformance(): Promise<{ ok: boolean; updated: number; reason?: string }> {
   const res = await fetch("/api/ads/creative-review/sync", { method: "POST" });
   try {

@@ -7,6 +7,7 @@ import type { Ad } from "@/lib/domain/types";
 import { createClient } from "@/lib/supabase/client";
 import { fetchBusinessProfile } from "@/lib/data/businessProfile";
 import { generateCampaignPlan } from "@/lib/ai/generators";
+import { pollJob } from "@/lib/media/pollJob";
 
 // Meta campaign objectives (default Leads). Google has no objective picker here.
 const META_OBJECTIVES: { id: string; label: string }[] = [
@@ -50,6 +51,10 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState("");
+  // Async video ad: the publish returns a job we poll to completion.
+  const [jobState, setJobState] = useState<"processing" | "published" | "failed" | null>(null);
+  const [jobResultId, setJobResultId] = useState("");
+  const [jobError, setJobError] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -124,6 +129,15 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
         else setError(data?.error || data?.message || `Failed (${res.status})`);
       } else {
         setResult(data);
+        // Video ads process asynchronously at Meta — poll the job to completion.
+        if (data.status === "processing" && data.jobId) {
+          setJobState("processing");
+          pollJob(data.jobId, (s) => setJobState(s.state)).then((s) => {
+            setJobState(s.state);
+            if (s.state === "published") setJobResultId(s.resultId || "");
+            if (s.state === "failed") setJobError(s.error || "Video processing failed.");
+          });
+        }
       }
     } catch (e: any) {
       setError(e?.message || "Request failed");
@@ -159,6 +173,31 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
         </div>
 
         {result ? (
+          result.jobId ? (
+            <div className="space-y-3 p-6 text-center">
+              {jobState === "failed" ? (
+                <>
+                  <AlertTriangle className="mx-auto h-8 w-8 text-red-400" />
+                  <p className="text-sm text-slate-200">The video ad couldn't be published.</p>
+                  <p className="text-[11px] text-red-300">{jobError}</p>
+                  <button onClick={onClose} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800">Close</button>
+                </>
+              ) : jobState === "published" ? (
+                <>
+                  <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-400" />
+                  <p className="text-sm text-slate-200">{result.mode === "launch" ? "Video ad launched live." : "Video ad created as a paused draft — review it in Ads Manager, then switch it on."}</p>
+                  {jobResultId && <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-left text-[11px] text-slate-400"><p>Ad: <span className="font-data text-slate-300">{jobResultId}</span></p></div>}
+                  <button onClick={onClose} className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400">Done</button>
+                </>
+              ) : (
+                <>
+                  <Loader2 className="mx-auto h-8 w-8 animate-spin text-cyan-400" />
+                  <p className="text-sm text-slate-200">Meta is processing your video…</p>
+                  <p className="text-[11px] text-slate-500">This can take a minute or two. Keep this open — Hazel finishes the ad as soon as the video is ready, then tells you here.</p>
+                </>
+              )}
+            </div>
+          ) : (
           <div className="space-y-3 p-6 text-center">
             <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-400" />
             <p className="text-sm text-slate-200">{result.status === "active" ? "Launched live." : "Created as a paused draft — review it in Ads Manager, then switch it on."}</p>
@@ -169,6 +208,7 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
             </div>
             <button onClick={onClose} className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400">Done</button>
           </div>
+          )
         ) : (
           <>
             {/* Stepper */}

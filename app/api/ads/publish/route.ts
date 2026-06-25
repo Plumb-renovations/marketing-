@@ -67,6 +67,50 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "ad draft is not a Meta ad" }, { status: 400 });
   }
 
+  // ---- Video ad: campaign+adset+advideo now, creative+ad once processed ----
+  // Meta transcodes the uploaded video asynchronously, so we kick it off, store
+  // a media job, and let the client poll /api/media-jobs/{id} to completion.
+  // Keeps the same paused-draft default + confirm-before-live as image ads.
+  if (ad.media_type === "video") {
+    if (!ad.video_url) {
+      return NextResponse.json({ error: "missing_video", message: "This video ad has no uploaded video." }, { status: 400 });
+    }
+    try {
+      const v = ad.content?.variations?.[0] || {};
+      const { startMetaVideoAd } = await import("@/lib/integrations/meta/publish");
+      const { createJob } = await import("@/lib/media/jobs");
+      const client = metaClient(metaConfig);
+      const ctx = await startMetaVideoAd(
+        client,
+        cfg,
+        {
+          primaryText: v.primaryText || ad.content?.primaryText || "",
+          headline: v.headline || "",
+          description: v.description || "",
+          cta: v.cta || "Learn More",
+          imageDataUrl: ad.photo || null, // poster / first-frame = the required thumbnail
+        },
+        ad.video_url,
+      );
+      const job = await createJob(supabase, orgId, {
+        kind: "ad",
+        video_id: ctx.videoId,
+        config: { ...ctx, localAdId: cfg.adId },
+      });
+      return NextResponse.json({ ok: true, status: "processing", jobId: job.id, mode: cfg.mode });
+    } catch (e: any) {
+      if (e instanceof MetaAuthError) {
+        await markMetaExpired(orgId);
+        return NextResponse.json(
+          { error: "meta_reconnect_required", message: "Your Meta connection has expired. Reconnect it in Settings → Integrations." },
+          { status: 412 },
+        );
+      }
+      console.error(`[ads/publish] video ad kick failed org=${orgId} ad=${cfg.adId}: ${e?.message || e}`);
+      return NextResponse.json({ ok: false, status: "failed", error: e?.message || "publish failed" }, { status: 502 });
+    }
+  }
+
   let result: PublishResult;
   try {
     const v = ad.content?.variations?.[0] || {};

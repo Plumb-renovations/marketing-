@@ -11,6 +11,8 @@ function mapAd(row: any): Ad {
     status: row.status ?? "draft",
     createdAt: row.created_at,
     content: row.content ?? {},
+    mediaType: row.media_type ?? "image",
+    videoUrl: row.video_url ?? null,
   };
 }
 
@@ -23,6 +25,8 @@ function adRow(ad: Ad, orgId: string) {
     photo: ad.photo,
     status: ad.status,
     content: ad.content ?? {},
+    media_type: ad.mediaType ?? "image",
+    video_url: ad.videoUrl ?? null,
   };
 }
 
