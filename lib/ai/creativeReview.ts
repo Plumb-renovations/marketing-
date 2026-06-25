@@ -39,11 +39,13 @@ export interface CreativeReview {
   actuals: Record<number, ActualStats>;
 }
 
-export async function reviewCreatives(images: string[]): Promise<CreativeReview> {
+export type ReviewContext = "paid" | "organic";
+
+export async function reviewCreatives(images: string[], context: ReviewContext = "paid"): Promise<CreativeReview> {
   const res = await fetch("/api/ads/creative-review", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ images }),
+    body: JSON.stringify({ images, context }),
   });
   if (!res.ok) {
     let detail = "";
@@ -70,11 +72,12 @@ export async function reviewVideoCreative(
   frames: string[],
   frameTimes: number[],
   durationSec: number,
+  context: ReviewContext = "paid",
 ): Promise<CreativeReview> {
   const res = await fetch("/api/ads/creative-review", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ images: frames, media: "video", frameTimes, durationSec }),
+    body: JSON.stringify({ images: frames, media: "video", context, frameTimes, durationSec }),
   });
   if (!res.ok) {
     let detail = "";

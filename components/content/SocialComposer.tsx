@@ -1,23 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Wand2, ImagePlus, Film, X, Loader2, Send, CheckCircle2, AlertTriangle, Facebook, Instagram } from "lucide-react";
+import { Wand2, Loader2, Send, CheckCircle2, AlertTriangle, Facebook, Instagram } from "lucide-react";
 import { Panel, SectionHeader } from "@/components/ui/primitives";
 import { useData } from "@/components/DataProvider";
-import { downscaleImage, generatePost, fallbackPost } from "@/lib/ai/generators";
+import { generatePost, fallbackPost } from "@/lib/ai/generators";
 import { takeComposerDraft } from "@/lib/content/handoff";
 import { pollJob } from "@/lib/media/pollJob";
 import { POST_GOALS } from "@/lib/domain/constants";
+import CreativeReviewer, { type SelectedMedia } from "@/components/ads/CreativeReviewer";
 
 type PResult = { status: "published" | "failed" | "pending" | "processing"; id?: string; jobId?: string; error?: string; note?: string };
-
-interface VideoState {
-  previewUrl: string;
-  file: File;
-  videoUrl: string | null;
-  uploading: boolean;
-  error: string;
-}
 
 const PLATFORMS = [
   { id: "facebook", label: "Facebook", icon: Facebook },
@@ -27,8 +20,9 @@ const PLATFORMS = [
 export default function SocialComposer() {
   const { leads } = useData();
   const [caption, setCaption] = useState("");
-  const [photo, setPhoto] = useState<string | null>(null);
-  const [video, setVideo] = useState<VideoState | null>(null);
+  // The composer's media now comes from the SAME creative reviewer used in the
+  // Ad Creator (organic context) — so an organic photo/video gets a verdict too.
+  const [media, setMedia] = useState<SelectedMedia | null>(null);
   const [platforms, setPlatforms] = useState<string[]>(["facebook"]);
   const [goal, setGoal] = useState(POST_GOALS[0]);
   const [generating, setGenerating] = useState(false);
@@ -45,47 +39,14 @@ export default function SocialComposer() {
   const togglePlatform = (id: string) =>
     setPlatforms((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
-  const pickMedia = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-    setError("");
-    if (f.type.startsWith("video/")) {
-      setPhoto(null);
-      const previewUrl = URL.createObjectURL(f);
-      setVideo({ previewUrl, file: f, videoUrl: null, uploading: true, error: "" });
-      try {
-        const form = new FormData();
-        form.append("file", f);
-        const res = await fetch("/api/posts/upload", { method: "POST", body: form });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.message || "Upload failed");
-        setVideo((v) => (v ? { ...v, videoUrl: data.url, uploading: false } : v));
-      } catch (err) {
-        setVideo((v) => (v ? { ...v, uploading: false, error: (err as Error).message || "Upload failed" } : v));
-      }
-      return;
-    }
-    // image
-    try {
-      setVideo(null);
-      setPhoto(await downscaleImage(f));
-    } catch {
-      setError("Couldn't read that image.");
-    }
-  };
-
-  const clearMedia = () => {
-    if (video) URL.revokeObjectURL(video.previewUrl);
-    setVideo(null);
-    setPhoto(null);
-  };
+  // The image the caption writer looks at — the photo itself, or a video's poster.
+  const photoForCaption = media?.type === "image" ? media.imageDataUrl ?? null : media?.posterDataUrl ?? null;
 
   const generate = async () => {
     setGenerating(true);
     setError("");
     try {
-      const r = await generatePost({ photoDataUrl: photo, channels: platforms.length ? platforms : ["facebook"], goal, leads });
+      const r = await generatePost({ photoDataUrl: photoForCaption, channels: platforms.length ? platforms : ["facebook"], goal, leads });
       setCaption([r.caption, r.hashtags].filter(Boolean).join("\n\n"));
     } catch {
       const r = fallbackPost({ channels: platforms, goal, leads });
@@ -96,9 +57,8 @@ export default function SocialComposer() {
     }
   };
 
-  const hasMedia = !!photo || !!video;
+  const hasMedia = !!media;
   const igWithoutMedia = platforms.includes("instagram") && !hasMedia;
-  const videoNotReady = !!video && (video.uploading || !video.videoUrl);
 
   const publish = async () => {
     setPublishing(true);
@@ -106,13 +66,13 @@ export default function SocialComposer() {
     setResults(null);
     try {
       let imageUrl: string | null = null;
-      const videoUrl = video?.videoUrl || null;
+      const videoUrl = media?.type === "video" ? media.videoUrl || null : null;
 
-      if (photo && !video) {
+      if (media?.type === "image" && media.imageDataUrl) {
         const up = await fetch("/api/posts/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dataUrl: photo }),
+          body: JSON.stringify({ dataUrl: media.imageDataUrl }),
         });
         const ub = await up.json();
         if (!up.ok) {
@@ -166,7 +126,7 @@ export default function SocialComposer() {
 
   return (
     <div className="space-y-6">
-      <SectionHeader icon={Send} title="Compose a post" desc="Write or AI-generate a caption, add a photo or video, and publish to your connected accounts." />
+      <SectionHeader icon={Send} title="Compose a post" desc="Write or AI-generate a caption, add a photo or video — Hazel reviews it — then publish to your connected accounts." />
 
       <Panel className="p-5">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -186,35 +146,9 @@ export default function SocialComposer() {
             <textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={9} placeholder="Write your post, or hit AI generate…" className={fieldCls} />
           </div>
 
-          {/* Right: media + platforms */}
+          {/* Right: media (reviewed) + platforms */}
           <div className="space-y-4">
-            <div>
-              <label className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Photo or video</label>
-              {video ? (
-                <div className="relative mt-1.5">
-                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  <video src={video.previewUrl} controls className="max-h-56 w-full rounded-lg bg-black object-contain" />
-                  <button onClick={clearMedia} className="absolute right-2 top-2 rounded-md bg-stone-900/70 p-1 text-slate-200 hover:text-red-300"><X className="h-3.5 w-3.5" /></button>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    {video.uploading ? <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Uploading video…</span>
-                      : video.error ? <span className="text-red-300">{video.error}</span>
-                      : <span className="text-emerald-300">Video ready · Instagram posts it as a Reel</span>}
-                  </p>
-                </div>
-              ) : photo ? (
-                <div className="relative mt-1.5">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photo} alt="" className="max-h-56 w-full rounded-lg object-cover" />
-                  <button onClick={clearMedia} className="absolute right-2 top-2 rounded-md bg-stone-900/70 p-1 text-slate-200 hover:text-red-300"><X className="h-3.5 w-3.5" /></button>
-                </div>
-              ) : (
-                <label className="mt-1.5 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-700 px-3 py-8 text-sm text-slate-400 transition hover:border-cyan-500/40 hover:text-cyan-300">
-                  <span className="flex items-center gap-2"><ImagePlus className="h-5 w-5" /> / <Film className="h-5 w-5" /></span> Upload a photo or video
-                  <span className="text-[11px] text-slate-600">Public URL · required for Instagram · MP4/MOV for video</span>
-                  <input type="file" accept="image/*,video/mp4,video/quicktime" onChange={pickMedia} className="hidden" />
-                </label>
-              )}
-            </div>
+            <CreativeReviewer context="organic" onMedia={setMedia} />
 
             <div>
               <label className="text-[11px] uppercase tracking-wider text-slate-500 font-display">Publish to</label>
@@ -256,7 +190,7 @@ export default function SocialComposer() {
         <div className="mt-5 flex items-center justify-end border-t border-slate-800 pt-4">
           <button
             onClick={publish}
-            disabled={publishing || videoNotReady || !platforms.length || (!caption.trim() && !hasMedia)}
+            disabled={publishing || !platforms.length || (!caption.trim() && !hasMedia)}
             className="inline-flex items-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50"
           >
             {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Publish now
