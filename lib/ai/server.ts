@@ -14,6 +14,9 @@ import {
   campaignPlanPrompt,
   creativeReviewPrompt,
   creativeVideoReviewPrompt,
+  coachSystemPrompt,
+  coachPrompt,
+  coachAskPrompt,
 } from "@/lib/ai/persona";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -98,6 +101,8 @@ interface Payload {
   competitorName?: string;
   platform?: string;
   format?: string;
+  dataBlock?: string; // coach / coach-ask account summary
+  question?: string; // coach-ask
 }
 
 // Dispatch a generator by kind. The org's Business Profile drives the system
@@ -105,8 +110,13 @@ interface Payload {
 // parsed JSON the client expects.
 export async function runGenerator(kind: string, payload: Payload, profile: BusinessProfile) {
   const leads = payload.leads || [];
-  const sys = adPersona(profile);
+  const isCoach = kind === "coach" || kind === "coach-ask";
+  const sys = isCoach ? coachSystemPrompt(profile) : adPersona(profile);
   switch (kind) {
+    case "coach":
+      return callJSON(buildContent(coachPrompt(profile, payload.dataBlock || "")), 1600, sys);
+    case "coach-ask":
+      return callJSON(buildContent(coachAskPrompt(profile, payload.dataBlock || "", payload.question || "")), 1000, sys);
     case "post":
       return callJSON(buildContent(postPrompt(profile, payload.channels || [], payload.goal || "", leads), payload.photoDataUrl), 1024, sys);
     case "ideas":
@@ -133,4 +143,4 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
   }
 }
 
-export const VALID_KINDS = ["post", "ideas", "meta-ad", "google-ad", "competitor-beat", "campaign-plan", "creative-review"];
+export const VALID_KINDS = ["post", "ideas", "meta-ad", "google-ad", "competitor-beat", "campaign-plan", "creative-review", "coach", "coach-ask"];

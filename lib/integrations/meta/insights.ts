@@ -145,6 +145,25 @@ export async function fetchAdTree(config: MetaConfig): Promise<AdTree> {
   return { currency, account, campaigns };
 }
 
+// Account-level totals for a date window (for week-on-week deltas). leads come
+// from the Meta "lead" action; cpl is derived. Used by the Marketing Coach.
+export interface WindowMetrics {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  leads: number;
+}
+export async function fetchAccountWindow(config: MetaConfig, since: string, until: string): Promise<WindowMetrics> {
+  const client = metaClient(config);
+  const res: any = await client.get(`${client.adAccountPath()}/insights`, {
+    level: "account",
+    fields: "spend,impressions,clicks,actions",
+    time_range: { since, until },
+  });
+  const r = res?.data?.[0] || {};
+  return { spend: num(r.spend), impressions: num(r.impressions), clicks: num(r.clicks), leads: leadsFromActions(r.actions) };
+}
+
 // ---- Writes (reuse the metaClient token write path) ------------------------
 export async function setAdSetDailyBudget(config: MetaConfig, adsetId: string, dailyMinor: number) {
   return metaClient(config).post(adsetId, { daily_budget: String(Math.round(dailyMinor)) });
