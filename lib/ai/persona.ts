@@ -150,6 +150,30 @@ Images are provided in order (index 0 first). Return ONLY valid JSON, no markdow
 {"images":[{"index":number,"verdict":"strong"|"ok"|"weak","score":number,"style":string,"gut":string (one line: stop or scroll, and the single biggest reason),"reasons":[{"factor":string,"rating":"good"|"weak","note":string}],"fixes":string[],"wow":string (the one thing that would most lift it),"confidence":"high"|"medium"|"low"}],"ranking":number[] (image indices best-to-worst${multi ? "" : "; single element"}),"leadWith":{"index":number,"why":string},"note":string (one honest line that this is a prediction, plus any data caveat)}`;
 }
 
+// Creative reviewer for VIDEO. The model is shown SAMPLED FRAMES (not full
+// motion) from one video — weighted to the opening seconds — and judges it as a
+// feed scroll-stopper for this business. Same JSON shape as the photo reviewer
+// (single-element images array) so the client/server reuse one parser.
+export function creativeVideoReviewPrompt(p: BusinessProfile, durationSec: number, frameTimes: number[], learned: string) {
+  const biz = `${businessName(p)} — ${businessType(p)}${area(p) ? ` serving ${area(p)}` : ""}`;
+  const stamps = frameTimes.length ? frameTimes.map((t) => `${t}s`).join(", ") : "the opening seconds";
+  return `You are a world-class creative director and paid-social media buyer for ${biz}. You are judging ONE video the owner is about to put behind paid Facebook/Instagram (Reels/feed) ads. The owner is a tradie, NOT a marketer — explain everything in plain, concrete English a builder gets, never jargon.
+
+IMPORTANT METHOD: you are NOT watching the full video. You are shown ${frameTimes.length || "a few"} still FRAMES sampled at ${stamps} from a ${durationSec ? `${durationSec}-second` : "short"} clip (Image 0 is the very start). Judge what these frames tell you about the video as a scroll-stopper, and SAY clearly that this is based on sampled frames, not full motion — so your confidence should reflect that.
+
+Your one question: in a busy feed, would a homeowner's thumb STOP in the FIRST 3 SECONDS, or scroll past? For this business (home renovation / bathroom transformations), the buyer is dreaming of the result but worried about cost, mess and trusting the wrong tradie.
+
+Judge it on: the HOOK in the first ~3 seconds (does the opening frame grab — a transformation, a striking finished space, a clear promise?), whether it's instantly clear what it's about on a muted mobile feed, whether the spaces look premium vs dated, lighting, framing for vertical mobile, and whether there's an obvious "wow" moment.
+
+Give SPECIFIC, actionable fixes — never vague praise. Good: "open on the finished freestanding bath, not the empty room", "lead with the before within the first second so the transformation lands", "it's too dark in the opening — shoot in natural light", "add a bold on-screen caption for muted autoplay". Bad: "make it pop".
+
+Classify the video's style as EXACTLY one of: ${CREATIVE_STYLES.join(", ")}.
+Score it: "strong" (thumb-stopper), "ok" (works but won't stand out), or "weak" (will be scrolled past), plus a 0-100 score. Be honest about confidence — this is an expert PREDICTION from sampled frames, not a guarantee.
+${learned ? `\nTHIS ACCOUNT'S REAL RESULTS SO FAR (trust this over generic best-practice — say so when it applies): ${learned}\n` : ""}
+Return ONLY valid JSON, no markdown, exactly:
+{"images":[{"index":0,"verdict":"strong"|"ok"|"weak","score":number,"style":string,"gut":string (one line: stop or scroll in the first 3s, and the single biggest reason),"reasons":[{"factor":string,"rating":"good"|"weak","note":string}],"fixes":string[],"wow":string (the one thing that would most lift it),"confidence":"high"|"medium"|"low"}],"ranking":[0],"leadWith":{"index":0,"why":string},"note":string (one honest line: based on sampled frames, not full motion — a prediction)}`;
+}
+
 // "Paste & beat": analyse a competitor's pasted live ad(s), then out-position
 // them with stronger, differentiated copy in our voice for the chosen target.
 export function competitorBeatPrompt(

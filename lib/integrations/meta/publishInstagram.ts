@@ -71,6 +71,45 @@ export async function publishToInstagram(
   return { id };
 }
 
+// ---- Instagram Reels (video) — async container → poll → publish ------------
+// Split into steps so the media-job state machine can drive the long
+// (sometimes >60s) processing across multiple polls rather than one request.
+
+// Create a REELS container for a hosted video URL. Returns the creation id.
+export async function createInstagramReelContainer(
+  page: MetaClient,
+  igUserId: string,
+  opts: { videoUrl: string; caption: string },
+): Promise<string> {
+  if (!opts.videoUrl) throw new Error("Instagram needs the video URL to create a Reel.");
+  const container: any = await page.post(`${igUserId}/media`, {
+    media_type: "REELS",
+    video_url: opts.videoUrl,
+    caption: opts.caption || "",
+  });
+  const id = String(container?.id || "");
+  if (!id) throw new Error("Instagram didn't return a media container id. Please try again.");
+  return id;
+}
+
+// Container processing status_code: IN_PROGRESS | FINISHED | ERROR | EXPIRED.
+export async function getContainerStatus(page: MetaClient, containerId: string): Promise<string> {
+  const st: any = await page.get(`${containerId}`, { fields: "status_code,status" });
+  return String(st?.status_code || "");
+}
+
+// Publish a finished container. Returns the published IG media id.
+export async function publishInstagramContainer(
+  page: MetaClient,
+  igUserId: string,
+  containerId: string,
+): Promise<{ id: string }> {
+  const pub: any = await page.post(`${igUserId}/media_publish`, { creation_id: containerId });
+  const id = String(pub?.id || "");
+  if (!id) throw new Error("Instagram didn't return a published media id. Please try again.");
+  return { id };
+}
+
 // Turn a raw Graph error into a clearer, actionable message — especially the
 // missing-permission case. Already-friendly messages (e.g. no linked account)
 // pass straight through.

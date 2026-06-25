@@ -15,6 +15,8 @@ function mapPost(row: any): Post {
     reach: row.reach ?? null,
     engagement: row.engagement ?? null,
     why: row.why ?? "",
+    mediaType: row.media_type ?? "image",
+    videoUrl: row.video_url ?? null,
   };
 }
 
@@ -32,6 +34,8 @@ function postRow(post: Post, orgId: string) {
     reach: post.reach,
     engagement: post.engagement,
     why: post.why ?? "",
+    media_type: post.mediaType ?? "image",
+    video_url: post.videoUrl ?? null,
   };
 }
 
