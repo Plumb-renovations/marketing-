@@ -12,6 +12,7 @@ import {
   googleAdPrompt,
   competitorBeatPrompt,
   campaignPlanPrompt,
+  creativeReviewPrompt,
 } from "@/lib/ai/persona";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -67,8 +68,25 @@ function buildContent(prompt: string, photoDataUrl?: string | null) {
   return content;
 }
 
+// Multi-image user turn: each image labelled by index so the model can rank
+// them, then the prompt. Used by the creative reviewer.
+function buildMultiImageContent(prompt: string, images: string[]) {
+  const content: any[] = [];
+  images.forEach((url, i) => {
+    const parts = dataUrlParts(url);
+    if (parts) {
+      content.push({ type: "text", text: `Image ${i}:` });
+      content.push({ type: "image", source: { type: "base64", media_type: parts.media_type, data: parts.data } });
+    }
+  });
+  content.push({ type: "text", text: prompt });
+  return content;
+}
+
 interface Payload {
   photoDataUrl?: string | null;
+  images?: string[];
+  learned?: string;
   channels?: string[];
   goal?: string;
   leads?: Lead[];
@@ -97,9 +115,15 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
       return callJSON(buildContent(competitorBeatPrompt(profile, payload.competitorAds || "", payload.competitorName || "", payload.platform || "facebook", payload.format || "post", leads)), 1400, sys);
     case "campaign-plan":
       return callJSON(buildContent(campaignPlanPrompt(profile, payload.goal || "")), 600, sys);
+    case "creative-review": {
+      const images = (payload.images || []).filter(Boolean).slice(0, 4);
+      if (!images.length) return null;
+      const prompt = creativeReviewPrompt(profile, images.length, payload.learned || "");
+      return callJSON(buildMultiImageContent(prompt, images), 2000, sys);
+    }
     default:
       return null;
   }
 }
 
-export const VALID_KINDS = ["post", "ideas", "meta-ad", "google-ad", "competitor-beat", "campaign-plan"];
+export const VALID_KINDS = ["post", "ideas", "meta-ad", "google-ad", "competitor-beat", "campaign-plan", "creative-review"];
