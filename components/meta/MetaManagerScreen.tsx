@@ -7,6 +7,7 @@ import {
   Pause, Rocket, Sparkles, Gauge, Plug,
 } from "lucide-react";
 import { Panel, SectionHeader, Chip } from "@/components/ui/primitives";
+import CoachPanel from "@/components/coach/CoachPanel";
 import { createClient } from "@/lib/supabase/client";
 import { money } from "@/lib/quotes/model";
 import { fetchAdTargets, saveAdTargets } from "@/lib/data/adTargets";
@@ -116,6 +117,9 @@ export default function MetaManagerScreen() {
         <SectionHeader icon={Facebook} title="Meta Ads" desc="Campaign → ad set → ad, with Hazel's plain-English verdict on every ad." />
         <button onClick={load} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800"><RefreshCw className="h-4 w-4" /> Refresh</button>
       </div>
+
+      {/* Hazel's marketing coach for this account — the few moves that matter now. */}
+      <CoachPanel limit={4} compact />
 
       {/* Hazel's current targets (auto-tuned) */}
       <Panel className="p-4">

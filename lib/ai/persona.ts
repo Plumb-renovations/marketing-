@@ -188,6 +188,51 @@ Return ONLY valid JSON, no markdown, exactly:
 {"images":[{"index":0,"verdict":"strong"|"ok"|"weak","score":number,"style":string,"gut":string (one line: stop or scroll in the first 3s, and the single biggest reason),"reasons":[{"factor":string,"rating":"good"|"weak","note":string}],"fixes":string[],"wow":string (the one thing that would most lift it),"confidence":"high"|"medium"|"low"}],"ranking":[0],"leadWith":{"index":0,"why":string},"note":string (one honest line: based on sampled frames, not full motion — a prediction)}`;
 }
 
+// ---- Marketing Coach -------------------------------------------------------
+// Hazel as the world-class agency the tradie has on speed dial. Holds ALL the
+// expertise; the user supplies no thresholds or knowledge.
+export function coachSystemPrompt(p: BusinessProfile): string {
+  return `You are Hazel — a world-class media buyer and marketing agency rolled into one, working for ${businessName(p)}, a ${businessType(p)} business${area(p) ? ` in ${area(p)}` : ""}. The owner is a tradie with ZERO marketing knowledge: he doesn't know what to ask, what "good" looks like, or what to do. You hold ALL the expertise.
+
+How you operate:
+- Give advice from a real MARKETING perspective — what a top media buyer would actually do — even when it's not what the owner wants to hear. Tell the truth, kindly.
+- Be specific and concrete to HIS real numbers. Never generic filler. Every point has a WHY (what it means for his leads/jobs/money) and ONE clear action.
+- Proactively raise things he didn't know to ask.
+- Apply proven media-buying logic: test 3–5 ads not 1; respect Meta's learning phase (don't touch ads still learning); scale winners gradually (+20–30%, never double); at low volume consolidate spend rather than spread; judge on cost-per-WON-job over cost-per-lead once jobs data exists; watch frequency/fatigue; enough budget to exit learning.
+- Be HONEST about data sufficiency. Where data is thin (little spend, few leads, few won/lost), say it's an early read on proven benchmarks and will sharpen as real data builds — never project false confidence.
+- Plain English a tradie gets. No jargon; if you must use a term, explain it in a few words.
+When asked for JSON, return only valid JSON, no markdown.`;
+}
+
+// Proactive coach: turn the data + Hazel's flagged signals into the few
+// highest-impact things to do now. dataBlock is a compact, human-readable
+// account summary (see lib/coach/coach.ts).
+export function coachPrompt(p: BusinessProfile, dataBlock: string): string {
+  return `Here is ${businessName(p)}'s REAL account data, plus the facts Hazel's brain has already flagged (some are ACTIONABLE — the app can show a button for them).
+
+${dataBlock}
+
+Produce the few highest-impact things this owner should know and do RIGHT NOW. Prioritise ruthlessly — at most 6, fewer is better. Lead with what matters most. Each item: plain English, the WHY (what it means for his leads/jobs/money), and the ONE action. Proactively include things he didn't know to ask. Be honest where the data is thin.
+
+When an item corresponds to one of the FLAGGED SIGNALS marked [ACTIONABLE id=...], set "signalId" to that exact id so the app can attach the scale/pause button. Otherwise set signalId to null.
+
+Return ONLY valid JSON, no markdown:
+{"headline": string (one line — the single most important takeaway right now), "confidence": "early"|"building"|"solid", "insights":[{"severity":"high"|"medium"|"low","area":string,"title":string (specific, plain),"why":string (why it matters to his business),"action":string (the one concrete next step),"signalId":string|null}]}`;
+}
+
+// Reactive Q&A: answer anything in plain English from HIS data + best practice.
+export function coachAskPrompt(p: BusinessProfile, dataBlock: string, question: string): string {
+  return `The owner of ${businessName(p)} — a tradie with no marketing knowledge — asks:
+"${(question || "").slice(0, 600)}"
+
+Answer using HIS real data below + your media-buying expertise. Be specific to his actual numbers, not generic. Give the marketing truth even if it's not what he wants to hear. If the honest answer is "there isn't enough data yet", say so plainly and give the best-practice default to use meanwhile. Keep it short and plain — a few tight paragraphs at most.
+
+${dataBlock}
+
+Return ONLY valid JSON, no markdown:
+{"answer": string (plain English, specific to his data), "followups": string[] (2-3 smart follow-up questions he might not know to ask)}`;
+}
+
 // "Paste & beat": analyse a competitor's pasted live ad(s), then out-position
 // them with stronger, differentiated copy in our voice for the chosen target.
 export function competitorBeatPrompt(

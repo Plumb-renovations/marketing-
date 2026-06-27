@@ -15,6 +15,7 @@ import {
   CalendarDays,
   Scale,
   Megaphone,
+  Compass,
   Plug,
   Building2,
   Zap,
@@ -188,6 +189,7 @@ export const NAV: NavGroup[] = [
     icon: Megaphone,
     tier: "primary",
     items: [
+      { id: "coach", label: "Marketing Coach", icon: Compass },
       { id: "compare", label: "Performance", icon: Scale },
       { id: "google", label: "Google Ads", icon: Search },
       { id: "meta", label: "Meta Ads", icon: Facebook },

@@ -15,6 +15,7 @@ import {
 import { Panel, SectionHeader, Dot } from "@/components/ui/primitives";
 import { createClient } from "@/lib/supabase/client";
 import { useData } from "@/components/DataProvider";
+import CoachPanel from "@/components/coach/CoachPanel";
 import { AI_RECS, ACTIONS } from "@/lib/domain/constants";
 import { audFmt, leadValue } from "@/lib/domain/format";
 import { fetchCapacity } from "@/lib/data/capacity";
@@ -155,6 +156,9 @@ export default function HomeScreen() {
           href="/revenue"
         />
       </div>
+
+      {/* Hazel's proactive marketing coach — the highest-impact moves right now. */}
+      <CoachPanel limit={3} compact />
 
       <Panel className="p-5">
         <div className="mb-3 flex items-center justify-between">
