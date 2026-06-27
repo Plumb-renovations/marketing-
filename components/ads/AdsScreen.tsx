@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, ImagePlus, Wand2, Copy, Plus, Facebook, Search, Loader2, Trash2, Megaphone, PlugZap, Rocket } from "lucide-react";
+import { X, ImagePlus, Wand2, Copy, Plus, Facebook, Search, Loader2, Trash2, Megaphone, PlugZap, Rocket, Sparkles } from "lucide-react";
 import { Panel, Eyebrow, Chip, SectionHeader, CharCount, copyText } from "@/components/ui/primitives";
 import { POST_GOALS, AD_STATUS } from "@/lib/domain/constants";
 import { uid, today } from "@/lib/domain/format";
-import { downscaleImage, generateMetaAd, generateGoogleAd, fallbackMetaAd, fallbackGoogleAd } from "@/lib/ai/generators";
+import { downscaleImage, generateMetaAd, generateGoogleAd, fallbackMetaAd, fallbackGoogleAd, fetchAdStrategy, generateAdsFromStrategy, type AdStrategy } from "@/lib/ai/generators";
 import { takeAdDraft } from "@/lib/content/handoff";
 import { useData } from "@/components/DataProvider";
 import LaunchAdModal from "@/components/ads/LaunchAdModal";
@@ -36,9 +36,38 @@ function MetaAdStudio({
   );
   const [offline, setOffline] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [strategy, setStrategy] = useState<AdStrategy | null>(null);
+  const [writing, setWriting] = useState(false);
   // The image data URL the copywriter looks at — the image itself, or a video's poster frame.
   const copyPhoto = media?.type === "image" ? media.imageDataUrl ?? null : media?.posterDataUrl ?? null;
-  const run = async () => { setLoading(true); setOffline(false); setAiError(""); try { setResult(await generateMetaAd({ photoDataUrl: copyPhoto, goal, leads })); } catch (e) { setResult(fallbackMetaAd({ goal, leads })); setOffline(true); setAiError((e as Error).message || "AI request failed"); } setLoading(false); };
+
+  // Pull the coach's current strategy once so copy executes it (and powers the
+  // "write ads from recommendations" action).
+  useEffect(() => { fetchAdStrategy().then(setStrategy); }, []);
+
+  const run = async () => {
+    setLoading(true); setOffline(false); setAiError("");
+    try {
+      setResult(await generateMetaAd({ photoDataUrl: copyPhoto, goal, leads, strategy: strategy?.brief, imageDescription: media?.description, imageKeyPoints: media?.keyPoints }));
+    } catch (e) {
+      setResult(fallbackMetaAd({ goal, leads })); setOffline(true); setAiError((e as Error).message || "AI request failed");
+    }
+    setLoading(false);
+  };
+
+  // Turn the coach's recommended angles into ready draft variations, grounded in
+  // the attached creative's key points where present.
+  const writeFromStrategy = async () => {
+    setWriting(true); setOffline(false); setAiError("");
+    try {
+      const drafts = await generateAdsFromStrategy({ photoDataUrl: copyPhoto, imageDescription: media?.description, imageKeyPoints: media?.keyPoints });
+      if (drafts.length) setResult({ variations: drafts });
+      else setAiError("No drafts returned.");
+    } catch (e) {
+      setAiError((e as Error).message || "Couldn't write ads from recommendations.");
+    }
+    setWriting(false);
+  };
   const vText = (v: any) => `${v.primaryText}\n\nHeadline: ${v.headline}\nDescription: ${v.description}\nCTA: ${v.cta}`;
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -49,8 +78,24 @@ function MetaAdStudio({
           <div className="space-y-4">
             <CreativeReviewer onMedia={setMedia} />
             <div><p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Goal</p><select value={goal} onChange={(e) => setGoal(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-cyan-500/50">{POST_GOALS.map((g) => <option key={g} value={g}>{g}</option>)}</select></div>
-            <button onClick={run} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">{loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating with AI…</> : <><Wand2 className="h-4 w-4" /> {result ? "Regenerate with AI" : "Generate ad copy with AI"}</>}</button>
-            <p className="text-[11px] text-slate-500">Lengths follow Meta's recommendations: primary text ≤125, headline ≤40, link description ≤30.</p>
+            <button onClick={run} disabled={loading || writing} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">{loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating with AI…</> : <><Wand2 className="h-4 w-4" /> {result ? "Regenerate with AI" : "Generate ad copy with AI"}</>}</button>
+
+            {/* Hazel's strategy → copy. The coach's angles become ready drafts. */}
+            {strategy && (strategy.angles.length > 0 || strategy.brief) && (
+              <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-3">
+                <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cyan-300 font-display"><Sparkles className="h-3.5 w-3.5" /> Hazel's strategy</p>
+                {strategy.brief && <p className="mt-1 text-[11px] text-slate-400">{strategy.brief}</p>}
+                {strategy.angles.length > 0 && (
+                  <ul className="mt-1.5 space-y-0.5">
+                    {strategy.angles.slice(0, 4).map((a, i) => <li key={i} className="text-[11px] text-slate-300">• {a}</li>)}
+                  </ul>
+                )}
+                <button onClick={writeFromStrategy} disabled={writing || loading} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs font-medium text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50">
+                  {writing ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Writing ads from your recommendations…</> : <><Wand2 className="h-3.5 w-3.5" /> Write ads from Hazel's recommendations</>}
+                </button>
+              </div>
+            )}
+            <p className="text-[11px] text-slate-500">Lengths follow Meta's recommendations: primary text ≤125, headline ≤40, link description ≤30. Copy is written about your photo{copyPhoto ? " (Hazel can see it)" : ""} and on Hazel's current strategy.</p>
           </div>
           <div className="space-y-3">
             {!result && !loading && <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-600">Your ad variations will appear here.</div>}

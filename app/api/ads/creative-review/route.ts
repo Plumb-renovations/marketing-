@@ -81,6 +81,8 @@ export async function POST(req: Request) {
         score: Number.isFinite(Number(img?.score)) ? Number(img.score) : null,
         style: img?.style ?? null,
         mediaType: (isVideo ? "video" : "image") as "image" | "video",
+        description: typeof img?.description === "string" ? img.description : null,
+        keyPoints: Array.isArray(img?.keyPoints) ? img.keyPoints.map(String) : [],
         review: img,
       };
     });

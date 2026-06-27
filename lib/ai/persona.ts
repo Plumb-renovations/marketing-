@@ -97,16 +97,37 @@ export function ideasPrompt(p: BusinessProfile, leads: Lead[]) {
 Suggest 5 organic social post ideas likely to perform for this business — especially ones that counter price objections and showcase quality (before/afters, "what's included" breakdowns, suburb spotlights, process). Return ONLY valid JSON: {"ideas":[{"title": string, "why": string}]}`;
 }
 
-export function metaAdPrompt(p: BusinessProfile, goal: string, leads: Lead[]) {
-  return `Task: write a paid Meta (Facebook/Instagram) ad to run WITH the attached photo (you do NOT generate the image). Goal: ${goal}.
-Business + ad-performance context: ${adContext(p, leads)}
-Produce 2-3 distinct variations to A/B test, each a different angle. Stay within Meta's recommended lengths: primary text <= 125 characters, headline <= 40 characters, link description <= 30 characters. Pick a call-to-action button from exactly this list: ${META_CTAS.join(", ")}.
+// Shared "use Hazel's strategy + the real creative" context the Ad Creator
+// feeds in — channel-agnostic so Meta + Google copy both ground in it.
+export interface CopyContext {
+  strategy?: string; // the Marketing Coach's current recommendations / angles
+  imageDescription?: string; // what the Creative Reviewer saw in the attached media
+  imageKeyPoints?: string[]; // selling points to lead with
+}
+function copyContext(opts?: CopyContext): string {
+  if (!opts) return "";
+  const parts: string[] = [];
+  if (opts.strategy?.trim()) {
+    parts.push(`HAZEL'S CURRENT STRATEGY (execute this — the Marketing Coach derived it from real performance): ${opts.strategy.trim()}`);
+  }
+  if (opts.imageDescription?.trim() || opts.imageKeyPoints?.length) {
+    parts.push(
+      `WHAT'S IN THE ATTACHED CREATIVE (write the copy ABOUT this — don't invent a different scene):${opts.imageDescription ? ` ${opts.imageDescription.trim()}` : ""}${opts.imageKeyPoints?.length ? ` Lead with: ${opts.imageKeyPoints.join("; ")}.` : ""}`,
+    );
+  }
+  return parts.length ? "\n" + parts.join("\n") : "";
+}
+
+export function metaAdPrompt(p: BusinessProfile, goal: string, leads: Lead[], opts?: CopyContext) {
+  return `Task: write a paid Meta (Facebook/Instagram) ad to run WITH the attached photo/video (you do NOT generate the media). Goal: ${goal}.
+Business + ad-performance context: ${adContext(p, leads)}${copyContext(opts)}
+Produce 2-3 distinct variations to A/B test, each a different angle — grounded in what's actually in the creative and executing Hazel's strategy where given. Stay within Meta's recommended lengths: primary text <= 125 characters, headline <= 40 characters, link description <= 30 characters. Pick a call-to-action button from exactly this list: ${META_CTAS.join(", ")}.
 Return ONLY valid JSON: {"variations":[{"primaryText":string,"headline":string,"description":string,"cta":string}]}`;
 }
 
-export function googleAdPrompt(p: BusinessProfile, goal: string, leads: Lead[], withAssets: boolean) {
+export function googleAdPrompt(p: BusinessProfile, goal: string, leads: Lead[], withAssets: boolean, opts?: CopyContext) {
   return `Task: create Google Ads copy for this business. Goal: ${goal}.
-Business + ad-performance context: ${adContext(p, leads)}
+Business + ad-performance context: ${adContext(p, leads)}${copyContext(opts)}
 1) A Responsive Search Ad: up to 15 headlines, each a HARD MAX of 30 characters, and up to 4 descriptions, each a HARD MAX of 90 characters. Never exceed these limits — count characters.
 2) 8-12 suggested keywords (high-intent, local/geo, lean into what converts) and 8-12 negative keywords (cheap/price-shopper, out-of-area, off-offering terms to exclude).
 3) Ad extensions: 4-6 callouts (each <= 25 chars) and 4 sitelinks (each with short link text <= 25 chars and a one-line description <= 35 chars).${withAssets ? "\n4) Performance Max / Display assets: 5 short headlines (<= 30 chars), 1 long headline (<= 90 chars) and 3-4 descriptions (<= 90 chars)." : ""}
@@ -124,6 +145,22 @@ You are choosing the campaign STRUCTURE, not the ad copy. Apply lead-gen best pr
 - Interests: 4–6 Meta detailed-targeting interest names matched to this business's likely buyers.
 - Names: a short campaign name and ad-set name a tradie would recognise.
 Return ONLY valid JSON: {"objective": string, "dailyBudgetAud": number, "interests": string[], "campaignName": string, "adSetName": string, "rationale": string (one plain-English line on why this budget + objective)}`;
+}
+
+// "Write ads from Hazel's recommendations": turn the coach's recommended angles
+// into ready-to-load draft ads, grounded in the attached creative when present.
+export function strategyAdsPrompt(p: BusinessProfile, strategy: string, angles: string[], opts?: CopyContext) {
+  const angleList = angles.length ? angles.map((a, i) => `${i + 1}. ${a}`).join("\n") : "(no explicit angles — derive 3 strong ones from the strategy + business)";
+  return `Turn Hazel's recommended angles into ready-to-run paid Meta ad drafts for ${businessName(p)} (a ${businessType(p)} business). The owner will load these straight into the Ad Creator, so make each one finished and on-strategy.
+
+RECOMMENDED ANGLES TO TURN INTO ADS:
+${angleList}
+${strategy ? `\nSTRATEGY CONTEXT: ${strategy}` : ""}${copyContext(opts)}
+
+Business context: ${bizContext(p, [])}
+
+Write ONE focused ad per angle (Meta lengths: primary text <= 125, headline <= 40, link description <= 30). ${opts?.imageDescription || opts?.imageKeyPoints?.length ? "Ground every ad in what's actually in the attached creative." : ""} Keep each sharp and different — sell the angle, no fluff. Pick a CTA per ad from exactly: ${META_CTAS.join(", ")}.
+Return ONLY valid JSON: {"drafts":[{"angle":string,"primaryText":string,"headline":string,"description":string,"cta":string}]}`;
 }
 
 // Creative reviewer: judges the ACTUAL uploaded photo(s) like a world-class
@@ -151,10 +188,14 @@ Give SPECIFIC, actionable fixes — never vague praise. Good: "shoot straight-on
 
 Classify each image's style as EXACTLY one of: ${CREATIVE_STYLES.join(", ")}.
 
+For EACH image also (so the rest of Hazel's tools can write copy about the real photo):
+- DESCRIBE plainly what's actually IN it — the space, the hero fixtures, lighting, materials, finish (e.g. "finished bathroom, freestanding stone bath, large-format tiles, big window with natural light").
+- EXTRACT the key selling points a marketer would LEAD with (e.g. "hero is the freestanding bath", "premium stone finish", "before/after potential", "feels bright and spacious"). 2–4 short points.
+
 Score each: "strong" ${strong}, "ok" (works but won't stand out), or "weak" (will be scrolled past). Also give a 0-100 score. Be honest about confidence — this is an expert PREDICTION, not a guarantee.${multi ? "\n\nThen RANK all images best-to-worst and say which ONE to lead with and why." : ""}
 ${learned ? `\nTHIS ACCOUNT'S REAL RESULTS SO FAR (trust this over generic best-practice — say so when it applies): ${learned}\n` : ""}
 Images are provided in order (index 0 first). Return ONLY valid JSON, no markdown, exactly:
-{"images":[{"index":number,"verdict":"strong"|"ok"|"weak","score":number,"style":string,"gut":string (one line: stop or scroll, and the single biggest reason),"reasons":[{"factor":string,"rating":"good"|"weak","note":string}],"fixes":string[],"wow":string (the one thing that would most lift it),"confidence":"high"|"medium"|"low"}],"ranking":number[] (image indices best-to-worst${multi ? "" : "; single element"}),"leadWith":{"index":number,"why":string},"note":string (one honest line that this is a prediction, plus any data caveat)}`;
+{"images":[{"index":number,"verdict":"strong"|"ok"|"weak","score":number,"style":string,"description":string (plain description of what's actually in the image),"keyPoints":string[] (2-4 selling points to lead with),"gut":string (one line: stop or scroll, and the single biggest reason),"reasons":[{"factor":string,"rating":"good"|"weak","note":string}],"fixes":string[],"wow":string (the one thing that would most lift it),"confidence":"high"|"medium"|"low"}],"ranking":number[] (image indices best-to-worst${multi ? "" : "; single element"}),"leadWith":{"index":number,"why":string},"note":string (one honest line that this is a prediction, plus any data caveat)}`;
 }
 
 // Creative reviewer for VIDEO. The model is shown SAMPLED FRAMES (not full
@@ -182,10 +223,11 @@ Judge it on: the HOOK in the first ~3 seconds (does the opening frame grab — a
 Give SPECIFIC, actionable fixes — never vague praise. Good: "open on the finished freestanding bath, not the empty room", "lead with the before within the first second so the transformation lands", "it's too dark in the opening — shoot in natural light", "add a bold on-screen caption for muted autoplay". Bad: "make it pop".
 
 Classify the video's style as EXACTLY one of: ${CREATIVE_STYLES.join(", ")}.
+Also (so Hazel's other tools can write copy about the real footage): DESCRIBE plainly what's in the video from these frames (space, hero fixtures, lighting, materials, any before/after), and EXTRACT 2–4 key selling points a marketer would LEAD with.
 Score it: "strong" (thumb-stopper), "ok" (works but won't stand out), or "weak" (will be scrolled past), plus a 0-100 score. Be honest about confidence — this is an expert PREDICTION from sampled frames, not a guarantee.
 ${learned ? `\nTHIS ACCOUNT'S REAL RESULTS SO FAR (trust this over generic best-practice — say so when it applies): ${learned}\n` : ""}
 Return ONLY valid JSON, no markdown, exactly:
-{"images":[{"index":0,"verdict":"strong"|"ok"|"weak","score":number,"style":string,"gut":string (one line: stop or scroll in the first 3s, and the single biggest reason),"reasons":[{"factor":string,"rating":"good"|"weak","note":string}],"fixes":string[],"wow":string (the one thing that would most lift it),"confidence":"high"|"medium"|"low"}],"ranking":[0],"leadWith":{"index":0,"why":string},"note":string (one honest line: based on sampled frames, not full motion — a prediction)}`;
+{"images":[{"index":0,"verdict":"strong"|"ok"|"weak","score":number,"style":string,"description":string (plain description of what's in the video),"keyPoints":string[] (2-4 selling points to lead with),"gut":string (one line: stop or scroll in the first 3s, and the single biggest reason),"reasons":[{"factor":string,"rating":"good"|"weak","note":string}],"fixes":string[],"wow":string (the one thing that would most lift it),"confidence":"high"|"medium"|"low"}],"ranking":[0],"leadWith":{"index":0,"why":string},"note":string (one honest line: based on sampled frames, not full motion — a prediction)}`;
 }
 
 // ---- Marketing Coach -------------------------------------------------------
