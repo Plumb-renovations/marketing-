@@ -16,6 +16,7 @@ import {
   Scale,
   Megaphone,
   Compass,
+  MessagesSquare,
   Plug,
   Building2,
   Zap,
@@ -169,6 +170,7 @@ export const NAV: NavGroup[] = [
     tier: "primary",
     items: [
       { id: "leads", label: "Inbox", icon: Inbox },
+      { id: "inbox", label: "Messages", icon: MessagesSquare },
       { id: "pipeline", label: "Pipeline", icon: CalendarRange },
       { id: "revenue", label: "Won jobs", icon: Trophy },
     ],
