@@ -150,6 +150,19 @@ export async function POST(req: Request) {
   }
 
   console.log("[meta-leadgen] done:", JSON.stringify({ received, dropped }));
+
+  // Unified inbox: also ingest any FB Page / IG messaging events that arrive on
+  // this Page callback. Best-effort + isolated so it can NEVER affect leadgen.
+  // (Nothing flows until messaging permissions are approved + the Page is
+  // subscribed to the `messages` field — see lib/inbox.)
+  try {
+    const { ingestMetaMessaging } = await import("@/lib/inbox/ingest");
+    const n = await ingestMetaMessaging(supabase, body);
+    if (n) console.log(`[meta-inbox] stored ${n} message(s)`);
+  } catch (e) {
+    console.error("[meta-inbox] ingest failed:", (e as Error).message);
+  }
+
   // Always 200 quickly so Meta doesn't retry/disable the webhook.
   return NextResponse.json({ received, dropped: dropped.length });
 }

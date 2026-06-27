@@ -38,3 +38,26 @@ export async function getPageLeadgenSubscription(
   const subscribed = apps.some((a) => (a?.subscribed_fields || []).includes("leadgen"));
   return { subscribed, apps };
 }
+
+// The full set of webhook fields the app is subscribed to on a Page (e.g.
+// "leadgen", "messages"). Used by the inbox to report honestly whether messaging
+// will actually flow in.
+export async function getPageSubscribedFields(client: MetaClient, pageId: string): Promise<string[]> {
+  const pc = await pageScopedClient(client, pageId);
+  const res: any = await pc.get(`${pageId}/subscribed_apps`);
+  const apps: any[] = Array.isArray(res?.data) ? res.data : [];
+  const fields = new Set<string>();
+  for (const a of apps) for (const f of a?.subscribed_fields || []) fields.add(String(f));
+  return Array.from(fields);
+}
+
+// Subscribe the Page to the messaging webhook fields (go-live step, once
+// pages_messaging / instagram_manage_messages are approved). Keeps leadgen.
+export async function subscribePageMessages(
+  client: MetaClient,
+  pageId: string,
+): Promise<{ ok: boolean }> {
+  const pc = await pageScopedClient(client, pageId);
+  await pc.post(`${pageId}/subscribed_apps`, { subscribed_fields: "leadgen,messages,messaging_postbacks" });
+  return { ok: true };
+}
