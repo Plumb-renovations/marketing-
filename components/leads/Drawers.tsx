@@ -12,6 +12,7 @@ import { audFmt, quoteTotals, leadValue, uid } from "@/lib/domain/format";
 import { telHref } from "@/lib/leads/formData";
 import type { Lead, Quote, LineItem } from "@/lib/domain/types";
 import { useData } from "@/components/DataProvider";
+import LeadJourney from "@/components/leads/LeadJourney";
 
 /* --------------------------- LEAD DRAWER ------------------------------- */
 function LeadDrawer({ lead, onClose, actions }: { lead: Lead; onClose: () => void; actions: ReturnType<typeof useData>["actions"] }) {
@@ -55,6 +56,11 @@ function LeadDrawer({ lead, onClose, actions }: { lead: Lead; onClose: () => voi
                 <optgroup label="Organic">{ORGANIC_KEYS.map((k) => <option key={k} value={k}>{SOURCES[k].label}</option>)}</optgroup>
               </select>
             </div>
+          </div>
+
+          {/* Hazel's Lead Journey Sales Coach — capture, coaching, follow-up. */}
+          <div className="mt-5 border-t border-slate-800 pt-4">
+            <LeadJourney leadId={lead.id} />
           </div>
 
           {/* The full lead-form submission, exactly as the lead filled it in. */}
