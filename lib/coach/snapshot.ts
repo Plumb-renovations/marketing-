@@ -70,6 +70,7 @@ export interface CoachSnapshot {
   leads: CoachLeads;
   targets: ResolvedTargets;
   confidence: "early" | "building" | "solid";
+  lastPostedAt: string | null; // most recent organic post (for "haven't posted" nudge)
 }
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
@@ -125,6 +126,24 @@ export async function buildSnapshot(supabase: SupabaseClient, orgId: string): Pr
     /* leads table issue — coach still runs on best-effort */
   }
 
+  // ---- Last organic post (for the "haven't posted in a while" nudge) ----
+  let lastPostedAt: string | null = null;
+  try {
+    const { data: posted } = await supabase
+      .from("posts")
+      .select("published_at, scheduled_at, status")
+      .eq("org_id", orgId)
+      .in("status", ["posted", "published"])
+      .order("published_at", { ascending: false })
+      .limit(20);
+    for (const p of posted || []) {
+      const when = (p as any).published_at || (p as any).scheduled_at || null;
+      if (when && (!lastPostedAt || when > lastPostedAt)) lastPostedAt = when;
+    }
+  } catch {
+    /* posts table issue — skip the nudge */
+  }
+
   // ---- Meta (may be unconnected) ----
   const emptyAccount: CoachAccount = { spend: 0, leads: 0, impressions: 0, clicks: 0, ctr: 0, cpl: null, currency: "AUD", won: 0, costPerWon: null };
   const config = await getMetaConfig(orgId);
@@ -135,6 +154,7 @@ export async function buildSnapshot(supabase: SupabaseClient, orgId: string): Pr
       leads,
       targets: calibrateTargets({ spend: 0, leads: 0, costPerWon: null }, {}),
       confidence: "early",
+      lastPostedAt,
     };
   }
 
@@ -154,6 +174,7 @@ export async function buildSnapshot(supabase: SupabaseClient, orgId: string): Pr
       leads,
       targets: calibrateTargets({ spend: 0, leads: 0, costPerWon: null }, await fetchAdTargets(supabase)),
       confidence: "early",
+      lastPostedAt,
     };
   }
 
@@ -241,5 +262,6 @@ export async function buildSnapshot(supabase: SupabaseClient, orgId: string): Pr
     leads,
     targets,
     confidence,
+    lastPostedAt,
   };
 }

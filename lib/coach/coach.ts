@@ -20,12 +20,19 @@ export interface CoachInsight {
   signalAction?: CoachSignal["action"];
 }
 
+export interface NotWorking {
+  title: string;
+  why: string;
+  recommendation: string;
+}
+
 export interface CoachReport {
   connected: boolean;
   reconnect: boolean;
   confidence: "early" | "building" | "solid";
   headline: string;
   insights: CoachInsight[];
+  whatsNotWorking: NotWorking[];
   weekly: CoachSnapshot["weekly"];
   account: CoachSnapshot["meta"]["account"];
   leads: CoachSnapshot["leads"];
@@ -78,6 +85,7 @@ export async function buildCoachReport(supabase: SupabaseClient, orgId: string, 
   const byId = new Map(signals.map((s) => [s.id, s]));
 
   let insights: CoachInsight[] = [];
+  let whatsNotWorking: NotWorking[] = [];
   let aiError: string | undefined;
   let headline = "";
   let confidence = snapshot.confidence;
@@ -87,6 +95,9 @@ export async function buildCoachReport(supabase: SupabaseClient, orgId: string, 
     const ai: any = await runGenerator("coach", { dataBlock }, profile);
     headline = ai?.headline || "";
     if (ai?.confidence) confidence = ai.confidence;
+    whatsNotWorking = (Array.isArray(ai?.whatsNotWorking) ? ai.whatsNotWorking : [])
+      .map((w: any) => ({ title: String(w?.title || ""), why: String(w?.why || ""), recommendation: String(w?.recommendation || "") }))
+      .filter((w: NotWorking) => w.title);
     insights = (ai?.insights || []).map((i: any) => {
       const sig = i?.signalId ? byId.get(String(i.signalId)) : undefined;
       return {
@@ -112,12 +123,22 @@ export async function buildCoachReport(supabase: SupabaseClient, orgId: string, 
     }));
   }
 
+  // Brutal-honesty fallback: derive "what's not working" from the deterministic
+  // not-working / cut-waste signals so the truth shows even if the AI is down.
+  if (!whatsNotWorking.length) {
+    whatsNotWorking = signals
+      .filter((sig) => ["What's not working", "Cut waste", "Lead quality"].includes(sig.area))
+      .slice(0, 4)
+      .map((sig) => ({ title: sig.title, why: sig.detail, recommendation: "" }));
+  }
+
   return {
     connected: snapshot.meta.connected,
     reconnect: snapshot.meta.reconnect,
     confidence,
     headline,
     insights,
+    whatsNotWorking,
     weekly: snapshot.weekly,
     account: snapshot.meta.account,
     leads: snapshot.leads,
@@ -160,6 +181,9 @@ export function buildWeeklyEmail(report: CoachReport, businessName: string): { s
   const recs = report.insights.slice(0, 5);
   const recLines = recs.map((i, n) => `${n + 1}. ${i.title}${i.action ? ` — ${i.action}` : i.why ? ` — ${i.why}` : ""}`);
 
+  const notWorking = report.whatsNotWorking.slice(0, 4);
+  const nwLines = notWorking.map((w) => `• ${w.title}${w.recommendation ? ` — ${w.recommendation}` : w.why ? ` — ${w.why}` : ""}`);
+
   const text = [
     `Hazel's weekly marketing report for ${businessName}`,
     report.headline ? `\n${report.headline}` : "",
@@ -167,6 +191,7 @@ export function buildWeeklyEmail(report: CoachReport, businessName: string): { s
     ...facts.map((f) => `• ${f}`),
     `\nHAZEL'S RECOMMENDATIONS`,
     ...(recLines.length ? recLines : ["• You're in good shape — nothing urgent this week."]),
+    ...(nwLines.length ? [`\nWHAT'S NOT WORKING / WHAT I'D STOP`, ...nwLines] : []),
     report.confidence === "early" ? `\n(Early read — Hazel is using proven benchmarks while your data builds.)` : "",
   ].filter(Boolean).join("\n");
 
@@ -179,6 +204,7 @@ export function buildWeeklyEmail(report: CoachReport, businessName: string): { s
     <ul style="padding-left:18px;color:#334155">${facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
     <h3 style="margin:18px 0 6px">Hazel's recommendations</h3>
     <ol style="padding-left:18px;color:#334155">${(recs.length ? recs : [{ title: "You're in good shape — nothing urgent this week.", action: "", why: "" } as CoachInsight]).map((i) => `<li><strong>${esc(i.title)}</strong>${i.action ? ` — ${esc(i.action)}` : i.why ? ` — ${esc(i.why)}` : ""}</li>`).join("")}</ol>
+    ${notWorking.length ? `<h3 style="margin:18px 0 6px;color:#b91c1c">What's not working / what I'd stop</h3><ul style="padding-left:18px;color:#334155">${notWorking.map((w) => `<li><strong>${esc(w.title)}</strong>${w.recommendation ? ` — ${esc(w.recommendation)}` : w.why ? ` — ${esc(w.why)}` : ""}</li>`).join("")}</ul>` : ""}
     ${report.confidence === "early" ? `<p style="color:#94a3b8;font-size:12px">Early read — Hazel is using proven benchmarks while your data builds.</p>` : ""}
   </div>`;
 

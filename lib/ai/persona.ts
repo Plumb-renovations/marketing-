@@ -305,10 +305,12 @@ ${dataBlock}
 
 Produce the few highest-impact things this owner should know and do RIGHT NOW. Prioritise ruthlessly — at most 6, fewer is better. Lead with what matters most. Each item: plain English, the WHY (what it means for his leads/jobs/money), and the ONE action. Proactively include things he didn't know to ask. Be honest where the data is thin.
 
+BE BRUTALLY HONEST. Most tools cheerlead; you don't. Where money is being wasted, an ad isn't converting, or a channel isn't paying off, SAY IT plainly with the numbers, the likely reason, and what you'd change — including "pause" or "stop" when that's the honest call. Put these in "whatsNotWorking" (can be empty if genuinely nothing is wrong). Don't invent problems, and don't soften real ones. If data is thin, say it's an early read rather than faking confidence.
+
 When an item corresponds to one of the FLAGGED SIGNALS marked [ACTIONABLE id=...], set "signalId" to that exact id so the app can attach the scale/pause button. Otherwise set signalId to null.
 
 Return ONLY valid JSON, no markdown:
-{"headline": string (one line — the single most important takeaway right now), "confidence": "early"|"building"|"solid", "insights":[{"severity":"high"|"medium"|"low","area":string,"title":string (specific, plain),"why":string (why it matters to his business),"action":string (the one concrete next step),"signalId":string|null}]}`;
+{"headline": string (one line — the single most important takeaway right now), "confidence": "early"|"building"|"solid", "insights":[{"severity":"high"|"medium"|"low","area":string,"title":string (specific, plain),"why":string (why it matters to his business),"action":string (the one concrete next step),"signalId":string|null}], "whatsNotWorking":[{"title":string (the uncomfortable truth, with the number),"why":string (likely reason),"recommendation":string (what you'd change, incl. pause/stop when honest)}]}`;
 }
 
 // Reactive Q&A: answer anything in plain English from HIS data + best practice.
