@@ -36,8 +36,21 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  if (!cfg.adId || !cfg.campaignName || !(cfg.dailyBudgetAud > 0)) {
-    return NextResponse.json({ error: "missing adId, campaignName or dailyBudgetAud" }, { status: 400 });
+  if (!cfg.adId) return NextResponse.json({ error: "missing adId" }, { status: 400 });
+  // Placement validation. A new ad set (new campaign or under an existing one)
+  // needs a name + budget; adding to an existing ad set inherits both.
+  const creatingAdset = cfg.placement !== "existing_adset";
+  if (cfg.placement === "existing_adset" && !cfg.existingAdsetId) {
+    return NextResponse.json({ error: "missing_adset", message: "Pick an existing ad set to add the ad to." }, { status: 400 });
+  }
+  if (cfg.placement === "existing_campaign" && !cfg.existingCampaignId) {
+    return NextResponse.json({ error: "missing_campaign", message: "Pick an existing campaign for the new ad set." }, { status: 400 });
+  }
+  if (creatingAdset && !(cfg.dailyBudgetAud > 0)) {
+    return NextResponse.json({ error: "missing dailyBudgetAud", message: "Set a daily budget for the new ad set." }, { status: 400 });
+  }
+  if ((cfg.placement ?? "new") === "new" && !cfg.campaignName) {
+    return NextResponse.json({ error: "missing campaignName" }, { status: 400 });
   }
 
   // Resolve this org's Meta connection (its own connected account, or the env
@@ -59,6 +72,18 @@ export async function POST(req: Request) {
   if (cfg.longitude == null && profile.serviceAreaLng != null) cfg.longitude = profile.serviceAreaLng;
   if (cfg.radiusKm == null && profile.serviceRadiusKm) cfg.radiusKm = profile.serviceRadiusKm;
   if ((!cfg.interests || !cfg.interests.length) && profile.audienceInterests.length) cfg.interests = profile.audienceInterests;
+
+  // LEAD-FORM CONTINUITY: adding to an existing ad set must use that ad set's
+  // own Instant Form, so the new ad's leads flow into Hazel exactly like the
+  // running ads. Inherit it when the client didn't pin one explicitly.
+  if (cfg.placement === "existing_adset" && cfg.existingAdsetId && !cfg.leadFormId) {
+    try {
+      const { leadFormOfAdSet } = await import("@/lib/integrations/meta/leadForms");
+      cfg.leadFormId = (await leadFormOfAdSet(metaConfig, cfg.existingAdsetId)) || undefined;
+    } catch {
+      /* fall back to whatever the client sent (its default form) */
+    }
+  }
 
   // Load the local draft (RLS scopes to the member's org).
   const { data: ad, error: adErr } = await supabase.from("ads").select("*").eq("id", cfg.adId).maybeSingle();

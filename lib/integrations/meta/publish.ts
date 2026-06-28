@@ -61,24 +61,48 @@ export function mapCta(cta: string): string {
   }
 }
 
-// Create the campaign + ad set (everything up to the creative). Shared by the
-// image and video ad flows so targeting/budget/schedule behave identically.
-async function createCampaignAndAdset(
+// Map a friendly CTA + lead form into a Meta call_to_action. When a lead form
+// is chosen, the CTA opens the SAME Instant Form the existing lead ads use, so
+// submissions keep firing the leadgen webhook into Hazel. No form → link ad.
+function buildCallToAction(cfg: LaunchConfig, ctaLabel: string, link: string) {
+  const type = mapCta(ctaLabel);
+  return cfg.leadFormId ? { type, value: { lead_gen_form_id: cfg.leadFormId, link } } : { type, value: { link } };
+}
+
+// Resolve WHERE the ad goes (the new placement options), creating only what's
+// needed:
+//   • existing_adset    → reuse the ad set as-is (no campaign/adset created)
+//   • existing_campaign → new ad set under the chosen campaign
+//   • new (default)     → new campaign + new ad set
+// Shared by the image + video flows so targeting/budget/schedule behave the same.
+async function resolveCampaignAndAdset(
   client: MetaClient,
   cfg: LaunchConfig,
   status: "ACTIVE" | "PAUSED",
-): Promise<{ externalCampaignId: string; externalAdsetId: string; pageId?: string }> {
+): Promise<{ externalCampaignId: string; externalAdsetId: string; pageId?: string; createdAdset: boolean }> {
   const pageId = cfg.pageId || client.pageId;
 
-  // Campaign. special_ad_categories is REQUIRED (empty array = none).
-  const campaign: any = await client.post(`${client.adAccountPath()}/campaigns`, {
-    name: cfg.campaignName,
-    objective: cfg.objective || "OUTCOME_LEADS",
-    status,
-    special_ad_categories: [],
-    is_adset_budget_sharing_enabled: false,
-  });
-  const externalCampaignId = String(campaign?.id);
+  // Add the new ad straight into an existing ad set — joins the running ads so
+  // Meta tests them together (no learning-signal split). Nothing is created here.
+  if (cfg.placement === "existing_adset" && cfg.existingAdsetId) {
+    return { externalCampaignId: cfg.existingCampaignId || "", externalAdsetId: cfg.existingAdsetId, pageId, createdAdset: false };
+  }
+
+  // Otherwise we create a new ad set — under an existing campaign, or a new one.
+  let externalCampaignId: string;
+  if (cfg.placement === "existing_campaign" && cfg.existingCampaignId) {
+    externalCampaignId = cfg.existingCampaignId;
+  } else {
+    // Campaign. special_ad_categories is REQUIRED (empty array = none).
+    const campaign: any = await client.post(`${client.adAccountPath()}/campaigns`, {
+      name: cfg.campaignName,
+      objective: cfg.objective || "OUTCOME_LEADS",
+      status,
+      special_ad_categories: [],
+      is_adset_budget_sharing_enabled: false,
+    });
+    externalCampaignId = String(campaign?.id);
+  }
 
   // LOCATION: a radius around lat/lng — defaults to the Gold Coast / Tweed
   // service area, capped at Meta's 80km custom-location max.
@@ -123,11 +147,13 @@ async function createCampaignAndAdset(
     targeting,
     promoted_object: { page_id: pageId },
   };
+  // Instant-form lead ads deliver the form on the ad itself.
+  if (cfg.leadFormId) adsetParams.destination_type = "ON_AD";
   if (startSec) adsetParams.start_time = startSec;
   if (endSec) adsetParams.end_time = endSec;
 
   const adset: any = await client.post(`${client.adAccountPath()}/adsets`, adsetParams);
-  return { externalCampaignId, externalAdsetId: String(adset?.id), pageId };
+  return { externalCampaignId, externalAdsetId: String(adset?.id), pageId, createdAdset: true };
 }
 
 // Builds the full Meta IMAGE ad (image → campaign → ad set → creative → ad).
@@ -144,10 +170,10 @@ export async function publishMetaAd(
     let imageHash: string | undefined;
     if (creative.imageDataUrl) imageHash = await uploadAdImageDataUrl(client, creative.imageDataUrl);
 
-    // b+c. Campaign + ad set.
-    const { externalCampaignId, externalAdsetId, pageId } = await createCampaignAndAdset(client, cfg, status);
+    // b+c. Resolve the placement (new / existing campaign / existing ad set).
+    const { externalCampaignId, externalAdsetId, pageId } = await resolveCampaignAndAdset(client, cfg, status);
 
-    // d. Creative.
+    // d. Creative — carries the chosen lead form so leads keep reaching Hazel.
     const adcreative: any = await client.post(`${client.adAccountPath()}/adcreatives`, {
       name: `${cfg.campaignName} — Creative`,
       object_story_spec: {
@@ -158,7 +184,7 @@ export async function publishMetaAd(
           name: creative.headline,
           description: creative.description,
           ...(imageHash ? { image_hash: imageHash } : {}),
-          call_to_action: { type: mapCta(creative.cta), value: { link } },
+          call_to_action: buildCallToAction(cfg, creative.cta, link),
         },
       },
     });
@@ -202,6 +228,7 @@ export interface VideoAdContext {
   cta: string;
   link: string;
   mode: "launch" | "paused";
+  leadFormId?: string; // same Instant Form the existing lead ads use
 }
 
 // Kick off a VIDEO ad: campaign + ad set + advideo upload. The creative + ad are
@@ -218,7 +245,7 @@ export async function startMetaVideoAd(
 
   const videoId = await uploadAdVideo(client, videoUrl, `${cfg.campaignName} — Video`);
   const imageHash = creative.imageDataUrl ? await uploadAdImageDataUrl(client, creative.imageDataUrl) : undefined;
-  const { externalCampaignId, externalAdsetId, pageId } = await createCampaignAndAdset(client, cfg, status);
+  const { externalCampaignId, externalAdsetId, pageId } = await resolveCampaignAndAdset(client, cfg, status);
 
   return {
     campaignName: cfg.campaignName,
@@ -233,6 +260,7 @@ export async function startMetaVideoAd(
     cta: creative.cta,
     link,
     mode: cfg.mode,
+    leadFormId: cfg.leadFormId,
   };
 }
 
@@ -255,7 +283,9 @@ export async function finishMetaVideoAd(
     message: ctx.primaryText,
     title: ctx.headline,
     link_description: ctx.description,
-    call_to_action: { type: mapCta(ctx.cta), value: { link: ctx.link } },
+    call_to_action: ctx.leadFormId
+      ? { type: mapCta(ctx.cta), value: { lead_gen_form_id: ctx.leadFormId, link: ctx.link } }
+      : { type: mapCta(ctx.cta), value: { link: ctx.link } },
   };
   if (imageHash) videoData.image_hash = imageHash;
   else if (thumbUrl) videoData.image_url = thumbUrl;
