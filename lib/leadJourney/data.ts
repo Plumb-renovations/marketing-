@@ -9,8 +9,6 @@ import { analysePatterns } from "./coach";
 // existing leads table + Anthropic pipeline.
 
 const DAY = 86_400_000;
-const COLS =
-  "id,name,project,source,stage,lead_date,created_at,journey_stage,contact_outcome,contacted_at,quote_sent_at,followup_step,followup_due,last_touch_at,qual,lost_reason,lost_detail,phone";
 
 export function mapJourneyLead(r: any): JourneyLead {
   return {
@@ -23,17 +21,40 @@ export function mapJourneyLead(r: any): JourneyLead {
   };
 }
 
-export async function fetchJourneyLeads(supabase: SupabaseClient, orgId: string): Promise<JourneyLead[]> {
-  const { data } = await supabase
-    .from("leads").select(COLS).eq("org_id", orgId).is("archived_at", null)
+// Read the org's leads for the Sales Coach the SAME way the board / lead list
+// does (lib/data/leads.fetchLeads): select * and rely on RLS — is_member(org_id)
+// — for tenancy, NOT an extra `.eq("org_id", …)` filter.
+//
+// Why this matters (the "Call now shows no uncontacted leads" bug): the board
+// has no org filter, but this query used `.eq("org_id", getOrgId())`. getOrgId
+// resolves to the user's EARLIEST membership; when a lead lives under a
+// different membership org (the documented multi-tenant footgun), that filter
+// silently dropped it here while the board still listed it via RLS. Selecting *
+// instead of an explicit column list also means a not-yet-migrated journey
+// column can never error the whole query into an empty []. And we now surface
+// the error instead of swallowing it, so a real failure can't masquerade as
+// "no uncontacted leads — you're on top of it".
+export async function fetchJourneyLeads(supabase: SupabaseClient, _orgId?: string): Promise<JourneyLead[]> {
+  const { data, error } = await supabase
+    .from("leads").select("*").is("archived_at", null)
     .order("created_at", { ascending: false }).limit(500);
+  if (error) {
+    console.error("[journey] fetchJourneyLeads failed:", error.message);
+    throw error;
+  }
   return (data || []).map(mapJourneyLead);
 }
 
 export async function getJourney(supabase: SupabaseClient, orgId: string, leadId: string) {
-  const { data: row } = await supabase.from("leads").select(`${COLS},briefing`).eq("org_id", orgId).eq("id", leadId).maybeSingle();
+  // Look the lead up by its (unique) id and rely on RLS for tenancy rather than
+  // an extra `.eq("org_id", …)` filter — so a lead the Sales Coach now lists
+  // (which may live under a different membership org than getOrgId resolved to)
+  // still opens in the drawer. Derive the real org from the row for the
+  // sub-queries below so they stay scoped to the lead's actual tenant.
+  const { data: row } = await supabase.from("leads").select("*").eq("id", leadId).maybeSingle();
   if (!row) return null;
   const r: any = row;
+  orgId = r.org_id ?? orgId;
 
   // Backfill quote_sent_at when a quote has gone out by ANY path (board move to
   // Quotes, the quote builder, or a branded quote) so the follow-up cadence
