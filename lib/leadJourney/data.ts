@@ -33,8 +33,28 @@ export async function fetchJourneyLeads(supabase: SupabaseClient, orgId: string)
 export async function getJourney(supabase: SupabaseClient, orgId: string, leadId: string) {
   const { data: row } = await supabase.from("leads").select(`${COLS},briefing`).eq("org_id", orgId).eq("id", leadId).maybeSingle();
   if (!row) return null;
+  const r: any = row;
+
+  // Backfill quote_sent_at when a quote has gone out by ANY path (board move to
+  // Quotes, the quote builder, or a branded quote) so the follow-up cadence
+  // starts — fixes the Sales Coach staying on "Book the site visit".
+  if (!r.quote_sent_at && (r.stage === "quote" || r.stage === "won")) {
+    let sentAt: string | null = null;
+    try {
+      const { data: docs } = await supabase.from("quote_docs").select("sent_at, created_at, status").eq("org_id", orgId).eq("lead_id", leadId).order("created_at", { ascending: true });
+      const sentDoc = (docs || []).find((d: any) => ["sent", "viewed", "accepted", "declined"].includes(d.status));
+      sentAt = sentDoc?.sent_at || sentDoc?.created_at || null;
+    } catch { /* quote_docs optional */ }
+    const quoteSentAt = sentAt || new Date().toISOString();
+    const patch: Record<string, any> = { quote_sent_at: quoteSentAt, updated_at: new Date().toISOString() };
+    if (!r.journey_stage || ["new", "contacted", "qualified"].includes(r.journey_stage)) patch.journey_stage = "quote_sent";
+    if ((r.followup_step ?? 0) === 0 && !r.followup_due) patch.followup_due = new Date(Date.parse(quoteSentAt) + CADENCE[0].day * DAY).toISOString();
+    await supabase.from("leads").update(patch).eq("id", leadId);
+    Object.assign(r, { quote_sent_at: quoteSentAt, journey_stage: patch.journey_stage ?? r.journey_stage, followup_due: patch.followup_due ?? r.followup_due });
+  }
+
   const { data: events } = await supabase.from("lead_journey_events").select("*").eq("org_id", orgId).eq("lead_id", leadId).order("created_at", { ascending: false }).limit(50);
-  return { lead: mapJourneyLead(row), briefing: (row as any).briefing ?? null, events: events || [] };
+  return { lead: mapJourneyLead(r), briefing: r.briefing ?? null, events: events || [] };
 }
 
 async function insertEvent(supabase: SupabaseClient, orgId: string, leadId: string, e: { kind: string; channel?: string | null; source?: string; body?: string; extracted?: any }) {
@@ -79,6 +99,43 @@ export async function logUpdate(supabase: SupabaseClient, orgId: string, leadId:
   await supabase.from("leads").update(patch).eq("id", leadId);
   await insertEvent(supabase, orgId, leadId, { kind: "note", source, body, extracted: ai });
   return { extraction: ai };
+}
+
+// Log a contact OUTCOME on a new/contacted lead. Records first contact + the
+// outcome (which the Marketing Coach reads to judge lead QUALITY by source).
+//   no_answer  → contacted; pre-writes an intro text so the next call is expected
+//   qualified  → moves to qualified
+//   unqualified→ out of the active pipeline with a reason
+export async function setOutcome(supabase: SupabaseClient, orgId: string, leadId: string, outcome: "no_answer" | "qualified" | "unqualified", detail?: string) {
+  const cur = await getJourney(supabase, orgId, leadId);
+  if (!cur) throw new Error("lead not found");
+  const now = new Date().toISOString();
+  const patch: Record<string, any> = { contact_outcome: outcome, contacted_at: cur.lead.contactedAt || now, last_touch_at: now, updated_at: now };
+  let message: string | undefined;
+
+  if (outcome === "qualified") {
+    patch.journey_stage = "qualified";
+    if (cur.lead.stage === "new") patch.stage = "qualified";
+  } else if (outcome === "no_answer") {
+    patch.journey_stage = "contacted";
+    try {
+      const profile = await getBusinessProfile(orgId);
+      const ai: any = await runGenerator("lead-message", { journey: { name: cur.lead.name, channel: "text", tone: "intro text after a missed call (so they know who's calling)", qual: cur.lead.qual } }, profile);
+      message = String(ai?.message || "");
+    } catch { /* message optional */ }
+  } else if (outcome === "unqualified") {
+    patch.journey_stage = "lost"; patch.stage = "lost"; patch.lost_reason = "unqualified";
+    if (detail) patch.lost_detail = detail;
+  }
+
+  await supabase.from("leads").update(patch).eq("id", leadId);
+  await insertEvent(supabase, orgId, leadId, {
+    kind: outcome === "no_answer" ? "call" : "stage",
+    channel: outcome === "no_answer" ? "call" : null,
+    source: "typed",
+    body: `Outcome: ${outcome.replace("_", " ")}${detail ? ` — ${detail}` : ""}`,
+  });
+  return { message, journey: await getJourney(supabase, orgId, leadId) };
 }
 
 // Manually set the journey stage (e.g. "Mark quote sent", "Won").

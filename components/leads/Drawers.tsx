@@ -17,6 +17,7 @@ import LeadJourney from "@/components/leads/LeadJourney";
 /* --------------------------- LEAD DRAWER ------------------------------- */
 function LeadDrawer({ lead, onClose, actions }: { lead: Lead; onClose: () => void; actions: ReturnType<typeof useData>["actions"] }) {
   const [lostOpen, setLostOpen] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
   const stage = STAGES.find((s) => s.id === lead.stage)!;
   return (
     <>
@@ -169,6 +170,19 @@ function LeadDrawer({ lead, onClose, actions }: { lead: Lead; onClose: () => voi
           )}
           {(lead.stage === "won" || lead.stage === "lost") && (
             <button onClick={() => actions.reopen(lead.id)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-slate-800"><RotateCcw className="h-4 w-4" /> Reopen to Quotes</button>
+          )}
+
+          {/* Permanent delete — for test/junk leads that must stay gone. */}
+          {!confirmDel ? (
+            <button onClick={() => setConfirmDel(true)} className="mt-2 flex w-full items-center justify-center gap-1.5 text-[11px] text-slate-500 transition hover:text-red-300"><Trash2 className="h-3 w-3" /> Delete permanently</button>
+          ) : (
+            <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/5 p-2.5">
+              <p className="text-[11px] text-red-200">Permanently delete <strong>{lead.name}</strong>? This can't be undone, and it won't re-import from Meta.</p>
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => setConfirmDel(false)} className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800">Cancel</button>
+                <button onClick={() => { actions.deleteLead(lead.id); onClose(); }} className="inline-flex items-center gap-1.5 rounded-lg bg-red-400 px-3 py-1.5 text-xs font-medium text-slate-950 transition hover:bg-red-300"><Trash2 className="h-3.5 w-3.5" /> Delete permanently</button>
+              </div>
+            </div>
           )}
         </div>
       </aside>
