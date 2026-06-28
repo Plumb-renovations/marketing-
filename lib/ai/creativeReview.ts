@@ -13,6 +13,8 @@ export interface CreativeVerdictImage {
   verdict: "strong" | "ok" | "weak";
   score: number;
   style: string;
+  description?: string; // what's actually in the image/video
+  keyPoints?: string[]; // selling points to lead with — fed to the Ad Creator
   gut: string;
   reasons: ReasonItem[];
   fixes: string[];

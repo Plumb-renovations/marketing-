@@ -28,6 +28,8 @@ export interface SelectedMedia {
   videoUrl?: string; // public URL (video, after upload)
   posterDataUrl?: string; // first frame — ad/Reel thumbnail + copy reference
   durationSec?: number;
+  description?: string; // what the reviewer saw — fed to the Ad Creator
+  keyPoints?: string[]; // selling points to lead with — fed to the Ad Creator
 }
 
 interface VideoState {
@@ -55,15 +57,22 @@ export default function CreativeReviewer({ onMedia, context = "paid" }: { onMedi
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
 
-  // Keep the studio's media in sync with the selection.
+  // Keep the studio's media in sync with the selection — including the reviewer's
+  // description + key points for the chosen item, so the Ad Creator writes copy
+  // about the real creative.
   useEffect(() => {
+    const extras = (i: number) => {
+      const v = review?.images.find((im) => im.index === i);
+      return v ? { description: v.description, keyPoints: v.keyPoints } : {};
+    };
     if (video) {
-      onMedia(video.videoUrl ? { type: "video", videoUrl: video.videoUrl, posterDataUrl: video.poster, durationSec: video.durationSec } : null);
+      onMedia(video.videoUrl ? { type: "video", videoUrl: video.videoUrl, posterDataUrl: video.poster, durationSec: video.durationSec, ...extras(0) } : null);
       return;
     }
-    const url = leadIndex != null ? candidates[leadIndex] : candidates.length === 1 ? candidates[0] : null;
-    onMedia(url ? { type: "image", imageDataUrl: url } : null);
-  }, [candidates, leadIndex, video, onMedia]);
+    const idx = leadIndex != null ? leadIndex : candidates.length === 1 ? 0 : null;
+    const url = idx != null ? candidates[idx] : null;
+    onMedia(url ? { type: "image", imageDataUrl: url, ...extras(idx as number) } : null);
+  }, [candidates, leadIndex, video, review, onMedia]);
 
   const reset = () => { setReview(null); setLeadIndex(null); setError(""); setSyncMsg(""); };
 

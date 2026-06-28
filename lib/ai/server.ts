@@ -10,6 +10,7 @@ import {
   ideasPrompt,
   metaAdPrompt,
   googleAdPrompt,
+  strategyAdsPrompt,
   competitorBeatPrompt,
   campaignPlanPrompt,
   creativeReviewPrompt,
@@ -104,6 +105,10 @@ interface Payload {
   format?: string;
   dataBlock?: string; // coach / coach-ask account summary
   question?: string; // coach-ask
+  strategy?: string; // coach strategy fed into ad copy
+  imageDescription?: string; // creative reviewer's description of the attached media
+  imageKeyPoints?: string[]; // creative reviewer's selling points
+  angles?: string[]; // strategy-ads: angles to turn into drafts
 }
 
 // Dispatch a generator by kind. The org's Business Profile drives the system
@@ -122,10 +127,26 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
       return callJSON(buildContent(postPrompt(profile, payload.channels || [], payload.goal || "", leads), payload.photoDataUrl), 1024, sys);
     case "ideas":
       return callJSON(buildContent(ideasPrompt(profile, leads)), 700, sys);
-    case "meta-ad":
-      return callJSON(buildContent(metaAdPrompt(profile, payload.goal || "", leads), payload.photoDataUrl), 1400, sys);
-    case "google-ad":
-      return callJSON(buildContent(googleAdPrompt(profile, payload.goal || "", leads, !!payload.photoDataUrl), payload.photoDataUrl), 1800, sys);
+    case "meta-ad": {
+      const opts = { strategy: payload.strategy, imageDescription: payload.imageDescription, imageKeyPoints: payload.imageKeyPoints };
+      return callJSON(buildContent(metaAdPrompt(profile, payload.goal || "", leads, opts), payload.photoDataUrl), 1400, sys);
+    }
+    case "google-ad": {
+      const opts = { strategy: payload.strategy, imageDescription: payload.imageDescription, imageKeyPoints: payload.imageKeyPoints };
+      return callJSON(buildContent(googleAdPrompt(profile, payload.goal || "", leads, !!payload.photoDataUrl, opts), payload.photoDataUrl), 1800, sys);
+    }
+    case "strategy-ads":
+      return callJSON(
+        buildContent(
+          strategyAdsPrompt(profile, payload.strategy || "", payload.angles || [], {
+            imageDescription: payload.imageDescription,
+            imageKeyPoints: payload.imageKeyPoints,
+          }),
+          payload.photoDataUrl,
+        ),
+        1800,
+        sys,
+      );
     case "competitor-beat":
       return callJSON(buildContent(competitorBeatPrompt(profile, payload.competitorAds || "", payload.competitorName || "", payload.platform || "facebook", payload.format || "post", leads)), 1400, sys);
     case "campaign-plan":
@@ -145,4 +166,4 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
   }
 }
 
-export const VALID_KINDS = ["post", "ideas", "meta-ad", "google-ad", "competitor-beat", "campaign-plan", "creative-review", "coach", "coach-ask"];
+export const VALID_KINDS = ["post", "ideas", "meta-ad", "google-ad", "strategy-ads", "competitor-beat", "campaign-plan", "creative-review", "coach", "coach-ask"];

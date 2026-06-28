@@ -16,6 +16,8 @@ export interface PredictionInput {
   score?: number | null;
   style?: string | null;
   mediaType?: "image" | "video";
+  description?: string | null; // plain description of what's in the creative
+  keyPoints?: string[]; // selling points to lead with
   review: any;
 }
 
@@ -47,6 +49,8 @@ export async function upsertPredictions(
     score: it.score ?? null,
     style: it.style ?? null,
     media_type: it.mediaType ?? "image",
+    description: it.description ?? null,
+    key_points: it.keyPoints ?? [],
     review: it.review ?? {},
     model,
     thumb: it.thumb ?? null,

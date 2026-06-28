@@ -81,9 +81,50 @@ export async function generateMetaAd(args: {
   photoDataUrl: string | null;
   goal: string;
   leads: Lead[];
+  strategy?: string; // coach's current strategy brief
+  imageDescription?: string; // what the reviewer saw in the attached creative
+  imageKeyPoints?: string[]; // selling points to lead with
 }) {
   const j = await callAi("meta-ad", args);
   return { variations: (j.variations || []).slice(0, 3) };
+}
+
+// The coach's strategy brief + recommended angles, for the Ad Creator.
+export interface AdStrategy {
+  brief: string;
+  angles: string[];
+  perf: { spend: number; leads: number; cpl: number | null; won: number; currency: string; connected: boolean };
+  learned: string;
+}
+export async function fetchAdStrategy(): Promise<AdStrategy | null> {
+  try {
+    const res = await fetch("/api/ads/strategy", { cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// "Write ads from Hazel's recommendations" — coach angles → ready draft ads,
+// grounded in the attached creative's description/key points when present.
+export async function generateAdsFromStrategy(args: {
+  photoDataUrl?: string | null;
+  imageDescription?: string;
+  imageKeyPoints?: string[];
+}): Promise<{ angle: string; primaryText: string; headline: string; description: string; cta: string }[]> {
+  const res = await fetch("/api/ads/from-strategy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(args),
+  });
+  if (!res.ok) {
+    let detail = "";
+    try { const e = await res.json(); detail = e?.message || e?.error || ""; } catch {}
+    throw new Error(`Couldn't write ads${detail ? ": " + detail : ""}`);
+  }
+  const j = await res.json();
+  return Array.isArray(j.drafts) ? j.drafts : [];
 }
 
 export async function generateGoogleAd(args: {
