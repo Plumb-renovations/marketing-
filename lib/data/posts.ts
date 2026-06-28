@@ -17,6 +17,8 @@ function mapPost(row: any): Post {
     why: row.why ?? "",
     mediaType: row.media_type ?? "image",
     videoUrl: row.video_url ?? null,
+    autoPublish: row.auto_publish ?? false,
+    planCategory: row.plan_category ?? null,
   };
 }
 
@@ -36,6 +38,8 @@ function postRow(post: Post, orgId: string) {
     why: post.why ?? "",
     media_type: post.mediaType ?? "image",
     video_url: post.videoUrl ?? null,
+    auto_publish: post.autoPublish ?? false,
+    plan_category: post.planCategory ?? null,
   };
 }
 

@@ -91,6 +91,27 @@ Return ONLY valid JSON, no markdown, exactly these keys:
 {"caption": string, "hashtags": string[] (8-12 tags WITH leading #, empty array if GBP only), "cta": string, "suggestedTime": string (day + time window in AEST for this audience), "why": string (one sentence on why it should perform)}`;
 }
 
+// Auto content calendar: Hazel PLANS + WRITES a month/fortnight of organic
+// posts for a local trade business — deciding the cadence and content mix from
+// best practice so the owner doesn't have to. Captions are in the business's
+// voice (this runs under adPersona), ready to go. Channel-agnostic copy.
+export function contentPlanPrompt(p: BusinessProfile, leads: Lead[], opts: { days: number; postsPerWeek: number; startDate: string }) {
+  const total = Math.max(1, Math.round((opts.days / 7) * opts.postsPerWeek));
+  return `Plan and WRITE ${total} organic social posts for ${businessName(p)} — done-for-you, covering ${opts.days} days from ${opts.startDate}. The owner is a tradie with no time and no marketing knowledge: YOU decide what to post, the cadence and the mix. Don't ask them to plan.
+
+Business + conversion context: ${bizContext(p, leads)}
+
+Apply best practice for a LOCAL TRADE / renovation business:
+- A balanced mix across these content types: before/after, finished-job showcase, tips/education, trust/credentials (licensed, warranty, reviews), seasonal/promotional, behind-the-scenes. Weight toward before/after + finished jobs (they perform), but vary it so the feed isn't repetitive.
+- Spread the posts sensibly across the window (~${opts.postsPerWeek}/week), good days/times for a local audience (evenings/weekends lean well). Don't bunch them up.
+- Most posts suit BOTH Facebook and Instagram; pure-text tips can be Facebook-only (Instagram needs an image). For posts that need a photo to work, say so in photoNeeded.
+- Write each caption in the business's VOICE, ready to publish: a hook, concrete specifics, light proof, ONE clear CTA. Add relevant hashtags (none for text-only/Facebook-only tips).
+
+Return ONLY valid JSON, no markdown:
+{"cadence": string (one plain-English line on the posting rhythm you chose and why — e.g. "3x/week keeps you visible without overwhelming people"),
+ "posts": [{"date": "YYYY-MM-DD","time": "HH:mm" (24h, AEST),"category": "before/after"|"finished job"|"tip"|"trust"|"seasonal"|"behind the scenes","channels": string[] (subset of ["facebook","instagram"]),"caption": string,"hashtags": string[] (with leading #, empty for text-only),"photoNeeded": boolean,"why": string (one line on why this should perform)}]}`;
+}
+
 export function ideasPrompt(p: BusinessProfile, leads: Lead[]) {
   return `${bizContext(p, leads)}
 

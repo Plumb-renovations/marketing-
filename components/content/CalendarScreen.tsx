@@ -21,9 +21,118 @@ import {
 import { Panel, Eyebrow, SrcChip, Chip, SectionHeader, SettingNum } from "@/components/ui/primitives";
 import { SOURCES, STATUS, POST_CHANNELS, POST_GOALS, POST_STATUS, WEEKDAYS } from "@/lib/domain/constants";
 import { uid, defaultSchedule, fmtWhen } from "@/lib/domain/format";
-import { downscaleImage, generatePost, generateIdeas, fallbackPost, FALLBACK_IDEAS } from "@/lib/ai/generators";
+import { downscaleImage, generatePost, generateIdeas, generateContentPlan, fallbackPost, FALLBACK_IDEAS, type PlannedPost } from "@/lib/ai/generators";
 import { useData } from "@/components/DataProvider";
 import type { Post } from "@/lib/domain/types";
+
+const CATEGORY_CHIP: Record<string, string> = {
+  "before/after": "bg-cyan-500/10 text-cyan-300 border-cyan-500/30",
+  "finished job": "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
+  tip: "bg-sky-500/10 text-sky-300 border-sky-500/30",
+  trust: "bg-indigo-500/10 text-indigo-300 border-indigo-500/30",
+  seasonal: "bg-amber-500/10 text-amber-300 border-amber-500/30",
+  "behind the scenes": "bg-slate-700/40 text-slate-300 border-slate-600/50",
+};
+
+/* --- AI month planner: Hazel plans + writes a month of posts, done-for-you --- */
+function MonthPlanner({ leads, onClose, onAdd }: { leads: any[]; onClose: () => void; onAdd: (posts: Post[]) => void }) {
+  const [days, setDays] = useState(30);
+  const [start, setStart] = useState(() => new Date().toISOString().slice(0, 10));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [plan, setPlan] = useState<{ cadence: string; posts: PlannedPost[] } | null>(null);
+
+  const run = async () => {
+    setLoading(true); setError(""); setPlan(null);
+    try {
+      const r = await generateContentPlan({ planDays: days, postsPerWeek: 3, startDate: start, leads });
+      if (!r.posts.length) setError("Hazel couldn't draft a plan just now — try again.");
+      else setPlan(r);
+    } catch (e) {
+      setError((e as Error).message || "Couldn't build a plan.");
+    }
+    setLoading(false);
+  };
+
+  const addAll = () => {
+    if (!plan) return;
+    const drafts: Post[] = plan.posts.map((pp) => ({
+      id: uid(),
+      photo: null,
+      caption: pp.caption || "",
+      hashtags: Array.isArray(pp.hashtags) ? pp.hashtags.join(" ") : "",
+      channels: (pp.channels || ["facebook", "instagram"]).filter((c) => POST_CHANNELS.includes(c)),
+      scheduledAt: `${pp.date}T${(pp.time || "18:00").slice(0, 5)}`,
+      status: "draft",
+      reach: null,
+      engagement: null,
+      why: pp.why || "",
+      planCategory: pp.category || null,
+      autoPublish: false,
+    }));
+    onAdd(drafts);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div onClick={onClose} className="absolute inset-0 bg-stone-900/40" />
+      <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+          <div><Eyebrow icon={Sparkles}>Plan my content with Hazel</Eyebrow><p className="mt-1 text-xs text-slate-500">Hazel decides what to post, writes it in your voice, and lays it on the calendar. You review, tweak and approve.</p></div>
+          <button onClick={onClose} className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          {!plan && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Plan length</p>
+                  <div className="flex items-center gap-1 rounded-lg border border-slate-700 p-0.5">
+                    {[{ d: 14, l: "Fortnight" }, { d: 30, l: "Month" }].map((o) => (
+                      <button key={o.d} onClick={() => setDays(o.d)} className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${days === o.d ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}>{o.l}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display">Start from</p>
+                  <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-data text-xs text-slate-200 focus:border-cyan-500/50" />
+                </div>
+              </div>
+              <p className="rounded-lg border border-slate-800 bg-slate-950/40 p-2.5 text-[11px] text-slate-400">Hazel posts about <span className="text-slate-200">3×/week</span> — enough to stay visible without overwhelming your audience — mixing before/afters, finished jobs, tips, trust and seasonal posts. You don't need to plan any of it.</p>
+              {error && <p className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-[11px] text-red-200">{error}</p>}
+              <button onClick={run} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">{loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Hazel is planning + writing your posts…</> : <><Sparkles className="h-4 w-4" /> Plan {days === 14 ? "a fortnight" : "a month"} of posts</>}</button>
+            </>
+          )}
+          {plan && (
+            <>
+              <p className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-3 py-2 text-xs text-cyan-100"><Sparkles className="mr-1.5 inline h-3.5 w-3.5" />{plan.cadence}</p>
+              <div className="space-y-2">
+                {plan.posts.map((pp, i) => (
+                  <div key={i} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] ${CATEGORY_CHIP[pp.category] || CATEGORY_CHIP["behind the scenes"]}`}>{pp.category}</span>
+                      {(pp.channels || []).map((c) => <SrcChip key={c} source={c} />)}
+                      <span className="font-data text-[11px] text-slate-500">{pp.date} {(pp.time || "").slice(0, 5)}</span>
+                      {pp.photoNeeded && <span className="text-[10px] text-amber-300">· add a photo</span>}
+                    </div>
+                    <p className="mt-1.5 whitespace-pre-wrap text-xs text-slate-300">{pp.caption}</p>
+                    {pp.hashtags?.length > 0 && <p className="mt-1 font-data text-[10px] text-cyan-300/80">{pp.hashtags.join(" ")}</p>}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        {plan && (
+          <div className="flex items-center justify-between gap-2 border-t border-slate-800 px-5 py-4">
+            <button onClick={() => setPlan(null)} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800">Re-plan</button>
+            <button onClick={addAll} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Plus className="h-4 w-4" /> Add {plan.posts.length} posts to calendar</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const ChannelPicker = ({ value, onToggle }: { value: string[]; onToggle: (c: string) => void }) => (
   <div className="flex flex-wrap gap-1.5">
@@ -69,8 +178,14 @@ function PostEditor({ post, onSave, onDelete, onClose }: { post: Post; onSave: (
               <SettingNum label="Engagements" value={p.engagement || 0} onChange={(v) => set("engagement", v)} />
             </div>
           )}
+          {p.planCategory && <p className="text-[11px] text-slate-500">Hazel's plan slot: <span className="text-slate-300">{p.planCategory}</span></p>}
           {p.why && <p className="rounded-lg border border-slate-800 bg-slate-950/40 p-2.5 text-xs text-slate-400"><span className="text-cyan-300">Why this should perform:</span> {p.why}</p>}
-          <div className="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-900/40 p-2.5 text-[11px] text-slate-500"><PlugZap className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-400" />Phase 2: auto-publish on schedule and auto-pull reach/engagement via the Meta Graph API (instagram_content_publish, pages_manage_posts, insights) — needs App Review. For now, copy the caption, post manually, then mark it Posted.</div>
+
+          {/* Approve → auto-publish on schedule (cron + the organic publish path). */}
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/40 p-2.5">
+            <input type="checkbox" checked={!!p.autoPublish} onChange={(e) => set("autoPublish", e.target.checked)} className="mt-0.5 h-4 w-4 accent-cyan-500" />
+            <span className="text-[11px] text-slate-400"><span className="text-slate-200">Auto-publish on schedule</span> — when this is on and the status is <span className="text-cyan-300">Scheduled</span>, Hazel posts it to your connected Facebook/Instagram at the time above. Needs Meta connected (and approved messaging/posting access); Instagram needs a photo.</span>
+          </label>
         </div>
         <div className="flex items-center justify-between gap-2 border-t border-slate-800 px-5 py-4">
           <button onClick={() => onDelete(p.id)} className="rounded-lg border border-red-500/40 px-3 py-2 text-xs text-red-300 transition hover:bg-red-500/10"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -190,6 +305,8 @@ export default function CalendarScreen() {
   const [editing, setEditing] = useState<Post | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [ideasOpen, setIdeasOpen] = useState(false);
+  const [plannerOpen, setPlannerOpen] = useState(false);
+  const addPlanned = (drafts: Post[]) => { setPosts((prev) => [...prev, ...drafts]); setPlannerOpen(false); };
   const savePost = (np: Post) => setPosts((prev) => prev.some((x) => x.id === np.id) ? prev.map((x) => x.id === np.id ? np : x) : [...prev, np]);
   const delPost = (id: string) => { setPosts((prev) => prev.filter((p) => p.id !== id)); setEditing(null); };
   const newPost = (date?: string) => setEditing({ id: uid(), photo: null, caption: "", hashtags: "", channels: ["instagram"], scheduledAt: (date || new Date().toISOString().slice(0, 10)) + "T18:00", status: "draft", reach: null, engagement: null, why: "" });
@@ -216,6 +333,7 @@ export default function CalendarScreen() {
           <button onClick={() => setTab("list")} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${tab === "list" ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}><List className="h-3.5 w-3.5" /> List</button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setPlannerOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-1.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Sparkles className="h-4 w-4" /> Plan my content with Hazel</button>
           <button onClick={() => setIdeasOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-slate-800"><Sparkles className="h-4 w-4 text-cyan-400" /> Idea starters</button>
           <button onClick={() => setAiOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-sm text-cyan-200 transition hover:bg-cyan-500/20"><Wand2 className="h-4 w-4" /> Create with AI</button>
           <button onClick={() => newPost(todayISO)} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-1.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"><Plus className="h-4 w-4" /> New post</button>
@@ -285,8 +403,9 @@ export default function CalendarScreen() {
         </div>
       )}
 
-      <div className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-3 text-[11px] text-slate-500"><PlugZap className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-400" />Phase 1 (now): plan, draft and schedule, then copy the caption and post manually. Phase 2 (later): connect the Meta Graph API (Instagram Business + Facebook Page) to auto-publish on schedule and auto-pull performance — requires Meta permissions and App Review.</div>
+      <div className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-3 text-[11px] text-slate-500"><PlugZap className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-400" />Hazel can plan + write your month, then auto-publish approved posts to your connected Facebook Page & Instagram on schedule. Turn on "Auto-publish on schedule" on a Scheduled post. (Instagram needs a photo; needs Meta connected.)</div>
 
+      {plannerOpen && <MonthPlanner leads={leads} onClose={() => setPlannerOpen(false)} onAdd={addPlanned} />}
       {editing && <PostEditor post={editing} onSave={savePost} onDelete={delPost} onClose={() => setEditing(null)} />}
       {aiOpen && <AiStudio leads={leads} onClose={() => setAiOpen(false)} onSaveDraft={(p) => { savePost(p); setAiOpen(false); }} />}
       {ideasOpen && <IdeaStarters leads={leads} onClose={() => setIdeasOpen(false)} onUseIdea={useIdea} />}
