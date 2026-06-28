@@ -25,24 +25,29 @@ export function mapJourneyLead(r: any): JourneyLead {
 // does (lib/data/leads.fetchLeads): select * and rely on RLS — is_member(org_id)
 // — for tenancy, NOT an extra `.eq("org_id", …)` filter.
 //
-// Why this matters (the "Call now shows no uncontacted leads" bug): the board
-// has no org filter, but this query used `.eq("org_id", getOrgId())`. getOrgId
-// resolves to the user's EARLIEST membership; when a lead lives under a
-// different membership org (the documented multi-tenant footgun), that filter
-// silently dropped it here while the board still listed it via RLS. Selecting *
-// instead of an explicit column list also means a not-yet-migrated journey
-// column can never error the whole query into an empty []. And we now surface
-// the error instead of swallowing it, so a real failure can't masquerade as
-// "no uncontacted leads — you're on top of it".
+// Why this matters (the "Call now shows no uncontacted leads" bug): the real
+// cause was this query referencing `archived_at` in SQL (`.is("archived_at",
+// null)`) — a column that doesn't exist in every environment — which errored
+// with 42703; the error was then swallowed (`const { data } = …`) so it
+// rendered as "no uncontacted leads — you're on top of it". The board never
+// hits this: fetchLeads selects * and excludes archived rows in CODE
+// (DataProvider filters `!l.archivedAt`); reading `row.archived_at` off a row
+// is harmless when the column is absent (just undefined). So we do the same —
+// exclude archived leads after the query, not via a SQL filter — and surface
+// any real error instead of hiding it. (Selecting * rather than an explicit
+// column list also keeps a not-yet-migrated journey column from erroring the
+// whole query, and dropping the org filter matches the board, which has none.)
 export async function fetchJourneyLeads(supabase: SupabaseClient, _orgId?: string): Promise<JourneyLead[]> {
   const { data, error } = await supabase
-    .from("leads").select("*").is("archived_at", null)
+    .from("leads").select("*")
     .order("created_at", { ascending: false }).limit(500);
   if (error) {
     console.error("[journey] fetchJourneyLeads failed:", error.message);
     throw error;
   }
-  return (data || []).map(mapJourneyLead);
+  // Drop archived leads in code, exactly like the board does. `r.archived_at`
+  // is undefined where the column doesn't exist → treated as active.
+  return (data || []).filter((r: any) => !r.archived_at).map(mapJourneyLead);
 }
 
 export async function getJourney(supabase: SupabaseClient, orgId: string, leadId: string) {
