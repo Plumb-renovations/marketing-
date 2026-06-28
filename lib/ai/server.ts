@@ -8,6 +8,8 @@ import {
   adPersona,
   postPrompt,
   contentPlanPrompt,
+  commentReplyPrompt,
+  type EngageItem,
   ideasPrompt,
   metaAdPrompt,
   googleAdPrompt,
@@ -113,6 +115,7 @@ interface Payload {
   planDays?: number; // content-plan window length
   postsPerWeek?: number; // content-plan cadence
   startDate?: string; // content-plan start (YYYY-MM-DD)
+  engageItem?: EngageItem; // comment-reply: the comment/review to draft for
 }
 
 // Dispatch a generator by kind. The org's Business Profile drives the system
@@ -131,6 +134,10 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
       return callJSON(buildContent(postPrompt(profile, payload.channels || [], payload.goal || "", leads), payload.photoDataUrl), 1024, sys);
     case "ideas":
       return callJSON(buildContent(ideasPrompt(profile, leads)), 700, sys);
+    case "comment-reply": {
+      if (!payload.engageItem) return null;
+      return callJSON(buildContent(commentReplyPrompt(profile, payload.engageItem)), 500, sys);
+    }
     case "content-plan":
       return callJSON(
         buildContent(contentPlanPrompt(profile, leads, {
@@ -180,4 +187,4 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
   }
 }
 
-export const VALID_KINDS = ["post", "ideas", "content-plan", "meta-ad", "google-ad", "strategy-ads", "competitor-beat", "campaign-plan", "creative-review", "coach", "coach-ask"];
+export const VALID_KINDS = ["post", "ideas", "content-plan", "comment-reply", "meta-ad", "google-ad", "strategy-ads", "competitor-beat", "campaign-plan", "creative-review", "coach", "coach-ask"];
