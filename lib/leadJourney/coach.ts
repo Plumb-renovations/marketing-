@@ -72,17 +72,12 @@ export function nextActionFor(l: JourneyLead, now = Date.now()): NextAction {
     return { kind: "call_now", title: "Call now — speed wins jobs", detail: "Leads called within minutes convert far better than ones left for hours. Ring them now while they're hot; if no answer, send a text so they know who you are.", channel: "call", urgency: "now" };
   }
 
-  // Called, no answer → switch channel.
-  if (l.contactOutcome === "no_answer") {
-    return { kind: "switch_text", title: "No answer — send a text", detail: "People dodge unknown numbers. Send a short text introducing yourself and why you're calling, so the next call is expected.", channel: "text", urgency: "now" };
-  }
-
-  // Qualified → book the site visit (and prep a briefing).
-  if (stage === "qualified" || l.contactOutcome === "qualified") {
-    return { kind: "book_visit", title: "Book the site visit", detail: "They're qualified — lock in a measure & quote visit. Generate Hazel's pre-quote briefing first so you walk in ready to win this specific customer.", channel: "call", urgency: "soon" };
-  }
-
-  // Quote sent / following up → run the cadence.
+  // Quote sent / following up → run the cadence. Evaluated BEFORE the
+  // no-answer / qualified branches on purpose: a lead that was marked Qualified
+  // (contact_outcome = "qualified") and THEN had a quote sent still carries that
+  // earlier outcome. The badge keys on effectiveStage (→ quote_sent /
+  // following_up), so checking those branches first keeps the coaching card in
+  // lock-step with the badge instead of falling back to "Book the site visit".
   if (stage === "quote_sent" || stage === "following_up") {
     const cad = cadenceFor(l);
     if (cad && now >= cad.dueAt) {
@@ -100,6 +95,17 @@ export function nextActionFor(l: JourneyLead, now = Date.now()): NextAction {
       return { kind: "followup_wait", title: `Next follow-up in ${inDays} day${inDays === 1 ? "" : "s"}`, detail: `Quote's out and the cadence is running. Hazel will nudge you for the ${cad.tone} on day ${CADENCE[cad.step].day}.`, channel: cad.channel, urgency: "later" };
     }
     return { kind: "followup_done", title: "Cadence exhausted — make the call", detail: "You've followed up the full sequence with no reply. Either make one last personal call, or mark it lost (ghosted) so Hazel learns from it.", channel: "call", urgency: "soon" };
+  }
+
+  // Called, no answer → switch channel.
+  if (l.contactOutcome === "no_answer") {
+    return { kind: "switch_text", title: "No answer — send a text", detail: "People dodge unknown numbers. Send a short text introducing yourself and why you're calling, so the next call is expected.", channel: "text", urgency: "now" };
+  }
+
+  // Qualified → book the site visit (and prep a briefing). Keyed on the journey
+  // stage, not a lingering contact_outcome, so a later stage always wins.
+  if (stage === "qualified") {
+    return { kind: "book_visit", title: "Book the site visit", detail: "They're qualified — lock in a measure & quote visit. Generate Hazel's pre-quote briefing first so you walk in ready to win this specific customer.", channel: "call", urgency: "soon" };
   }
 
   // Contacted but not yet qualified.
