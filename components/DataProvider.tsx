@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Lead, Post, Ad, Settings, Metrics, Quote } from "@/lib/domain/types";
 import { SEED_LEADS, SEED_POSTS, DEFAULT_SETTINGS, DEFAULT_METRICS } from "@/lib/domain/seed";
 import { uid, today, firstOfNextMonth, quoteTotals } from "@/lib/domain/format";
-import { fetchLeads, patchLead, persistQuote, upsertLeadRow, resetLeads } from "@/lib/data/leads";
+import { fetchLeads, patchLead, persistQuote, upsertLeadRow, resetLeads, deleteLeadPermanent } from "@/lib/data/leads";
 import { fetchPosts, upsertPost, deletePost } from "@/lib/data/posts";
 import { fetchAds, upsertAd, deleteAd } from "@/lib/data/ads";
 import { fetchSettings, saveSettings } from "@/lib/data/settings";
@@ -35,6 +35,7 @@ interface LeadActions {
   setSource: (id: string, src: string) => void;
   archive: (id: string) => void;
   unarchive: (id: string) => void;
+  deleteLead: (id: string) => void;
 }
 
 interface DataCtx {
@@ -246,6 +247,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     unarchive: (id) => {
       patchLocal(id, { archivedAt: null });
       persist(id, { archivedAt: null });
+    },
+    deleteLead: (id) => {
+      // Permanent: remove locally + hard-delete + tombstone (no Meta re-import).
+      setLeads((prev) => prev.filter((l) => l.id !== id));
+      if (selId === id) setSelId(null);
+      warn(deleteLeadPermanent(supabase, id));
     },
   };
 

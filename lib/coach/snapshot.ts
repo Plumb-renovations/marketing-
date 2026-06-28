@@ -54,6 +54,12 @@ export interface CoachLeads {
   lastWeek: number;
   avgJobValue: number | null;
   lostReasons: { reason: string; count: number }[];
+  // Real qualification outcomes (logged via the Sales Coach) so the Marketing
+  // Coach can judge lead QUALITY by source, not just lead count.
+  outcomeQualified: number;
+  outcomeUnqualified: number;
+  outcomeNoAnswer: number;
+  bySource: { source: string; leads: number; qualified: number; won: number }[];
 }
 export interface CoachSnapshot {
   meta: {
@@ -93,15 +99,17 @@ export async function buildSnapshot(supabase: SupabaseClient, orgId: string): Pr
   const leads: CoachLeads = {
     total: 0, new: 0, qualified: 0, quote: 0, won: 0, lost: 0,
     thisWeek: 0, lastWeek: 0, avgJobValue: null, lostReasons: [],
+    outcomeQualified: 0, outcomeUnqualified: 0, outcomeNoAnswer: 0, bySource: [],
   };
   const { thisSince, thisUntil, lastSince, lastUntil } = weekRanges();
   try {
     const { data: rows } = await supabase
       .from("leads")
-      .select("stage, lead_date, job_value, lost_reason")
+      .select("stage, lead_date, job_value, lost_reason, contact_outcome, source")
       .eq("org_id", orgId)
       .is("archived_at", null);
     const lostTally: Record<string, number> = {};
+    const bySrc: Record<string, { leads: number; qualified: number; won: number }> = {};
     let wonValueSum = 0;
     let wonValueCount = 0;
     for (const l of rows || []) {
@@ -119,9 +127,20 @@ export async function buildSnapshot(supabase: SupabaseClient, orgId: string): Pr
         const r = String((l as any).lost_reason || "Unspecified");
         lostTally[r] = (lostTally[r] || 0) + 1;
       }
+      // Qualification outcomes + per-source quality.
+      const outcome = String((l as any).contact_outcome || "");
+      if (outcome === "qualified") leads.outcomeQualified++;
+      else if (outcome === "unqualified") leads.outcomeUnqualified++;
+      else if (outcome === "no_answer") leads.outcomeNoAnswer++;
+      const src = String((l as any).source || "other");
+      const s = (bySrc[src] = bySrc[src] || { leads: 0, qualified: 0, won: 0 });
+      s.leads++;
+      if (outcome === "qualified" || ["qualified", "quote", "won"].includes(stage)) s.qualified++;
+      if (stage === "won") s.won++;
     }
     leads.avgJobValue = wonValueCount > 0 ? Math.round(wonValueSum / wonValueCount) : null;
     leads.lostReasons = Object.entries(lostTally).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
+    leads.bySource = Object.entries(bySrc).map(([source, v]) => ({ source, ...v })).sort((a, b) => b.leads - a.leads);
   } catch {
     /* leads table issue — coach still runs on best-effort */
   }

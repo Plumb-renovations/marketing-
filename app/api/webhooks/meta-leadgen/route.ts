@@ -109,6 +109,18 @@ export async function POST(req: Request) {
 
     for (const leadgenId of leadgenIds) {
       try {
+        // Skip leads the user permanently deleted — they stay gone (no re-import).
+        try {
+          const { data: tomb } = await supabase
+            .from("deleted_lead_keys")
+            .select("external_id")
+            .eq("org_id", config.orgId)
+            .eq("external_source", "meta_leadgen")
+            .eq("external_id", leadgenId)
+            .maybeSingle();
+          if (tomb) { console.log("[meta-leadgen] skipped permanently-deleted lead", leadgenId); continue; }
+        } catch { /* tombstone table not migrated — proceed */ }
+
         const lead = await fetchLead(client, leadgenId);
         const leadId = "meta-" + leadgenId;
         // Upsert into leads, deduped by (org_id, external_source, external_id)

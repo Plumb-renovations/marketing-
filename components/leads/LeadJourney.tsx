@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Mic, MicOff, Loader2, Send, Sparkles, Clipboard, Phone, MessageSquare, CalendarCheck,
-  ClipboardList, X, AlertTriangle, Palette, Trophy, History, Zap,
+  ClipboardList, X, Check, AlertTriangle, Palette, Trophy, History, Zap,
 } from "lucide-react";
 import { Chip, Eyebrow } from "@/components/ui/primitives";
 import { fetchJourney, journeyAction, type JourneyDetail } from "@/lib/leadJourney/client";
@@ -102,6 +102,18 @@ export default function LeadJourney({ leadId, onChanged }: { leadId: string; onC
               <button onClick={() => { navigator.clipboard?.writeText(message).catch(() => {}); }} className="mt-1 inline-flex items-center gap-1 text-[11px] text-cyan-300 hover:text-cyan-200"><Clipboard className="h-3 w-3" /> Copy</button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Contact outcome — real options on a new/contacted lead */}
+      {(stage === "new" || stage === "contacted") && (
+        <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-2.5">
+          <p className="mb-1.5 text-[11px] text-slate-400">Log the outcome of your contact (Hazel uses this + tells the Marketing Coach which leads actually qualify):</p>
+          <div className="flex flex-wrap gap-1.5">
+            <button onClick={async () => { const r = await act({ action: "outcome", outcome: "no_answer" }, "oc"); if (r?.message) setMessage(r.message); }} disabled={busy === "oc"} className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-50"><Phone className="h-3.5 w-3.5" /> Called — no answer</button>
+            <button onClick={() => act({ action: "outcome", outcome: "qualified" }, "oc")} disabled={busy === "oc"} className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 px-2.5 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50"><Check className="h-3.5 w-3.5" /> Qualified</button>
+            <button onClick={() => act({ action: "outcome", outcome: "unqualified" }, "oc")} disabled={busy === "oc"} className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-400 hover:bg-slate-800 disabled:opacity-50"><X className="h-3.5 w-3.5" /> Unqualified</button>
+          </div>
         </div>
       )}
 

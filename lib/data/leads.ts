@@ -157,6 +157,21 @@ export async function persistFullLead(supabase: SupabaseClient, lead: Lead) {
   for (const q of lead.quotes) await persistQuote(supabase, lead.id, q);
 }
 
+// Permanently delete a lead — and tombstone its external key so a Meta re-sync
+// can't re-import it. For junk/test leads that must stay gone. Children cascade
+// (quotes, journey events); quote_docs are removed so none are left orphaned.
+export async function deleteLeadPermanent(supabase: SupabaseClient, id: string) {
+  const { data: row } = await supabase.from("leads").select("org_id, external_source, external_id").eq("id", id).maybeSingle();
+  if ((row as any)?.external_source && (row as any)?.external_id) {
+    try {
+      await supabase.from("deleted_lead_keys").insert({ org_id: (row as any).org_id, external_source: (row as any).external_source, external_id: (row as any).external_id });
+    } catch { /* tombstone best-effort (table may not be migrated yet) */ }
+  }
+  try { await supabase.from("quote_docs").delete().eq("lead_id", id); } catch { /* none / not migrated */ }
+  const { error } = await supabase.from("leads").delete().eq("id", id);
+  if (error) throw error;
+}
+
 // Reset: clear every lead in the org and reload the provided seed set.
 export async function resetLeads(supabase: SupabaseClient, seed: Lead[]) {
   const { error } = await supabase.from("leads").delete().neq("id", "");

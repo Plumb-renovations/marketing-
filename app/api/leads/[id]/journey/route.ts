@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/ai/ratelimit";
 import { getOrgId } from "@/lib/data/org";
 import {
-  getJourney, logUpdate, setJourneyStage, advanceFollowup, generateBrief, markLost, generateMessage,
+  getJourney, logUpdate, setJourneyStage, setOutcome, advanceFollowup, generateBrief, markLost, generateMessage,
 } from "@/lib/leadJourney/data";
 
 // Lead Journey Sales Coach — per-lead capture + coaching. GET returns the
@@ -35,7 +35,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const action = String(body?.action || "");
 
   // The AI-spending actions are rate-limited; cheap state changes aren't.
-  if (["log", "brief", "lost", "message"].includes(action)) {
+  if (["log", "brief", "lost", "message", "outcome"].includes(action)) {
     const limit = rateLimit(user.id);
     if (!limit.ok) return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
   }
@@ -50,6 +50,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         const journey = await getJourney(supabase, orgId, id);
         return NextResponse.json({ ...r, journey });
       }
+      case "outcome":
+        return NextResponse.json(await setOutcome(supabase, orgId, id, body?.outcome, String(body?.detail || "")));
       case "stage":
         await setJourneyStage(supabase, orgId, id, body?.stage);
         return NextResponse.json({ ok: true, journey: await getJourney(supabase, orgId, id) });

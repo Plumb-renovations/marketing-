@@ -69,6 +69,13 @@ export function buildDataBlock(s: CoachSnapshot, signals: CoachSignal[]): string
   const ld = s.leads;
   L.push(`LEADS (CRM, all sources): ${ld.total} total — ${ld.new} new, ${ld.qualified} qualified, ${ld.quote} quoting, ${ld.won} won, ${ld.lost} lost. This week ${ld.thisWeek}, last week ${ld.lastWeek}.${ld.avgJobValue ? ` Avg won-job value ${money(ld.avgJobValue)}.` : ""}`);
   if (ld.lostReasons.length) L.push(`LOST REASONS: ${ld.lostReasons.slice(0, 4).map((r) => `${r.reason} (${r.count})`).join(", ")}.`);
+  // Real qualification outcomes from the Sales Coach — judge lead QUALITY, not just volume.
+  if (ld.outcomeQualified || ld.outcomeUnqualified || ld.outcomeNoAnswer) {
+    L.push(`QUALIFICATION (logged by the owner): ${ld.outcomeQualified} qualified, ${ld.outcomeUnqualified} unqualified, ${ld.outcomeNoAnswer} no-answer. Weigh which leads actually QUALIFY, not just how many arrive.`);
+  }
+  if (ld.bySource.length) {
+    L.push(`LEAD QUALITY BY SOURCE: ${ld.bySource.slice(0, 6).map((b) => `${b.source} — ${b.leads} leads, ${b.qualified} qualified, ${b.won} won`).join("; ")}. Favour sources/ad angles that produce QUALIFIED leads + jobs, not just cheap lead count.`);
+  }
 
   if (signals.length) {
     L.push("FLAGGED SIGNALS (Hazel's brain already computed these):");

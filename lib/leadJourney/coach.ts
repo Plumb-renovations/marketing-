@@ -14,7 +14,10 @@ export function effectiveStage(l: JourneyLead): JourneyStage {
   if (l.journeyStage) return l.journeyStage;
   switch (l.stage) {
     case "qualified": return "qualified";
-    case "quote": return l.quoteSentAt ? "quote_sent" : "qualified";
+    // A lead sitting in the board's Quotes column HAS had a quote sent —
+    // whether via the quote builder, a branded quote, or a board move — even if
+    // quote_sent_at wasn't stamped. Treat it as quote_sent so the cadence runs.
+    case "quote": return "quote_sent";
     case "won": return "won";
     case "lost": return "lost";
     default: return l.contactedAt ? "contacted" : "new";
@@ -37,9 +40,13 @@ export function speedLabel(mins: number | null): string {
 }
 
 // The next cadence step due for a sent quote (or null if none/exhausted).
+// Falls back to last-touch / lead-date as the cadence base when quote_sent_at
+// wasn't stamped (e.g. a quote sent via the builder or a board move), so the
+// follow-up cadence still runs.
 export function cadenceFor(l: JourneyLead): { step: number; dueAt: number; tone: string; channel: "text" | "call" } | null {
-  const sent = ms(l.quoteSentAt);
-  if (isNaN(sent)) return null;
+  if (effectiveStage(l) !== "quote_sent" && effectiveStage(l) !== "following_up") return null;
+  const sent = [l.quoteSentAt, l.lastTouchAt, l.leadDate].map(ms).find((n) => !isNaN(n));
+  if (sent == null) return null;
   const step = Math.min(l.followupStep ?? 0, CADENCE.length - 1);
   const c = CADENCE[step];
   if (!c) return null;
@@ -106,8 +113,14 @@ export function isCold(l: JourneyLead, now = Date.now()): boolean {
   return !!cad && now >= cad.dueAt;
 }
 
+// A lead needs calling NOW when there's no recorded contact at all (no
+// contacted_at, no logged outcome, no quote out) and it isn't won/lost or
+// already in quote/follow-up. Robust to board-stage quirks — keys on the
+// absence of real contact, not just the literal "new" stage.
 export function needsCallNow(l: JourneyLead): boolean {
-  return effectiveStage(l) === "new" && !l.contactedAt;
+  if (l.contactedAt || l.contactOutcome || l.quoteSentAt) return false;
+  const st = effectiveStage(l);
+  return st !== "won" && st !== "lost" && st !== "quote_sent" && st !== "following_up";
 }
 
 // Suggest bringing the showroom designer: big, vision/emotion-led job where the
