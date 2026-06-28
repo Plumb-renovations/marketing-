@@ -64,6 +64,8 @@ export interface Post {
   why: string;
   mediaType?: "image" | "video";
   videoUrl?: string | null;
+  autoPublish?: boolean; // approved to auto-publish on schedule (cron)
+  planCategory?: string | null; // content-mix slot Hazel chose (before/after, tip, …)
 }
 
 export type AdKind = "meta" | "google";

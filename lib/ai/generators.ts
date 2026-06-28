@@ -72,6 +72,26 @@ export async function generatePost(args: {
   };
 }
 
+// Done-for-you month/fortnight plan: Hazel decides the cadence + mix and writes
+// every caption in the brand voice.
+export interface PlannedPost {
+  date: string;
+  time: string;
+  category: string;
+  channels: string[];
+  caption: string;
+  hashtags: string[];
+  photoNeeded: boolean;
+  why: string;
+}
+export async function generateContentPlan(args: { planDays: number; postsPerWeek: number; startDate: string; leads: Lead[] }): Promise<{ cadence: string; posts: PlannedPost[] }> {
+  const j = await callAi("content-plan", args);
+  return {
+    cadence: j.cadence || "",
+    posts: Array.isArray(j.posts) ? j.posts : [],
+  };
+}
+
 export async function generateIdeas(args: { leads: Lead[] }) {
   const j = await callAi("ideas", args);
   return (j.ideas || []).slice(0, 6);

@@ -297,6 +297,10 @@ export const POST_STATUS: Record<string, { label: string; c: string }> = {
   draft: { label: "Draft", c: "slate" },
   scheduled: { label: "Scheduled", c: "cyan" },
   posted: { label: "Posted", c: "emerald" },
+  // Publish lifecycle (set by the publish path / auto-publish cron).
+  processing: { label: "Publishing…", c: "amber" },
+  published: { label: "Posted", c: "emerald" },
+  failed: { label: "Failed", c: "red" },
 };
 export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
