@@ -14,6 +14,7 @@ import {
 import { useData } from "@/components/DataProvider";
 import Drawers from "@/components/leads/Drawers";
 import { HazelLogo } from "@/components/brand/HazelLogo";
+import BriefingStrip from "@/components/coach/BriefingStrip";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -174,6 +175,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </span>
         </header>
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 pb-24 sm:px-6 lg:px-8 lg:pb-6">
+          <BriefingStrip />
           {children}
         </main>
       </div>

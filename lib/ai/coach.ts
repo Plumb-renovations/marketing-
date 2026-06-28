@@ -16,16 +16,47 @@ export interface CoachWeekly {
   spendDeltaPct: number | null;
   direction: "up" | "down" | "flat";
 }
+export interface NotWorking {
+  title: string;
+  why: string;
+  recommendation: string;
+}
 export interface CoachReport {
   connected: boolean;
   reconnect: boolean;
   confidence: "early" | "building" | "solid";
   headline: string;
   insights: CoachInsight[];
+  whatsNotWorking: NotWorking[];
   weekly: CoachWeekly | null;
   account: { spend: number; leads: number; cpl: number | null; won: number; costPerWon: number | null; currency: string };
   leads: { total: number; won: number; thisWeek: number; lastWeek: number };
   aiError?: string;
+}
+
+// Proactive alerts for the briefing strip.
+export interface CoachAlert {
+  key: string;
+  severity: "high" | "medium" | "low";
+  area: string;
+  title: string;
+  detail: string;
+  action?: { type: "budget" | "pause"; level: "adset" | "ad"; id: string; name: string; dailyMinor?: number; label?: string };
+  link?: { href: string; label: string };
+}
+export async function fetchAlerts(): Promise<{ alerts: CoachAlert[]; total: number; confidence: string }> {
+  try {
+    const res = await fetch("/api/coach/alerts", { cache: "no-store" });
+    if (!res.ok) return { alerts: [], total: 0, confidence: "early" };
+    return await res.json();
+  } catch {
+    return { alerts: [], total: 0, confidence: "early" };
+  }
+}
+export async function dismissAlert(key: string, snoozeDays = 7): Promise<void> {
+  try {
+    await fetch("/api/coach/alerts/dismiss", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, snoozeDays }) });
+  } catch { /* best-effort; UI hides it regardless */ }
 }
 
 export async function fetchCoach(): Promise<CoachReport> {

@@ -129,6 +129,22 @@ export default function CoachPanel({ limit, showWeekly = true, compact = false }
         </ul>
       )}
 
+      {/* Brutal honesty: what's not working / what Hazel would stop. */}
+      {!limit && report.whatsNotWorking?.length > 0 && (
+        <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/5 p-3">
+          <p className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-red-300 font-display"><AlertTriangle className="h-3.5 w-3.5" /> What's not working / what I'd stop</p>
+          <ul className="space-y-2">
+            {report.whatsNotWorking.map((w, i) => (
+              <li key={i}>
+                <p className="text-sm font-medium text-slate-100">{w.title}</p>
+                {w.why && <p className="text-xs text-slate-400">{w.why}</p>}
+                {w.recommendation && <p className="mt-0.5 text-xs text-red-200">→ {w.recommendation}</p>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="mt-3 flex items-center justify-between">
         <Chip status={conf.status}>{conf.label}</Chip>
         {compact && <Link href="/coach" className="inline-flex items-center gap-1 text-xs text-cyan-300 hover:text-cyan-200">Open Coach <ArrowRight className="h-3.5 w-3.5" /></Link>}

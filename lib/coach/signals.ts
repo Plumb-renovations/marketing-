@@ -13,9 +13,17 @@ export interface CoachSignal {
   title: string; // the fact / what
   detail: string; // why it matters + the recommended move, plain English
   action?: { type: "budget" | "pause"; level: "adset" | "ad"; id: string; name: string; dailyMinor?: number; label?: string };
+  link?: { href: string; label: string }; // non-Meta nudge → navigate (call/draft/post)
 }
 
 const isActive = (s?: string | null) => !s || /ACTIVE/i.test(s);
+const money = (n: number) => "$" + Math.round(n).toLocaleString();
+const daysSince = (iso?: string | null) => {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (isNaN(t)) return null;
+  return Math.floor((Date.now() - t) / 86_400_000);
+};
 
 export function computeSignals(s: CoachSnapshot): CoachSignal[] {
   const out: CoachSignal[] = [];
@@ -81,9 +89,55 @@ export function computeSignals(s: CoachSnapshot): CoachSignal[] {
   const consTip = consolidationTip(m.adsets.map((a) => ({ name: a.name, leads: a.leads, spend: a.spend, status: a.status })), t);
   if (consTip) out.push({ id: "consolidate", severity: "medium", area: "Budget", title: "Spend is spread too thin", detail: consTip });
 
-  // Leads not converting to jobs.
-  if (s.leads.won === 0 && s.leads.total >= 8) {
+  // ---- Brutal honesty: money in, nothing out -------------------------------
+  // Real spend, zero won jobs → say it plainly (this is the truth most tools
+  // won't tell). Spend-based, so it fires even at low lead volume.
+  const moneyWasted = m.account.spend >= 300 && s.leads.won === 0;
+  if (moneyWasted) {
+    out.push({
+      id: "money-wasted",
+      severity: "high",
+      area: "What's not working",
+      title: `You've spent ${money(m.account.spend)} on Meta and won 0 jobs`,
+      detail: `${m.account.leads} lead${m.account.leads === 1 ? "" : "s"} so far, none converted to a job. The likely culprits are lead quality (targeting/offer), or leads going cold before you call. The honest options: tighten the offer + targeting, call every lead within minutes (Speed to Lead), or pause the spend until the funnel converts — don't keep paying for leads that don't become jobs.`,
+      link: { href: "/coach", label: "See the plan" },
+    });
+  } else if (s.leads.won === 0 && s.leads.total >= 8) {
+    // Leads but no jobs (lower spend) — still flag the conversion gap.
     out.push({ id: "no-jobs", severity: "high", area: "Lead quality", title: "Leads aren't turning into jobs yet", detail: `You've had ${s.leads.total} leads but no won jobs recorded. That points to lead quality or follow-up, not just ad volume — tighten targeting/offer and make sure every lead is called fast (Speed to Lead).` });
+  }
+
+  // Spending more, getting fewer leads — the worst combination, said plainly.
+  if (s.weekly && s.weekly.spendDeltaPct != null && s.weekly.spendDeltaPct >= 15 && s.weekly.leadsDeltaPct != null && s.weekly.leadsDeltaPct <= -10) {
+    out.push({
+      id: "spend-up-leads-down",
+      severity: "high",
+      area: "What's not working",
+      title: `Spend is up ${s.weekly.spendDeltaPct}% but leads are down ${Math.abs(s.weekly.leadsDeltaPct)}%`,
+      detail: `${money(s.weekly.last.spend)}→${money(s.weekly.this.spend)} for ${s.weekly.last.leads}→${s.weekly.this.leads} leads. You're paying more for less — usually ad fatigue or a winner that got changed. Refresh the creative and check nothing was edited mid-flight; if it doesn't recover, pull the budget back.`,
+      link: { href: "/meta", label: "Open Meta" },
+    });
+  }
+
+  // ---- Proactive nudges (no Meta write — a navigate action) ----------------
+  // Uncalled new leads — speed-to-lead is where jobs are won or lost.
+  if (s.leads.new >= 1) {
+    out.push({
+      id: "uncalled-leads",
+      severity: s.leads.new >= 2 ? "high" : "medium",
+      area: "Hot leads",
+      title: `${s.leads.new} new lead${s.leads.new === 1 ? "" : "s"} awaiting first contact`,
+      detail: `Leads called within ~5 minutes convert far better than ones left for hours. ${s.leads.new === 1 ? "This lead hasn't" : "These leads haven't"} been actioned yet — call now while ${s.leads.new === 1 ? "it's" : "they're"} hot.`,
+      link: { href: "/leads", label: "Open leads" },
+    });
+  }
+
+  // Haven't posted in a while — visibility decays without organic activity.
+  const sincePost = daysSince(s.lastPostedAt);
+  if (s.lastPostedAt == null) {
+    out.push({ id: "stale-posting", severity: "low", area: "Organic", title: "You haven't published an organic post yet", detail: "Regular organic posts keep you visible and build trust between ad campaigns. Hazel can plan + write a month for you.", link: { href: "/calendar", label: "Plan posts" } });
+  } else if (sincePost != null && sincePost >= 7) {
+    out.push({ id: "stale-posting", severity: "medium", area: "Organic", title: `Haven't posted in ${sincePost} days`, detail: "Your feed's gone quiet — engagement and reach drop off when you stop posting. Hazel has ready-to-go posts; approve one to stay visible.", link: { href: "/calendar", label: "Plan a post" } });
   }
 
   // Week-on-week swing.
