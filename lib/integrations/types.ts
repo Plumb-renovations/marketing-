@@ -28,6 +28,14 @@ export interface LaunchConfig {
   // Meta creative
   pageId?: string;
   link?: string; // destination URL / lead form
+  // Placement — WHERE the new ad goes (default: new campaign + ad set).
+  placement?: "new" | "existing_adset" | "existing_campaign";
+  existingAdsetId?: string; // placement === 'existing_adset' → add the ad here
+  existingCampaignId?: string; // placement === 'existing_campaign' → new ad set under this
+  // Lead-form continuity: the Instant Form new leads should use (so they keep
+  // flowing into Hazel through the existing webhook). Defaults to the form the
+  // current ads use; inherited from the ad set for 'existing_adset'.
+  leadFormId?: string;
   // Google
   finalUrl?: string;
   keywords?: string[];

@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Rocket, Loader2, CheckCircle2, AlertTriangle, Wand2, ChevronLeft, ChevronRight, Layers, Target, ClipboardCheck } from "lucide-react";
+import { X, Rocket, Loader2, CheckCircle2, AlertTriangle, Wand2, ChevronLeft, ChevronRight, Layers, Target, ClipboardCheck, Check, FolderTree } from "lucide-react";
 import { Eyebrow, Chip } from "@/components/ui/primitives";
 import type { Ad } from "@/lib/domain/types";
 import { createClient } from "@/lib/supabase/client";
 import { fetchBusinessProfile } from "@/lib/data/businessProfile";
 import { generateCampaignPlan } from "@/lib/ai/generators";
 import { pollJob } from "@/lib/media/pollJob";
+import { fetchPlacementOptions, type PlacementOptions } from "@/lib/ads/placement";
+
+type Placement = "new" | "existing_adset" | "existing_campaign";
 
 // Meta campaign objectives (default Leads). Google has no objective picker here.
 const META_OBJECTIVES: { id: string; label: string }[] = [
@@ -41,6 +44,12 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
   const [radiusKm, setRadiusKm] = useState(50);
   const [interests, setInterests] = useState("Home improvement, Home Ownership, Renovation, Interior design, Bathroom");
   const [advantage, setAdvantage] = useState(true);
+  // Placement — WHERE the ad goes + which lead form it uses (continuity).
+  const [placement, setPlacement] = useState<Placement>("new");
+  const [existingCampaignId, setExistingCampaignId] = useState("");
+  const [existingAdsetId, setExistingAdsetId] = useState("");
+  const [leadFormId, setLeadFormId] = useState("");
+  const [opts, setOpts] = useState<PlacementOptions | null>(null);
   // Review
   const [mode, setMode] = useState<"paused" | "launch">("paused");
 
@@ -72,6 +81,22 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Pull existing campaigns / ad sets + lead forms so the user can place the ad
+  // and keep lead-form continuity. Default the form to the one current ads use.
+  useEffect(() => {
+    if (!isMeta) return;
+    fetchPlacementOptions().then((o) => {
+      setOpts(o);
+      if (o.defaultLeadFormId) setLeadFormId(o.defaultLeadFormId);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const leadForms = opts?.leadForms || [];
+  const selectedFormName = leadForms.find((f) => f.id === leadFormId)?.name || "";
+  const existingAdsetName = opts?.campaigns.flatMap((c) => c.adsets).find((s) => s.id === existingAdsetId)?.name || "";
+  const existingCampaignName = opts?.campaigns.find((c) => c.id === existingCampaignId)?.name || "";
+
   const suggest = async () => {
     setPlanning(true);
     setPlanNote("");
@@ -102,6 +127,11 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
           adId: ad.id,
           platform,
           mode,
+          // Placement + lead-form continuity.
+          placement: isMeta ? placement : undefined,
+          existingAdsetId: isMeta && placement === "existing_adset" ? existingAdsetId : undefined,
+          existingCampaignId: isMeta && placement === "existing_campaign" ? existingCampaignId : undefined,
+          leadFormId: isMeta ? (leadFormId || undefined) : undefined,
           campaignName,
           objective: isMeta ? objective : undefined,
           adSetName: isMeta ? (adSetName || undefined) : undefined,
@@ -225,28 +255,102 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
             </div>
 
             <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-              {/* STEP 0 — CAMPAIGN */}
+              {/* STEP 0 — CAMPAIGN / PLACEMENT */}
               {step === 0 && (
                 <>
-                  <button onClick={suggest} disabled={planning} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50">
-                    {planning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />} Let Hazel suggest the setup
-                  </button>
-                  {planNote && <p className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-[11px] text-slate-400">{planNote}</p>}
-                  <div><p className={label}>Campaign name</p><input value={campaignName} onChange={(e) => setCampaignName(e.target.value)} className={field} /></div>
                   {isMeta && (
-                    <div>
-                      <p className={label}>Objective</p>
-                      <select value={objective} onChange={(e) => setObjective(e.target.value)} className={field}>
-                        {META_OBJECTIVES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                      </select>
-                      <p className="mt-1.5 text-[11px] text-slate-500">Leads is the right call for a tradie chasing enquiries — Hazel defaults to it.</p>
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                      <p className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-display"><FolderTree className="h-3.5 w-3.5" /> Where should this ad go?</p>
+                      <div className="space-y-1.5">
+                        {([
+                          ["new", "New campaign + ad set", "A fresh campaign and ad set."],
+                          ["existing_adset", "Add to an existing ad set", "Joins the running ads so Meta tests them together — best for learning."],
+                          ["existing_campaign", "New ad set in an existing campaign", "Keeps it under a campaign you already run."],
+                        ] as const).map(([val, title, desc]) => (
+                          <label key={val} className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 transition ${placement === val ? "border-cyan-500/50 bg-cyan-500/10" : "border-slate-700 hover:bg-slate-800/40"}`}>
+                            <input type="radio" name="placement" checked={placement === val} onChange={() => setPlacement(val)} className="mt-0.5 accent-cyan-500" />
+                            <span><span className="text-sm text-slate-200">{title}</span><span className="block text-[11px] text-slate-500">{desc}</span></span>
+                          </label>
+                        ))}
+                      </div>
+
+                      {placement === "existing_adset" && (
+                        <div className="mt-2">
+                          <p className={label}>Ad set</p>
+                          <select value={existingAdsetId} onChange={(e) => setExistingAdsetId(e.target.value)} className={field}>
+                            <option value="">Choose an ad set…</option>
+                            {(opts?.campaigns || []).map((c) => (
+                              <optgroup key={c.id} label={c.name}>
+                                {c.adsets.map((s) => <option key={s.id} value={s.id}>{s.name}{/ACTIVE/i.test(s.status || "") ? "" : " (paused)"}</option>)}
+                              </optgroup>
+                            ))}
+                          </select>
+                          {!opts && <p className="mt-1 text-[11px] text-slate-500">Loading your ad sets…</p>}
+                          {opts && !opts.campaigns.length && <p className="mt-1 text-[11px] text-amber-300">No existing ad sets found — create a new one instead.</p>}
+                        </div>
+                      )}
+                      {placement === "existing_campaign" && (
+                        <div className="mt-2">
+                          <p className={label}>Campaign</p>
+                          <select value={existingCampaignId} onChange={(e) => setExistingCampaignId(e.target.value)} className={field}>
+                            <option value="">Choose a campaign…</option>
+                            {(opts?.campaigns || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Lead-form continuity */}
+                      <div className="mt-3">
+                        <p className={label}>Lead form (where new enquiries come from)</p>
+                        {placement === "existing_adset" ? (
+                          <p className="rounded-lg border border-slate-800 bg-slate-900/60 px-2.5 py-2 text-[11px] text-slate-400">This ad inherits the ad set's existing lead form automatically.</p>
+                        ) : (
+                          <select value={leadFormId} onChange={(e) => setLeadFormId(e.target.value)} className={field}>
+                            {leadForms.length === 0 && <option value="">{opts ? "No lead forms found on your Page" : "Loading…"}</option>}
+                            {leadForms.map((f) => <option key={f.id} value={f.id}>{f.name}{f.status && f.status !== "ACTIVE" ? ` (${f.status.toLowerCase()})` : ""}</option>)}
+                          </select>
+                        )}
+                        <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-emerald-300">
+                          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          {placement === "existing_adset"
+                            ? "New leads keep flowing into Hazel automatically — same form, questions and tracking as your current ads."
+                            : selectedFormName
+                              ? `New leads will use your “${selectedFormName}” form and land in Hazel automatically, just like now.`
+                              : "Pick the form your current ads use so new leads still reach Hazel."}
+                        </p>
+                      </div>
                     </div>
+                  )}
+
+                  {/* New-campaign details (only when creating a fresh campaign). */}
+                  {placement === "new" && (
+                    <>
+                      <button onClick={suggest} disabled={planning} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50">
+                        {planning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />} Let Hazel suggest the setup
+                      </button>
+                      {planNote && <p className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-[11px] text-slate-400">{planNote}</p>}
+                      <div><p className={label}>Campaign name</p><input value={campaignName} onChange={(e) => setCampaignName(e.target.value)} className={field} /></div>
+                      {isMeta && (
+                        <div>
+                          <p className={label}>Objective</p>
+                          <select value={objective} onChange={(e) => setObjective(e.target.value)} className={field}>
+                            {META_OBJECTIVES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                          </select>
+                          <p className="mt-1.5 text-[11px] text-slate-500">Leads is the right call for a tradie chasing enquiries — Hazel defaults to it.</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </>
               )}
 
               {/* STEP 1 — AD SET */}
-              {step === 1 && (
+              {step === 1 && (placement === "existing_adset" ? (
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-400">
+                  <p className="text-slate-200">This ad joins your existing ad set.</p>
+                  <p className="mt-1 text-[11px]">Its budget, schedule, audience and targeting stay exactly as they are — Meta just tests your new ad against the ones already running. Nothing about the ad set changes.</p>
+                </div>
+              ) : (
                 <>
                   {isMeta && <div><p className={label}>Ad set name</p><input value={adSetName} onChange={(e) => setAdSetName(e.target.value)} placeholder={`${campaignName} — Ad Set`} className={field} /></div>}
                   <div className="grid grid-cols-2 gap-3">
@@ -283,19 +387,33 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
                     </>
                   )}
                 </>
-              )}
+              ))}
 
               {/* STEP 2 — REVIEW */}
               {step === 2 && (
                 <>
                   <div className="space-y-1.5 rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-xs">
-                    <Row k="Campaign" v={campaignName} />
-                    {isMeta && <Row k="Objective" v={META_OBJECTIVES.find((o) => o.id === objective)?.label || objective} />}
-                    {isMeta && <Row k="Ad set" v={adSetName || `${campaignName} — Ad Set`} />}
-                    <Row k="Daily budget" v={`$${budget}/day · ~$${weekly}/week`} />
-                    {isMeta && <Row k="Location" v={`${radiusKm}km radius`} />}
+                    {isMeta && <Row k="Placement" v={placement === "existing_adset" ? "Add to existing ad set" : placement === "existing_campaign" ? "New ad set in existing campaign" : "New campaign + ad set"} />}
+                    {placement === "existing_adset" ? (
+                      <Row k="Ad set" v={existingAdsetName || existingAdsetId || "—"} />
+                    ) : (
+                      <>
+                        <Row k="Campaign" v={placement === "existing_campaign" ? (existingCampaignName || existingCampaignId || "—") : campaignName} />
+                        {isMeta && placement === "new" && <Row k="Objective" v={META_OBJECTIVES.find((o) => o.id === objective)?.label || objective} />}
+                        {isMeta && <Row k="Ad set" v={adSetName || `${placement === "existing_campaign" ? existingCampaignName : campaignName} — Ad Set`} />}
+                        <Row k="Daily budget" v={`$${budget}/day · ~$${weekly}/week`} />
+                        {isMeta && <Row k="Location" v={`${radiusKm}km radius`} />}
+                      </>
+                    )}
+                    {isMeta && <Row k="Lead form" v={placement === "existing_adset" ? "Inherited from the ad set" : selectedFormName || "—"} />}
                     <Row k="Ad" v={ad.content?.variations?.[0]?.headline || ad.content?.variations?.[0]?.primaryText?.slice(0, 60) || "Your saved ad"} />
                   </div>
+                  {isMeta && (
+                    <p className="flex items-start gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-[11px] text-emerald-200">
+                      <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      New leads from this ad come into Hazel automatically through the same lead form + webhook as your current ads — same questions, same tracking.
+                    </p>
+                  )}
 
                   <div>
                     <p className={label}>Publish mode</p>
@@ -334,7 +452,7 @@ export default function LaunchAdModal({ ad, onClose }: { ad: Ad; onClose: () => 
                 {step === 0 ? "Cancel" : <><ChevronLeft className="h-4 w-4" /> Back</>}
               </button>
               {step < 2 ? (
-                <button onClick={() => setStep((s) => s + 1)} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400">Next <ChevronRight className="h-4 w-4" /></button>
+                <button onClick={() => setStep((s) => s + 1)} disabled={step === 0 && isMeta && ((placement === "existing_adset" && !existingAdsetId) || (placement === "existing_campaign" && !existingCampaignId))} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">Next <ChevronRight className="h-4 w-4" /></button>
               ) : (
                 !confirmLive && (
                   <button onClick={onPublishClick} disabled={loading} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50">
