@@ -17,6 +17,7 @@ import {
   Megaphone,
   Compass,
   MessagesSquare,
+  MessageCircle,
   Plug,
   Building2,
   Zap,
@@ -209,6 +210,7 @@ export const NAV: NavGroup[] = [
     tier: "secondary",
     items: [
       { id: "reviews", label: "Reviews", icon: Star },
+      { id: "engagement", label: "Comments & Reviews", icon: MessageCircle },
       { id: "competitor", label: "Competitors", icon: Swords },
     ],
   },

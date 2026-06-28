@@ -112,6 +112,34 @@ Return ONLY valid JSON, no markdown:
  "posts": [{"date": "YYYY-MM-DD","time": "HH:mm" (24h, AEST),"category": "before/after"|"finished job"|"tip"|"trust"|"seasonal"|"behind the scenes","channels": string[] (subset of ["facebook","instagram"]),"caption": string,"hashtags": string[] (with leading #, empty for text-only),"photoNeeded": boolean,"why": string (one line on why this should perform)}]}`;
 }
 
+// AI comment/review responder: draft a reply in the business's voice the owner
+// approves before posting. Smart — flags sensitive items (complaints/negatives)
+// for the owner's personal attention instead of an auto tone-deaf reply.
+export interface EngageItem {
+  channel: "facebook" | "instagram" | "google";
+  kind: "comment" | "review";
+  text: string;
+  rating?: number | null;
+  author?: string | null;
+}
+export function commentReplyPrompt(p: BusinessProfile, item: EngageItem) {
+  const what = item.kind === "review"
+    ? `a ${item.rating ? `${item.rating}-star ` : ""}Google review`
+    : `a comment on your ${item.channel === "instagram" ? "Instagram" : "Facebook"}`;
+  return `You are replying AS ${businessName(p)} (a ${businessType(p)} business${area(p) ? ` in ${area(p)}` : ""}) in the business's own voice, to ${what}${item.author ? ` from ${item.author}` : ""}:
+"""
+${(item.text || "").slice(0, 1200)}
+"""
+
+Decide first:
+- If it's a complaint, an angry or negative comment, an accusation, a refund/legal/safety/defamation issue, or anything sensitive → DO NOT auto-draft a chirpy reply. Set action "flag" with a one-line reason for the owner to handle personally. You may put a brief, calm holding line in "reply" they can adapt (e.g. acknowledge + take it to DM/phone), but it needs their judgement.
+- Otherwise (thanks, praise, a question, interest/enquiry, general positivity) → write ONE short, warm, on-brand reply: acknowledge them, answer briefly if it's a question, and where natural nudge the next step (DM us / book a free quote) without being salesy. Human and concise (1–2 sentences). No hashtags. Set action "reply".
+
+Also classify sentiment.
+
+Return ONLY valid JSON: {"action":"reply"|"flag","reply":string,"reason":string (empty if not flagged),"sentiment":"positive"|"neutral"|"negative"}`;
+}
+
 export function ideasPrompt(p: BusinessProfile, leads: Lead[]) {
   return `${bizContext(p, leads)}
 
