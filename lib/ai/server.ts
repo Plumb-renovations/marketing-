@@ -10,6 +10,10 @@ import {
   contentPlanPrompt,
   commentReplyPrompt,
   type EngageItem,
+  leadExtractPrompt,
+  preQuoteBriefPrompt,
+  lossCoachPrompt,
+  leadMessagePrompt,
   ideasPrompt,
   metaAdPrompt,
   googleAdPrompt,
@@ -116,6 +120,7 @@ interface Payload {
   postsPerWeek?: number; // content-plan cadence
   startDate?: string; // content-plan start (YYYY-MM-DD)
   engageItem?: EngageItem; // comment-reply: the comment/review to draft for
+  journey?: Record<string, any>; // lead-journey prompts context
 }
 
 // Dispatch a generator by kind. The org's Business Profile drives the system
@@ -138,6 +143,14 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
       if (!payload.engageItem) return null;
       return callJSON(buildContent(commentReplyPrompt(profile, payload.engageItem)), 500, sys);
     }
+    case "lead-extract":
+      return callJSON(buildContent(leadExtractPrompt(profile, (payload.journey || {}) as any)), 900, sys);
+    case "pre-quote-brief":
+      return callJSON(buildContent(preQuoteBriefPrompt(profile, (payload.journey || {}) as any)), 900, sys);
+    case "loss-coach":
+      return callJSON(buildContent(lossCoachPrompt(profile, (payload.journey || {}) as any)), 500, sys);
+    case "lead-message":
+      return callJSON(buildContent(leadMessagePrompt(profile, (payload.journey || {}) as any)), 400, sys);
     case "content-plan":
       return callJSON(
         buildContent(contentPlanPrompt(profile, leads, {
@@ -187,4 +200,4 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
   }
 }
 
-export const VALID_KINDS = ["post", "ideas", "content-plan", "comment-reply", "meta-ad", "google-ad", "strategy-ads", "competitor-beat", "campaign-plan", "creative-review", "coach", "coach-ask"];
+export const VALID_KINDS = ["post", "ideas", "content-plan", "comment-reply", "lead-extract", "pre-quote-brief", "loss-coach", "lead-message", "meta-ad", "google-ad", "strategy-ads", "competitor-beat", "campaign-plan", "creative-review", "coach", "coach-ask"];

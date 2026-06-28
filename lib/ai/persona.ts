@@ -140,6 +140,49 @@ Also classify sentiment.
 Return ONLY valid JSON: {"action":"reply"|"flag","reply":string,"reason":string (empty if not flagged),"sentiment":"positive"|"neutral"|"negative"}`;
 }
 
+// ---- Lead Journey Sales Coach ---------------------------------------------
+const biz = (p: BusinessProfile) => `${businessName(p)} — ${businessType(p)}${area(p) ? ` in ${area(p)}` : ""}`;
+
+// Pull structured facts + an outcome + the next move from a voice/typed update.
+export function leadExtractPrompt(p: BusinessProfile, ctx: { note: string; name?: string; project?: string; currentStage?: string; qual?: any }): string {
+  return `You are a world-class sales manager for ${biz(p)}. The owner just logged an update about a lead${ctx.name ? ` (${ctx.name}${ctx.project ? `, ${ctx.project}` : ""})` : ""}. Current stage: ${ctx.currentStage || "new"}. Known so far: ${JSON.stringify(ctx.qual || {})}.
+
+UPDATE (spoken or typed by the owner):
+"""
+${(ctx.note || "").slice(0, 2000)}
+"""
+
+Extract only what's stated or clearly implied (null when unknown — don't invent). Decide the contact outcome and the journey stage this update implies. Then give ONE next action and a ready-to-send message in the business's voice (channel-appropriate; empty if a message doesn't fit).
+
+Return ONLY valid JSON, no markdown:
+{"summary":string (one plain line),"facts":{"budgetAud":number|null,"jobSizeEstimate":number|null,"timeline":string|null,"motivation":string|null,"vision":string|null,"concerns":string[],"competingQuotes":number|null,"decisionStyle":string|null,"visionClarity":"clear"|"unsure"|null},"outcome":"no_answer"|"qualified"|"unqualified"|null,"suggestedStage":"new"|"contacted"|"qualified"|"quote_sent"|"following_up"|"won"|"lost"|null,"coachTip":string (one line — what to do next),"suggestedMessage":string}`;
+}
+
+// Brief the owner BEFORE the site visit so they win THIS specific customer.
+export function preQuoteBriefPrompt(p: BusinessProfile, ctx: { name?: string; project?: string; qual?: any }): string {
+  return `You are a world-class sales manager for ${biz(p)}. Brief the owner BEFORE the quote/site visit so they win this specific customer. Customer: ${ctx.name || "the lead"}${ctx.project ? `, ${ctx.project}` : ""}. What we know: ${JSON.stringify(ctx.qual || {})}.
+
+Read the person: are they emotion/vision-led or budget-driven? Resale or forever-home? Price-shopping or value-seeking? Tailor the pitch to them. Be concrete — a tradie should be able to walk in and use this.
+
+Return ONLY valid JSON, no markdown:
+{"why":string (their real motivation),"vision":string (what they want),"concern":string (their biggest worry to defuse),"competing":string (the competitive situation),"askThese":string[] (3-4 sharp questions to ask on site),"leadWith":string (the opening that lands with them),"differentiateBy":string (how to stand out for THIS customer),"pitchStyle":string (emotional vs budget vs value, etc.),"designerSuggested":boolean,"designerReason":string (if a big, vision-led, unsure job — suggest bringing the showroom designer; else empty)}`;
+}
+
+// Targeted, honest advice when a lead is lost — tied to patterns over time.
+export function lossCoachPrompt(p: BusinessProfile, ctx: { reason?: string; detail?: string; qual?: any; patternsText?: string }): string {
+  return `You are a world-class sales manager for ${biz(p)}. A lead was just lost. Reason: ${ctx.reason || "unspecified"}. Detail: ${ctx.detail || "none"}. About the deal: ${JSON.stringify(ctx.qual || {})}. ${ctx.patternsText ? `Loss patterns on this account so far: ${ctx.patternsText}` : ""}
+
+Be honest and specific: what likely happened, and the concrete system/change to stop it recurring. If there's a pattern, name it plainly. No fluff.
+
+Return ONLY valid JSON, no markdown: {"advice":string (2-3 sentences),"system":string (the one system/change to adopt)}`;
+}
+
+// One ready follow-up message in the brand voice, channel + tone aware.
+export function leadMessagePrompt(p: BusinessProfile, ctx: { name?: string; channel?: string; tone?: string; qual?: any }): string {
+  return `Write ONE short ${ctx.channel || "text"} message from ${businessName(p)} to ${ctx.name || "the customer"} for a "${ctx.tone || "follow-up"}" follow-up after a renovation quote. Warm, human, on-brand, one clear next step, no hashtags, no placeholders. Context: ${JSON.stringify(ctx.qual || {})}.
+Return ONLY valid JSON: {"message":string}`;
+}
+
 export function ideasPrompt(p: BusinessProfile, leads: Lead[]) {
   return `${bizContext(p, leads)}
 
