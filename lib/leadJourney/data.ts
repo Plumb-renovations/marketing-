@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getBusinessProfile } from "@/lib/business/profileServer";
 import { runGenerator } from "@/lib/ai/server";
 import { CADENCE, type JourneyLead, type JourneyStage, type LeadQual } from "./model";
-import { analysePatterns } from "./coach";
+import { analysePatterns, effectiveStage } from "./coach";
 
 // Server-side journey ops: capture (AI extract → update lead + event), staging,
 // follow-up cadence, pre-quote briefing, and loss capture + advice. Reuses the
@@ -18,6 +18,7 @@ export function mapJourneyLead(r: any): JourneyLead {
     followupStep: r.followup_step ?? 0, followupDue: r.followup_due ?? null, lastTouchAt: r.last_touch_at ?? null,
     qual: (r.qual ?? {}) as LeadQual, lostReason: r.lost_reason ?? null, lostDetail: r.lost_detail ?? null,
     source: r.source, phone: r.phone ?? null,
+    visitAt: r.visit_at ?? null, visitNotes: r.visit_notes ?? null,
   };
 }
 
@@ -180,6 +181,45 @@ export async function setJourneyStage(supabase: SupabaseClient, orgId: string, l
   await insertEvent(supabase, orgId, leadId, { kind: "stage", source: "system", body: `Stage → ${stage}` });
 }
 
+// Book (or reschedule) a quote/site visit against a qualified lead. Stores the
+// date/time + optional notes, makes sure the lead is at least "qualified" (a
+// visit means it's qualified), and prepares the pre-quote briefing if one
+// hasn't been generated yet so the prep is ready before the visit. Requires the
+// 0030 visit_at/visit_notes columns — without them the update errors clearly.
+export async function bookVisit(supabase: SupabaseClient, orgId: string, leadId: string, visitAtIso: string, notes?: string) {
+  const cur = await getJourney(supabase, orgId, leadId);
+  if (!cur) throw new Error("lead not found");
+  const t = Date.parse(visitAtIso);
+  if (isNaN(t)) throw new Error("invalid visit date/time");
+  const now = new Date().toISOString();
+  const patch: Record<string, any> = { visit_at: new Date(t).toISOString(), visit_notes: notes?.trim() || null, last_touch_at: now, updated_at: now };
+  // A booked visit implies the lead is qualified — promote it, but never
+  // downgrade a lead that's already further along (quote_sent/following_up/won).
+  const st = effectiveStage(cur.lead);
+  if (st === "new" || st === "contacted") { patch.journey_stage = "qualified"; patch.stage = "qualified"; }
+  const { error } = await supabase.from("leads").update(patch).eq("id", leadId);
+  if (error) throw error;
+
+  // Prep the briefing now so opening the booked visit shows "how to win it".
+  // Best-effort — a missing briefing shouldn't fail the booking.
+  if (!cur.briefing) {
+    try { await generateBrief(supabase, orgId, leadId); } catch (e) { console.error("[journey] brief on booking failed:", (e as Error).message); }
+  }
+  await insertEvent(supabase, orgId, leadId, { kind: "visit", source: "typed", body: `Quote visit booked for ${new Date(t).toISOString()}${notes?.trim() ? ` — ${notes.trim()}` : ""}` });
+  return { journey: await getJourney(supabase, orgId, leadId) };
+}
+
+// Cancel a booked visit (clears the date + notes).
+export async function cancelVisit(supabase: SupabaseClient, orgId: string, leadId: string) {
+  const cur = await getJourney(supabase, orgId, leadId);
+  if (!cur) throw new Error("lead not found");
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("leads").update({ visit_at: null, visit_notes: null, last_touch_at: now, updated_at: now }).eq("id", leadId);
+  if (error) throw error;
+  await insertEvent(supabase, orgId, leadId, { kind: "visit", source: "typed", body: "Quote visit cancelled" });
+  return { journey: await getJourney(supabase, orgId, leadId) };
+}
+
 // Record that a follow-up was done → advance the cadence to the next step.
 export async function advanceFollowup(supabase: SupabaseClient, orgId: string, leadId: string, channel: string) {
   const cur = await getJourney(supabase, orgId, leadId);
@@ -225,4 +265,31 @@ export async function generateMessage(supabase: SupabaseClient, orgId: string, l
   const profile = await getBusinessProfile(orgId);
   const ai: any = await runGenerator("lead-message", { journey: { name: cur.lead.name, channel, tone, qual: cur.lead.qual } }, profile);
   return { message: String(ai?.message || "") };
+}
+
+// A booked quote visit + its prep, ready for the Sales Coach schedule and the
+// future Board Meeting home page ("you have 2 quote visits today").
+export interface VisitItem {
+  lead: JourneyLead;
+  briefing: any | null;
+}
+
+// All upcoming/active booked quote visits for the org, soonest first. Read the
+// SAME way the board does — select * + RLS (no org_id filter, the documented
+// multi-tenancy footgun) — and filter in CODE, never referencing visit_at in
+// SQL, so the rest of the Sales Coach keeps working before 0030 is applied
+// (visit_at simply reads as undefined → no visits, no error). Excludes
+// archived, won and lost leads, and visits more than a day in the past.
+export async function fetchUpcomingVisits(supabase: SupabaseClient, now = Date.now()): Promise<VisitItem[]> {
+  const { data, error } = await supabase.from("leads").select("*").limit(500);
+  if (error) {
+    console.error("[journey] fetchUpcomingVisits failed:", error.message);
+    throw error;
+  }
+  const cutoff = now - DAY;
+  return (data || [])
+    .filter((r: any) => !r.archived_at && r.visit_at && !isNaN(Date.parse(r.visit_at)) && Date.parse(r.visit_at) >= cutoff)
+    .map((r: any) => ({ lead: mapJourneyLead(r), briefing: r.briefing ?? null }))
+    .filter((v: VisitItem) => !["won", "lost"].includes(effectiveStage(v.lead)))
+    .sort((a: VisitItem, b: VisitItem) => Date.parse(a.lead.visitAt!) - Date.parse(b.lead.visitAt!));
 }

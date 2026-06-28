@@ -53,6 +53,21 @@ export function cadenceFor(l: JourneyLead): { step: number; dueAt: number; tone:
   return { step, dueAt: sent + c.day * DAY, tone: c.tone, channel: c.channel };
 }
 
+// State of a lead's booked quote visit (pure, timezone-agnostic — works off the
+// stored ISO timestamp). "soon" = within ~90 min before the start through ~3 hr
+// after (i.e. it's happening / about to); "upcoming" = further out; "past" =
+// well after the start (visit done, time to quote). Day/time LABELS are left to
+// the UI so they render in the viewer's local timezone.
+export type VisitState = "none" | "soon" | "upcoming" | "past";
+export function visitState(l: JourneyLead, now = Date.now()): { state: VisitState; minsUntil: number | null } {
+  const t = ms(l.visitAt);
+  if (isNaN(t)) return { state: "none", minsUntil: null };
+  const minsUntil = Math.round((t - now) / MIN);
+  if (minsUntil < -180) return { state: "past", minsUntil };
+  if (minsUntil <= 90) return { state: "soon", minsUntil };
+  return { state: "upcoming", minsUntil };
+}
+
 export interface NextAction {
   kind: string;
   title: string;
@@ -102,10 +117,22 @@ export function nextActionFor(l: JourneyLead, now = Date.now()): NextAction {
     return { kind: "switch_text", title: "No answer — send a text", detail: "People dodge unknown numbers. Send a short text introducing yourself and why you're calling, so the next call is expected.", channel: "text", urgency: "now" };
   }
 
-  // Qualified → book the site visit (and prep a briefing). Keyed on the journey
-  // stage, not a lingering contact_outcome, so a later stage always wins.
+  // Qualified → book the site visit, then manage the booked visit + prep.
+  // Keyed on the journey stage, not a lingering contact_outcome, so a later
+  // stage always wins.
   if (stage === "qualified") {
-    return { kind: "book_visit", title: "Book the site visit", detail: "They're qualified — lock in a measure & quote visit. Generate Hazel's pre-quote briefing first so you walk in ready to win this specific customer.", channel: "call", urgency: "soon" };
+    const v = visitState(l, now);
+    if (v.state === "soon") {
+      return { kind: "visit_soon", title: "Quote visit now — here's how to win it", detail: "Your booked quote visit is happening now. Open the pre-quote briefing so you walk in knowing their why, what to lead with and how to stand out.", channel: "visit", urgency: "now" };
+    }
+    if (v.state === "upcoming") {
+      const inDays = Math.max(0, Math.round((v.minsUntil ?? 0) / 1440));
+      return { kind: "visit_booked", title: inDays <= 1 ? "Quote visit booked — prep ready" : `Quote visit booked — in ${inDays} days`, detail: "The visit's in the diary and Hazel's pre-quote briefing is ready. Review the prep before you go so you walk in ready to win this specific customer.", channel: "visit", urgency: inDays <= 1 ? "soon" : "later" };
+    }
+    if (v.state === "past") {
+      return { kind: "visit_done", title: "Visit done — send the quote", detail: "You've done the site visit. Get the quote out while it's fresh, then Hazel runs the follow-up cadence so it never goes silent.", channel: "none", urgency: "soon" };
+    }
+    return { kind: "book_visit", title: "Book the site visit", detail: "They're qualified — lock in a measure & quote visit. Book it into Hazel and she'll prep a pre-quote briefing so you walk in ready to win this specific customer.", channel: "call", urgency: "soon" };
   }
 
   // Contacted but not yet qualified.

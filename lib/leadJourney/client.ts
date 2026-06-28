@@ -46,9 +46,21 @@ export interface SalesQueueItem {
   waitingMin?: number | null;
   step?: number;
 }
+export interface VisitItem {
+  id: string;
+  name: string;
+  project?: string | null;
+  phone?: string | null;
+  visitAt: string; // ISO — render in local timezone
+  notes?: string | null;
+  action: { kind: string; title: string; detail: string; channel: string; urgency: string };
+  qual?: any | null;
+  briefing?: any | null;
+}
 export interface SalesCoachData {
   callNow: SalesQueueItem[];
   cold: SalesQueueItem[];
+  visits: VisitItem[];
   patterns: {
     confidence: "early" | "building" | "solid";
     decided: number; won: number; lost: number;
