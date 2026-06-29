@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Eye, Pencil, Save, Send, Loader2, Plus, Trash2, GripVertical, Columns3, Copy, RefreshCw, AlertTriangle, ArrowLeft, CheckCircle2, Printer, Tags, BookmarkPlus, LayoutTemplate, X,
+  Eye, Pencil, Save, Send, Loader2, Plus, Trash2, GripVertical, Columns3, Copy, RefreshCw, AlertTriangle, ArrowLeft, CheckCircle2, Printer, Tags, BookmarkPlus, LayoutTemplate, X, Sparkles, TrendingDown, TrendingUp, ShieldCheck, ScanSearch, MessageSquareQuote, Lightbulb,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchQuote, saveQuote } from "@/lib/data/quotes";
@@ -18,6 +18,7 @@ import {
   emptyQuote, computeTotals, computeStageAmounts, stagePercentSum, money,
   type Quote, type QuoteItem, type QuoteStage,
 } from "@/lib/quotes/model";
+import { reviewQuote, type QuoteReviewResult } from "@/lib/quotes/reviewClient";
 import QuoteDocument from "@/components/quotes/QuoteDocument";
 
 const uid = () => crypto.randomUUID();
@@ -43,6 +44,8 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   const [templates, setTemplates] = useState<QuoteTemplate[]>([]);
   const [tplOpen, setTplOpen] = useState(false);
   const [tplName, setTplName] = useState("");
+  const [review, setReview] = useState<QuoteReviewResult | null>(null);
+  const [reviewBusy, setReviewBusy] = useState(false);
   const [leads, setLeads] = useState<{ id: string; name: string; email?: string; phone?: string; suburb?: string; project?: string }[]>([]);
   const [tab, setTab] = useState<"details" | "preview">("details");
   const [showInternal, setShowInternal] = useState(false);
@@ -157,6 +160,28 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
     catch (e: any) { setError(e?.message || "Couldn't delete the template."); }
   };
 
+  // ---- Review with Hazel (reads the current quote; never edits it) --------
+  const runReview = async () => {
+    setReviewBusy(true); setError("");
+    try {
+      const r = await reviewQuote({
+        leadId: q.leadId,
+        projectName: q.projectName,
+        reference: q.reference,
+        scopeDescription: q.scopeDescription,
+        inclusions: q.inclusions,
+        exclusions: q.exclusions,
+        introNote: q.introNote,
+        items: q.items.map((it) => ({ id: it.id, description: it.description, detail: it.detail, qty: it.qty, unit: it.unit, unitPrice: it.unitPrice, unitCost: it.unitCost })),
+      }, totals.total);
+      setReview(r);
+    } catch (e: any) {
+      setError(e?.message || "Couldn't run the review.");
+    } finally {
+      setReviewBusy(false);
+    }
+  };
+
   const onDrop = (to: number) => {
     const from = dragIdx.current;
     dragIdx.current = null;
@@ -244,6 +269,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
         <button onClick={() => doSave(true)} disabled={!!busy} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800 disabled:opacity-50">{busy === "exit" ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Save &amp; exit</button>
         <button onClick={doSend} disabled={!!busy} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50">{busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Send</button>
         <button title="Open the print dialog — choose “Save as PDF”" onClick={() => { setTab("preview"); setTimeout(() => window.print(), 120); }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800"><Printer className="h-4 w-4" /> Save as PDF</button>
+        <button title="Hazel reviews wording, pricing and scope before you send — reads the quote, never changes it" onClick={runReview} disabled={reviewBusy} className="inline-flex items-center gap-1.5 rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 py-2 text-sm text-fuchsia-200 transition hover:bg-fuchsia-500/20 disabled:opacity-50">{reviewBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Review with Hazel</button>
         <div className="ml-auto flex items-center gap-2">
           {note && <span className="inline-flex items-center gap-1 text-sm text-emerald-400"><CheckCircle2 className="h-4 w-4" /> {note}</span>}
           <button onClick={() => addItem()} className="hidden" />
@@ -253,6 +279,90 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
       </div>
 
       {error && <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}</div>}
+
+      {/* Hazel's review — wording to close, pricing sanity, scope flags. Reads
+          the quote only; never edits it. */}
+      {review && (
+        <div className="rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/5 p-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-fuchsia-300" />
+              <div>
+                <h3 className="font-display text-sm font-semibold text-slate-100">Hazel&apos;s review</h3>
+                <p className="mt-0.5 text-sm text-fuchsia-100/90">{review.headline}</p>
+              </div>
+            </div>
+            <button onClick={() => setReview(null)} title="Dismiss" className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-3.5 w-3.5" /></button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+            {/* Pricing sanity */}
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <h4 className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-slate-400 font-display"><ShieldCheck className="h-3.5 w-3.5" /> Pricing check</h4>
+              {review.pricing.length === 0 ? (
+                <p className="text-xs text-slate-500">No cost or rate-card data to compare yet. Add unit costs (Cost / margin) or build your price list for a sharper check.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {review.pricing.map((p) => {
+                    const tone = p.verdict === "healthy" ? "text-emerald-300" : p.verdict === "too_dear" ? "text-amber-300" : "text-red-300";
+                    const Icon = p.verdict === "healthy" ? ShieldCheck : p.verdict === "too_dear" ? TrendingUp : TrendingDown;
+                    return (
+                      <li key={p.lineId} className="text-xs leading-snug">
+                        <span className={`inline-flex items-center gap-1 font-medium ${tone}`}><Icon className="h-3 w-3 shrink-0" /> {p.description}</span>
+                        <span className="text-slate-400"> — {p.reason}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            {/* Scope / keyword flags */}
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <h4 className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-slate-400 font-display"><ScanSearch className="h-3.5 w-3.5" /> Scope flags</h4>
+              {review.keywords.length === 0 ? (
+                <p className="text-xs text-slate-500">No trade trigger phrases detected — nothing obvious looks missing.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {review.keywords.map((k) => (
+                    <li key={k.id} className="text-xs leading-snug">
+                      <span className="inline-flex items-center gap-1 font-medium text-amber-300"><AlertTriangle className="h-3 w-3 shrink-0" /> {k.label}</span>
+                      <span className="text-slate-400"> — {k.note}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Wording to close */}
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <h4 className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-slate-400 font-display"><MessageSquareQuote className="h-3.5 w-3.5" /> Wording to close</h4>
+              {review.wording.length === 0 ? (
+                <p className="text-xs text-slate-500">{review.aiAvailable ? "Wording reads well — nothing to change." : "AI wording is unavailable right now; the pricing & scope checks still apply."}</p>
+              ) : (
+                <ul className="space-y-2">
+                  {review.wording.map((w, i) => (
+                    <li key={i} className="text-xs leading-snug">
+                      {w.target && <p className="font-medium text-cyan-200">{w.target}</p>}
+                      <p className="text-slate-300">{w.suggestion}</p>
+                      {w.why && <p className="text-[11px] text-slate-500">Why: {w.why}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          {review.closeTips.length > 0 && (
+            <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-slate-400 font-display"><Lightbulb className="h-3.5 w-3.5" /> To win it</h4>
+              <ul className="list-disc space-y-0.5 pl-4 text-xs text-slate-300">{review.closeTips.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            </div>
+          )}
+
+          <p className="mt-3 text-[11px] text-slate-500">Suggestions only — Hazel reads the quote and never changes it. You stay in control.</p>
+        </div>
+      )}
 
       {/* Sent status — the tracked client link + open tracking. */}
       {q.status !== "draft" && q.publicToken && (

@@ -369,6 +369,37 @@ Return ONLY valid JSON, no markdown:
 {"answer": string (plain English, specific to his data), "followups": string[] (2-3 smart follow-up questions he might not know to ask)}`;
 }
 
+// Review a quote BEFORE it's sent — focus on WORDING TO CLOSE. The pricing
+// sanity + scope/keyword checks are computed deterministically and passed in as
+// context (so the model doesn't re-do the maths); the AI's job is to make the
+// wording win the job, leaning on the customer's motivation where we have it.
+export function quoteReviewPrompt(
+  p: BusinessProfile,
+  ctx: { project?: string; scope?: string; itemsText?: string; inclusions?: string; exclusions?: string; total?: string; briefingText?: string; pricingText?: string; keywordText?: string },
+): string {
+  return `You are Hazel, a world-class sales manager for ${biz(p)}. The owner has built a renovation quote and wants a quick review BEFORE he sends it — to win the job WITHOUT under-quoting.
+
+THE QUOTE
+- Customer / project: ${ctx.project || "—"}
+- Overall scope: ${ctx.scope || "—"}
+- Line items (description · qty unit · price · [internal cost/margin]):
+${ctx.itemsText || "  (no line items yet)"}
+- Inclusions: ${ctx.inclusions || "—"}
+- Exclusions: ${ctx.exclusions || "—"}
+- Total: ${ctx.total || "—"}
+${ctx.briefingText ? `\nWHAT WE KNOW ABOUT THIS CUSTOMER (pre-quote briefing): ${ctx.briefingText}` : ""}
+
+ALREADY CHECKED (shown to the owner separately — don't re-list these, but you may refer to them in your headline):
+- Pricing flags: ${ctx.pricingText || "none"}
+- Scope / keyword flags: ${ctx.keywordText || "none"}
+
+YOUR JOB — WORDING TO CLOSE:
+Review the descriptions and scope WORDING and suggest specific improvements that help WIN this job: lead with the transformation/outcome, replace bare or transactional lines with value, reassure on quality / warranty / licensing, and lean on the customer's real motivation from the briefing where you have it. These are SUGGESTIONS the owner can apply — never rewrite the whole quote, and don't change the prices. Australian English, concrete and brief.
+
+Return ONLY valid JSON, no markdown:
+{"headline":string (one line — the single most useful thing to do before sending),"wording":[{"target":string (the line or section this is about),"suggestion":string (the improved wording or angle to use),"why":string (why it helps close this customer)}],"closeTips":string[] (0-3 short extra tips to win the job, optional)}`;
+}
+
 // "Paste & beat": analyse a competitor's pasted live ad(s), then out-position
 // them with stronger, differentiated copy in our voice for the chosen target.
 export function competitorBeatPrompt(
