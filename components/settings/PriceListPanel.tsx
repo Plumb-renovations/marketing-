@@ -6,6 +6,7 @@ import { Panel } from "@/components/ui/primitives";
 import { createClient } from "@/lib/supabase/client";
 import { fetchPriceList, upsertPriceItem, deletePriceItem, type PriceItem } from "@/lib/data/priceList";
 import { STARTER_PRICE_LIST } from "@/lib/quotes/priceListDefaults";
+import { DEFAULT_TRADES } from "@/lib/quotes/trades";
 
 const uid = () => crypto.randomUUID();
 const cls = "w-full rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50";
@@ -32,7 +33,7 @@ export default function PriceListPanel() {
   }, [supabase]);
 
   const set = (i: number, patch: Partial<PriceItem>) => setItems((p) => p.map((x, j) => (j === i ? { ...x, ...patch } : x)));
-  const add = () => setItems((p) => [...p, { id: uid(), category: "", name: "", unit: "ea", unitPrice: 0, notes: "", sortOrder: p.length }]);
+  const add = () => setItems((p) => [...p, { id: uid(), category: "", name: "", unit: "ea", unitPrice: 0, notes: "", sortOrder: p.length, trade: "" }]);
   const remove = (i: number) => setItems((p) => { const it = p[i]; if (it) removed.add(it.id); return p.filter((_, j) => j !== i); });
   const loadStarter = () =>
     setItems((p) => [...p, ...STARTER_PRICE_LIST.map((s, i) => ({ ...s, id: uid(), sortOrder: p.length + i }))]);
@@ -65,22 +66,21 @@ export default function PriceListPanel() {
         <div className="mt-4 flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading price list…</div>
       ) : (
         <>
-          <div className="mt-4 hidden grid-cols-12 gap-2 px-1 text-[11px] uppercase tracking-wider text-slate-500 font-display sm:grid">
-            <span className="col-span-3">Category</span>
-            <span className="col-span-3">Item</span>
-            <span className="col-span-2">Unit</span>
-            <span className="col-span-2">Rate (AUD)</span>
-            <span className="col-span-2">Note</span>
-          </div>
-          <div className="mt-1 space-y-2">
+          <datalist id="price-trades">{DEFAULT_TRADES.map((t) => <option key={t} value={t} />)}</datalist>
+          <div className="mt-3 space-y-2">
             {items.map((it, i) => (
-              <div key={it.id} className="grid grid-cols-12 items-center gap-2">
-                <input value={it.category} onChange={(e) => set(i, { category: e.target.value })} placeholder="Category" className={cls + " col-span-6 sm:col-span-3"} />
-                <input value={it.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="Item" className={cls + " col-span-6 sm:col-span-3"} />
-                <input value={it.unit} onChange={(e) => set(i, { unit: e.target.value })} placeholder="unit" className={cls + " col-span-4 sm:col-span-2 font-data"} />
-                <input type="number" value={it.unitPrice} onChange={(e) => set(i, { unitPrice: Number(e.target.value) })} placeholder="0" className={cls + " col-span-4 sm:col-span-2 text-right font-data"} />
-                <input value={it.notes} onChange={(e) => set(i, { notes: e.target.value })} placeholder="optional" className={cls + " col-span-3 sm:col-span-1"} />
-                <button onClick={() => remove(i)} className="col-span-1 rounded-md border border-slate-700 p-2 text-slate-400 hover:text-red-300"><Trash2 className="h-4 w-4" /></button>
+              <div key={it.id} className="space-y-1.5 rounded-lg border border-slate-800 bg-slate-950/40 p-2">
+                <div className="grid grid-cols-12 gap-2">
+                  <input value={it.category} onChange={(e) => set(i, { category: e.target.value })} placeholder="Category" className={cls + " col-span-4"} />
+                  <input value={it.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="Item" className={cls + " col-span-4"} />
+                  <input list="price-trades" value={it.trade ?? ""} onChange={(e) => set(i, { trade: e.target.value })} placeholder="Trade" className={cls + " col-span-3"} />
+                  <button onClick={() => remove(i)} className="col-span-1 rounded-md border border-slate-700 p-2 text-slate-400 hover:text-red-300"><Trash2 className="h-4 w-4" /></button>
+                </div>
+                <div className="grid grid-cols-12 gap-2">
+                  <input value={it.unit} onChange={(e) => set(i, { unit: e.target.value })} placeholder="unit (m², point, fixed…)" className={cls + " col-span-3 font-data"} />
+                  <input type="number" value={it.unitPrice} onChange={(e) => set(i, { unitPrice: Number(e.target.value) })} placeholder="rate" className={cls + " col-span-3 text-right font-data"} />
+                  <input value={it.notes} onChange={(e) => set(i, { notes: e.target.value })} placeholder="note (what the rate covers — optional)" className={cls + " col-span-6"} />
+                </div>
               </div>
             ))}
             {!items.length && <p className="text-sm text-slate-500">No rates yet — add your own, or load a starter set to edit.</p>}

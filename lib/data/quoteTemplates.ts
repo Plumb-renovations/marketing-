@@ -11,7 +11,7 @@ import type { QuoteItem } from "@/lib/quotes/model";
 // via getOrgId. Resilient to the table not existing yet (pre-0031) → empty list.
 
 // The line-item shape we persist in a template (no ids — regenerated on load).
-export type TemplateLine = Pick<QuoteItem, "description" | "detail" | "qty" | "unit" | "unitPrice" | "unitCost">;
+export type TemplateLine = Pick<QuoteItem, "description" | "detail" | "qty" | "unit" | "unitPrice" | "unitCost" | "trade" | "tradeType">;
 
 export interface QuoteTemplateData {
   items: TemplateLine[];
