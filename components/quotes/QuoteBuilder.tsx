@@ -48,6 +48,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   const [review, setReview] = useState<QuoteReviewResult | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
   const [appliedWording, setAppliedWording] = useState<Set<number>>(new Set());
+  const [dismissedFlags, setDismissedFlags] = useState<Set<string>>(new Set());
   const [leads, setLeads] = useState<{ id: string; name: string; email?: string; phone?: string; suburb?: string; project?: string }[]>([]);
   const [tab, setTab] = useState<"details" | "preview">("details");
   const [showInternal, setShowInternal] = useState(false);
@@ -196,16 +197,30 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
         scopeDescription: q.scopeDescription,
         inclusions: q.inclusions,
         exclusions: q.exclusions,
+        terms: q.terms,
         introNote: q.introNote,
         items: q.items.map((it) => ({ id: it.id, description: it.description, detail: it.detail, qty: it.qty, unit: it.unit, unitPrice: it.unitPrice, unitCost: it.unitCost })),
       }, totals.total);
       setReview(r);
       setAppliedWording(new Set()); // fresh review → nothing applied yet
+      // Restore any scope flags the user already dismissed for THIS quote so
+      // reviewed warnings don't keep reappearing.
+      let dis = new Set<string>();
+      try { const raw = localStorage.getItem(`qr-dismiss:${q.id}`); if (raw) dis = new Set(JSON.parse(raw) as string[]); } catch { /* ignore */ }
+      setDismissedFlags(dis);
     } catch (e: any) {
       setError(e?.message || "Couldn't run the review.");
     } finally {
       setReviewBusy(false);
     }
+  };
+  // Dismiss a reviewed scope flag — persisted per quote so it stays gone.
+  const dismissFlag = (id: string) => {
+    setDismissedFlags((p) => {
+      const n = new Set(p).add(id);
+      try { localStorage.setItem(`qr-dismiss:${q.id}`, JSON.stringify([...n])); } catch { /* ignore */ }
+      return n;
+    });
   };
 
   // One-click apply a WORDING suggestion to the live quote — replaces the
@@ -366,18 +381,25 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
             {/* Scope / keyword flags */}
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
               <h4 className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-slate-400 font-display"><ScanSearch className="h-3.5 w-3.5" /> Scope flags</h4>
-              {review.keywords.length === 0 ? (
-                <p className="text-xs text-slate-500">No trade trigger phrases detected — nothing obvious looks missing.</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {review.keywords.map((k) => (
-                    <li key={k.id} className="text-xs leading-snug">
-                      <span className="inline-flex items-center gap-1 font-medium text-amber-300"><AlertTriangle className="h-3 w-3 shrink-0" /> {k.label}</span>
-                      <span className="text-slate-400"> — {k.note}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {(() => {
+                const visible = review.keywords.filter((k) => !dismissedFlags.has(k.id));
+                if (visible.length === 0) {
+                  return <p className="text-xs text-slate-500">{review.keywords.length ? "All scope flags reviewed — nothing outstanding." : "No specific scope risks spotted."}</p>;
+                }
+                return (
+                  <ul className="space-y-1.5">
+                    {visible.map((k) => (
+                      <li key={k.id} className="flex items-start justify-between gap-2 text-xs leading-snug">
+                        <span>
+                          <span className="inline-flex items-center gap-1 font-medium text-amber-300"><AlertTriangle className="h-3 w-3 shrink-0" /> {k.label}</span>
+                          <span className="text-slate-400"> — {k.note}</span>
+                        </span>
+                        <button onClick={() => dismissFlag(k.id)} title="Dismiss — I've reviewed this" className="mt-0.5 shrink-0 rounded p-0.5 text-slate-500 transition hover:text-slate-300"><X className="h-3 w-3" /></button>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
             </div>
 
             {/* Wording to close */}
