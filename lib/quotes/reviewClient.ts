@@ -2,9 +2,20 @@ import type { PricingFlag, KeywordFlag, ReviewQuote } from "@/lib/quotes/review"
 
 // Client call for "Review with Hazel". Sends the CURRENT builder state (incl.
 // unsaved edits + internal cost) so the review reflects exactly what's on screen.
+// A wording suggestion mapped to the exact thing it rewrites, so it can be
+// one-click applied: field "description" + lineId targets that line item;
+// field "scope" targets the overall scope description; field null = advisory.
+export interface WordingSuggestion {
+  lineId: string | null;
+  field: "description" | "scope" | null;
+  target: string; // the current line/section text, for display
+  suggestion: string; // the drop-in replacement wording
+  why: string;
+}
+
 export interface QuoteReviewResult {
   headline: string;
-  wording: { target: string; suggestion: string; why: string }[];
+  wording: WordingSuggestion[];
   closeTips: string[];
   pricing: PricingFlag[];
   keywords: KeywordFlag[];

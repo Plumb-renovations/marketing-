@@ -60,7 +60,7 @@ export async function POST(req: Request) {
 
     // ---- AI wording-to-close ----
     const itemsText = items
-      .map((it) => `  • ${it.description || "(unnamed)"} · ${Number(it.qty) || 0} ${it.unit || "ea"} · ${money(Number(it.unitPrice) || 0)}${it.unitCost != null ? ` · [cost ${money(Number(it.unitCost))}, margin ${Number(it.unitPrice) > 0 ? Math.round(((Number(it.unitPrice) - Number(it.unitCost)) / Number(it.unitPrice)) * 100) : 0}%]` : ""}`)
+      .map((it, i) => `  [${i + 1}] ${it.description || "(unnamed)"} · ${Number(it.qty) || 0} ${it.unit || "ea"} · ${money(Number(it.unitPrice) || 0)}${it.unitCost != null ? ` · [cost ${money(Number(it.unitCost))}, margin ${Number(it.unitPrice) > 0 ? Math.round(((Number(it.unitPrice) - Number(it.unitCost)) / Number(it.unitPrice)) * 100) : 0}%]` : ""}`)
       .join("\n");
     const briefingText = [
       qual?.motivation ? `motivation: ${qual.motivation}` : "",
@@ -95,9 +95,31 @@ export async function POST(req: Request) {
       console.error("[quote-review] AI wording failed:", (e as Error).message);
     }
 
+    // Map each AI wording suggestion to the exact line it targets so the client
+    // can one-click apply it precisely. line = [n] index (1-based) of the line
+    // item, or null for the overall scope description. Out-of-range → advisory
+    // only (no apply target).
+    const wording = (Array.isArray(ai?.wording) ? ai.wording : [])
+      .map((w: any) => {
+        const suggestion = String(w?.suggestion || "").trim();
+        if (!suggestion) return null;
+        const n = Number(w?.line);
+        const idx = Number.isInteger(n) ? n - 1 : -1;
+        const line = idx >= 0 && idx < items.length ? items[idx] : null;
+        const isScope = w?.line == null || n === 0;
+        return {
+          lineId: line ? line.id : null,
+          field: line ? "description" : (isScope ? "scope" : null),
+          target: line ? (line.description?.trim() || `Line ${idx + 1}`) : (isScope ? "Overall scope" : "This quote"),
+          suggestion,
+          why: String(w?.why || ""),
+        };
+      })
+      .filter(Boolean);
+
     return NextResponse.json({
       headline: (ai?.headline && String(ai.headline)) || fallbackHeadline(pricing, keywords),
-      wording: Array.isArray(ai?.wording) ? ai.wording : [],
+      wording,
       closeTips: Array.isArray(ai?.closeTips) ? ai.closeTips : [],
       pricing,
       keywords,

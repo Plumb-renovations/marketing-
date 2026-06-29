@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Eye, Pencil, Save, Send, Loader2, Plus, Trash2, GripVertical, Columns3, Copy, RefreshCw, AlertTriangle, ArrowLeft, CheckCircle2, Printer, Tags, BookmarkPlus, LayoutTemplate, X, Sparkles, TrendingDown, TrendingUp, ShieldCheck, ScanSearch, MessageSquareQuote, Lightbulb,
+  Eye, Pencil, Save, Send, Loader2, Plus, Trash2, GripVertical, Columns3, Copy, RefreshCw, AlertTriangle, ArrowLeft, CheckCircle2, Printer, Tags, BookmarkPlus, LayoutTemplate, X, Sparkles, TrendingDown, TrendingUp, ShieldCheck, ScanSearch, MessageSquareQuote, Lightbulb, Wand2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchQuote, saveQuote } from "@/lib/data/quotes";
@@ -46,6 +46,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   const [tplName, setTplName] = useState("");
   const [review, setReview] = useState<QuoteReviewResult | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [appliedWording, setAppliedWording] = useState<Set<number>>(new Set());
   const [leads, setLeads] = useState<{ id: string; name: string; email?: string; phone?: string; suburb?: string; project?: string }[]>([]);
   const [tab, setTab] = useState<"details" | "preview">("details");
   const [showInternal, setShowInternal] = useState(false);
@@ -175,12 +176,33 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
         items: q.items.map((it) => ({ id: it.id, description: it.description, detail: it.detail, qty: it.qty, unit: it.unit, unitPrice: it.unitPrice, unitCost: it.unitCost })),
       }, totals.total);
       setReview(r);
+      setAppliedWording(new Set()); // fresh review → nothing applied yet
     } catch (e: any) {
       setError(e?.message || "Couldn't run the review.");
     } finally {
       setReviewBusy(false);
     }
   };
+
+  // One-click apply a WORDING suggestion to the live quote — replaces the
+  // targeted line's description (or the overall scope), leaving qty/unit/price/
+  // cost untouched. Per-suggestion only; the user can still edit afterwards.
+  const applyWording = (w: QuoteReviewResult["wording"][number], i: number) => {
+    if (w.field === "description" && w.lineId) {
+      const idx = q.items.findIndex((it) => it.id === w.lineId);
+      if (idx < 0) return; // line was removed since the review ran
+      updItem(idx, { description: w.suggestion });
+    } else if (w.field === "scope") {
+      upd({ scopeDescription: w.suggestion });
+    } else {
+      return;
+    }
+    setAppliedWording((p) => new Set(p).add(i));
+    setNote("Applied Hazel's wording");
+  };
+  // A line-targeted suggestion is only applicable while that line still exists.
+  const canApply = (w: QuoteReviewResult["wording"][number]) =>
+    w.field === "scope" || (w.field === "description" && !!w.lineId && q.items.some((it) => it.id === w.lineId));
 
   const onDrop = (to: number) => {
     const from = dragIdx.current;
@@ -342,10 +364,19 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
               ) : (
                 <ul className="space-y-2">
                   {review.wording.map((w, i) => (
-                    <li key={i} className="text-xs leading-snug">
-                      {w.target && <p className="font-medium text-cyan-200">{w.target}</p>}
-                      <p className="text-slate-300">{w.suggestion}</p>
-                      {w.why && <p className="text-[11px] text-slate-500">Why: {w.why}</p>}
+                    <li key={i} className="rounded-md border border-slate-800 bg-slate-950/40 p-2 text-xs leading-snug">
+                      <p className="text-[11px] text-slate-500">{w.field === "scope" ? "Overall scope" : w.target ? `Replaces: ${w.target}` : "Line item"}</p>
+                      <p className="mt-0.5 text-slate-200">{w.suggestion}</p>
+                      {w.why && <p className="mt-0.5 text-[11px] text-slate-500">Why: {w.why}</p>}
+                      <div className="mt-1.5">
+                        {appliedWording.has(i) ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" /> Applied — edit it anytime</span>
+                        ) : canApply(w) ? (
+                          <button onClick={() => applyWording(w, i)} title="Drop this wording into the quote — you can still edit it after" className="inline-flex items-center gap-1 rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[11px] font-medium text-cyan-200 transition hover:bg-cyan-500/20"><Wand2 className="h-3.5 w-3.5" /> Apply</button>
+                        ) : w.field === "description" ? (
+                          <span className="text-[11px] text-slate-600">That line was removed — nothing to apply to.</span>
+                        ) : null}
+                      </div>
                     </li>
                   ))}
                 </ul>
