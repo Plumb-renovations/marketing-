@@ -1,4 +1,4 @@
-import { money } from "@/lib/quotes/model";
+import { money, round2 } from "@/lib/quotes/model";
 
 // Deterministic quote-review brain — the reliable, AI-free half of "Review with
 // Hazel". It does the pricing sanity check (line items vs the price list AND the
@@ -54,10 +54,21 @@ export interface KeywordFlag {
 // ---- Pricing sanity -------------------------------------------------------
 const HEALTHY_MARGIN = 25; // at/above → healthy
 const THIN_MARGIN = 15; // below → flag thin
-const UNDER_RATE = 0.85; // price below 85% of the rate-card rate → too cheap
-const OVER_RATE = 1.5; // price above 150% of the rate-card rate → check
+// Like-for-like deviation thresholds against the price-list rate. Only flag a
+// MEANINGFUL gap — normal variation under these stays quiet ("in line"). Tweak
+// here to taste.
+const RATE_UNDER_THRESHOLD = 0.2; // >20% under → too cheap
+const RATE_OVER_THRESHOLD = 0.5; // >50% over → check
 
 const norm = (s?: string) => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
+
+// Units that mean "the whole job / one-off", i.e. the price-list rate already IS
+// the total for that work (not a per-quantity rate). When a quote line is built
+// from a per-point / per-m² quantity but the price-list item is one of these, we
+// compare the line's TOTAL against the rate — never per-unit-of-one vs
+// per-unit-of-another (the bug that flagged a $3,300 / 3-point plumbing line as
+// "72% under" a $3,980/ea whole-job rate).
+const WHOLE_JOB_UNITS = new Set(["ea", "each", "fixed", "job", "lot", "item", "sum", "ls", "unit"]);
 
 // Best price-list match for a line: the rate-card item whose name overlaps the
 // line description (either direction), preferring a matching unit.
@@ -84,16 +95,36 @@ export function analysePricing(items: ReviewLine[], priceList: PriceRef[]): Pric
   for (const it of items) {
     const desc = it.description?.trim() || "(unnamed line)";
     const price = Number(it.unitPrice) || 0;
+    const qty = Number(it.qty) || 0;
+    const lineTotal = round2(qty * price);
     const cost = it.unitCost == null ? null : Number(it.unitCost);
     const match = matchRate(it.description, it.unit, priceList);
     const rate = match ? match.unitPrice : null;
     const margin = cost != null && price > 0 ? Math.round(((price - cost) / price) * 100) : null;
 
+    // Compare LIKE-FOR-LIKE against the price-list rate.
+    //  • units match (both per m², both per point, …) → compare per-unit price.
+    //  • units differ but the price-list rate is a whole-job rate (ea/fixed/…)
+    //    → compare the line's TOTAL against the rate.
+    //  • otherwise the bases aren't comparable → don't flag against the rate.
+    let cmp: number | null = null; // the line value to compare
+    let cmpRate: number | null = null; // the price-list value, same basis
+    let rateLabel = ""; // how to describe the rate in the message
+    if (match && rate != null && rate > 0) {
+      if (norm(it.unit) === norm(match.unit)) {
+        cmp = price; cmpRate = rate; rateLabel = `${money(rate)}/${match.unit}`;
+      } else if (WHOLE_JOB_UNITS.has(norm(match.unit))) {
+        cmp = lineTotal; cmpRate = rate; rateLabel = `${money(rate)} for this work`;
+      }
+    }
+    const underPct = cmp != null && cmpRate ? (cmpRate - cmp) / cmpRate : 0;
+    const overPct = cmp != null && cmpRate ? (cmp - cmpRate) / cmpRate : 0;
+
     let verdict: PricingVerdict | null = null;
     let severity: PricingFlag["severity"] = "low";
     let reason = "";
 
-    if (price <= 0 && (Number(it.qty) || 0) > 0) {
+    if (price <= 0 && qty > 0) {
       verdict = "too_cheap"; severity = "high";
       reason = "No price set on this line — it'll add nothing to the total.";
     } else if (cost != null && price > 0 && price <= cost) {
@@ -102,23 +133,23 @@ export function analysePricing(items: ReviewLine[], priceList: PriceRef[]): Pric
     } else if (margin != null && margin < THIN_MARGIN) {
       verdict = "too_cheap"; severity = "medium";
       reason = `Thin margin (${margin}%) — under a healthy mark-up. Make sure labour and overheads are covered.`;
-    } else if (rate != null && price > 0 && price < rate * UNDER_RATE) {
+    } else if (cmp != null && underPct > RATE_UNDER_THRESHOLD) {
       verdict = "too_cheap"; severity = "medium";
-      reason = `${Math.round((1 - price / rate) * 100)}% under your price-list rate of ${money(rate)}/${match!.unit}. Double-check you're not leaving money on the table.`;
-    } else if (rate != null && price > rate * OVER_RATE) {
+      reason = `${Math.round(underPct * 100)}% under your price-list rate of ${rateLabel}. Double-check you're not leaving money on the table.`;
+    } else if (cmp != null && overPct > RATE_OVER_THRESHOLD) {
       verdict = "too_dear"; severity = "low";
-      reason = `Well above your price-list rate of ${money(rate)}/${match!.unit} — fine if it's justified (access, complexity), just check it isn't a typo.`;
+      reason = `Well above your price-list rate of ${rateLabel} — fine if it's justified (access, complexity), just check it isn't a typo.`;
     } else if (margin != null && margin >= HEALTHY_MARGIN) {
       verdict = "healthy"; severity = "low";
-      reason = `Healthy margin (${margin}%)${rate != null ? " and in line with your rate card" : ""}.`;
-    } else if (rate != null) {
+      reason = `Healthy margin (${margin}%)${cmp != null ? " and in line with your rate card" : ""}.`;
+    } else if (cmp != null) {
       verdict = "healthy"; severity = "low";
-      reason = `In line with your price-list rate (${money(rate)}/${match!.unit}).`;
+      reason = `In line with your price-list rate (${rateLabel}).`;
     } else {
-      continue; // nothing to compare against
+      continue; // nothing comparable
     }
 
-    out.push({ lineId: it.id, description: desc, verdict, severity, reason, unitPrice: price, unitCost: cost, rate, margin });
+    out.push({ lineId: it.id, description: desc, verdict, severity, reason, unitPrice: price, unitCost: cost, rate: cmpRate, margin });
   }
   return out;
 }
