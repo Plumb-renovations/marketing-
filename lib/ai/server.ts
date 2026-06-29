@@ -25,6 +25,7 @@ import {
   coachSystemPrompt,
   coachPrompt,
   coachAskPrompt,
+  quoteReviewPrompt,
 } from "@/lib/ai/persona";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -121,6 +122,7 @@ interface Payload {
   startDate?: string; // content-plan start (YYYY-MM-DD)
   engageItem?: EngageItem; // comment-reply: the comment/review to draft for
   journey?: Record<string, any>; // lead-journey prompts context
+  quoteReview?: Record<string, any>; // quote-review context (line items, scope, briefing, deterministic flags)
 }
 
 // Dispatch a generator by kind. The org's Business Profile drives the system
@@ -128,9 +130,11 @@ interface Payload {
 // parsed JSON the client expects.
 export async function runGenerator(kind: string, payload: Payload, profile: BusinessProfile) {
   const leads = payload.leads || [];
-  const isCoach = kind === "coach" || kind === "coach-ask";
+  const isCoach = kind === "coach" || kind === "coach-ask" || kind === "quote-review";
   const sys = isCoach ? coachSystemPrompt(profile) : adPersona(profile);
   switch (kind) {
+    case "quote-review":
+      return callJSON(buildContent(quoteReviewPrompt(profile, (payload.quoteReview || {}) as any)), 1500, sys);
     case "coach":
       return callJSON(buildContent(coachPrompt(profile, payload.dataBlock || "")), 1600, sys);
     case "coach-ask":
@@ -200,4 +204,4 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
   }
 }
 
-export const VALID_KINDS = ["post", "ideas", "content-plan", "comment-reply", "lead-extract", "pre-quote-brief", "loss-coach", "lead-message", "meta-ad", "google-ad", "strategy-ads", "competitor-beat", "campaign-plan", "creative-review", "coach", "coach-ask"];
+export const VALID_KINDS = ["post", "ideas", "content-plan", "comment-reply", "lead-extract", "pre-quote-brief", "loss-coach", "lead-message", "meta-ad", "google-ad", "strategy-ads", "competitor-beat", "campaign-plan", "creative-review", "coach", "coach-ask", "quote-review"];
