@@ -77,10 +77,10 @@ export default function PriceListPanel() {
                   <button onClick={() => remove(i)} className="col-span-1 rounded-md border border-slate-700 p-2 text-slate-400 hover:text-red-300"><Trash2 className="h-4 w-4" /></button>
                 </div>
                 <div className="grid grid-cols-12 gap-2">
-                  <input value={it.unit} onChange={(e) => set(i, { unit: e.target.value })} placeholder="unit (m², point, fixed…)" className={cls + " col-span-3 font-data"} />
-                  <input type="number" value={it.unitPrice} onChange={(e) => set(i, { unitPrice: Number(e.target.value) })} placeholder="rate" className={cls + " col-span-3 text-right font-data"} />
-                  <input value={it.notes} onChange={(e) => set(i, { notes: e.target.value })} placeholder="note (what the rate covers — optional)" className={cls + " col-span-6"} />
+                  <input value={it.unit} onChange={(e) => set(i, { unit: e.target.value })} placeholder="unit (m², point, fixed…)" className={cls + " col-span-6 font-data"} />
+                  <input type="number" value={it.unitPrice} onChange={(e) => set(i, { unitPrice: Number(e.target.value) })} placeholder="rate" className={cls + " col-span-6 text-right font-data"} />
                 </div>
+                <textarea value={it.notes} onChange={(e) => set(i, { notes: e.target.value })} rows={Math.min(10, Math.max(2, (it.notes || "").split(/\r?\n/).length))} placeholder="Description — the scope text shown on the quote. One point per line for dot points (e.g. plane walls / noggins / architraves / door)." className={cls + " resize-y"} />
               </div>
             ))}
             {!items.length && <p className="text-sm text-slate-500">No rates yet — add your own, or load a starter set to edit.</p>}

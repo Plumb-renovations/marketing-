@@ -120,10 +120,14 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
     addItem({ description: s.description, detail: s.detail, qty: s.defaultQty, unit: s.unit, unitPrice: s.unitPrice });
   // Smart line item: pull the rate + unit from the price list, qty stays 1 for
   // the user to set → amount = rate × qty (still fully editable/overridable). The
-  // price-list item's trade pre-fills the line's trade (+ inferred in-house/sub).
+  // price-list item's DESCRIPTION (its `notes` field — the full scope text, may
+  // be multi-line/bulleted) pre-fills the line description; the item name is a
+  // sensible fallback when no description was written. Its trade pre-fills the
+  // line's trade (+ inferred in-house/sub).
   const insertPriceItem = (p: PriceItem) => {
     const trade = (p.trade || "").trim() || null;
-    addItem({ description: p.name, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice, trade, tradeType: trade ? inferTradeType(trade) : null });
+    const description = (p.notes || "").trim() || p.name;
+    addItem({ description, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice, trade, tradeType: trade ? inferTradeType(trade) : null });
   };
   // Set/clear a line's trade; when a trade is set and no in-house/sub flag exists
   // yet, default it from the known in-house trades (still user-overridable).
@@ -542,7 +546,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                       <tr key={it.id} draggable onDragStart={() => (dragIdx.current = i)} onDragOver={(e) => e.preventDefault()} onDrop={() => onDrop(i)} className="border-t border-slate-800 align-top">
                         <td className="cursor-grab pt-3 text-slate-600"><GripVertical className="h-4 w-4" /></td>
                         <td className="px-2 py-1.5">
-                          <input value={it.description} onChange={(e) => updItem(i, { description: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter" && i === q.items.length - 1) addItem(); }} placeholder="Description" className={inp} />
+                          <textarea value={it.description} onChange={(e) => updItem(i, { description: e.target.value })} placeholder="Description — one scope point per line (bullets carry onto the client quote)" rows={Math.min(10, Math.max(2, (it.description || "").split(/\r?\n/).length))} className={"resize-y " + inp} />
                           <input value={it.detail} onChange={(e) => updItem(i, { detail: e.target.value })} placeholder="Detail (optional sub-line)" className={"mt-1 text-xs " + inp} />
                           {/* Trade tag + in-house/sub flag — the client sees one consolidated line per trade. */}
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
