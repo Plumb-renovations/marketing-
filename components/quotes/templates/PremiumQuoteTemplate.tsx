@@ -1,6 +1,6 @@
 "use client";
 
-import { money, type Quote } from "@/lib/quotes/model";
+import { money, consolidateByTrade, type Quote } from "@/lib/quotes/model";
 import type { BrandSettings } from "@/lib/business/brand";
 
 // The PREMIUM client-facing quote — a faithful reproduction of the "Cream &
@@ -72,6 +72,13 @@ export default function PremiumQuoteTemplate({
     if (items.length) groups.push({ name: s.name || "Section", items });
   }
   let stageNo = 0;
+
+  // Quote-by-trade: when any line carries a trade, the client sees ONE
+  // consolidated line per trade (name + optional combined description + combined
+  // total) — never the individual components, quantities or per-unit rates.
+  // Quotes with no trades fall back to the existing section view, unchanged.
+  const tradeLines = consolidateByTrade(quote.items);
+  const hasTrades = quote.items.some((i) => (i.trade || "").trim());
 
   // Wordmark fallback (no uploaded logo): business name → first word in script,
   // the remaining words as a spaced sub-label (matches the reference lockup).
@@ -190,8 +197,30 @@ export default function PremiumQuoteTemplate({
           <p style={{ margin: "30px 0 4px", fontSize: 14, color: muted, maxWidth: "62ch" }}>{quote.introNote}</p>
         )}
 
-        {/* ===================== SCOPE SECTIONS ===================== */}
-        {groups.map((g, gi) => {
+        {/* ===================== SCOPE — BY TRADE ===================== */}
+        {hasTrades ? (
+          <div style={{ marginTop: 30 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
+              <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Scope of works</span>
+              <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>by trade</span>
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <tbody>
+                {tradeLines.map((t, i) => (
+                  <tr key={t.key}>
+                    <td style={{ padding: "13px 0", fontSize: 13.5, verticalAlign: "top", borderBottom: i === tradeLines.length - 1 ? "0" : `1px solid ${hair}`, color: ink }}>
+                      <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 16 }}>{t.label}</span>
+                      {t.description && <small style={{ display: "block", color: faint, fontSize: 12, marginTop: 2 }}>{t.description}</small>}
+                    </td>
+                    <td style={{ padding: "13px 0", fontSize: 13.5, verticalAlign: "top", borderBottom: i === tradeLines.length - 1 ? "0" : `1px solid ${hair}`, textAlign: "right", fontWeight: 600, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", width: 120 }}>
+                      {money(t.total, ccy)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : groups.map((g, gi) => {
           const sub = g.items.reduce((s, it) => s + amount(it), 0);
           const no = g.name ? ++stageNo : null;
           return (

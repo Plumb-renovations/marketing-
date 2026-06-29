@@ -18,6 +18,7 @@ export interface PriceItem {
   unitPrice: number;
   notes: string;
   sortOrder: number;
+  trade?: string | null; // suggested trade when this rate is added to a quote
 }
 
 function mapItem(row: any): PriceItem {
@@ -29,8 +30,12 @@ function mapItem(row: any): PriceItem {
     unitPrice: Number(row.unit_price) || 0,
     notes: row.notes ?? "",
     sortOrder: row.sort_order ?? 0,
+    trade: row.trade ?? null,
   };
 }
+
+const isUndefinedColumn = (e: any) =>
+  e?.code === "42703" || /column .* does not exist|could not find the .* column/i.test(e?.message || "");
 
 export async function fetchPriceList(supabase: SupabaseClient): Promise<PriceItem[]> {
   const { data, error } = await supabase.from("price_list_items").select("*").order("sort_order", { ascending: true });
@@ -43,7 +48,7 @@ export async function fetchPriceList(supabase: SupabaseClient): Promise<PriceIte
 
 export async function upsertPriceItem(supabase: SupabaseClient, item: PriceItem): Promise<void> {
   const orgId = await getOrgId(supabase);
-  const { error } = await supabase.from("price_list_items").upsert({
+  const row: Record<string, any> = {
     id: item.id,
     org_id: orgId,
     category: item.category.trim(),
@@ -52,7 +57,14 @@ export async function upsertPriceItem(supabase: SupabaseClient, item: PriceItem)
     unit_price: item.unitPrice,
     notes: item.notes.trim() || null,
     sort_order: item.sortOrder,
-  });
+    trade: item.trade?.trim() || null,
+  };
+  let { error } = await supabase.from("price_list_items").upsert(row);
+  // Retry without `trade` if 0032 hasn't been applied yet.
+  if (error && isUndefinedColumn(error)) {
+    const { trade, ...legacy } = row;
+    ({ error } = await supabase.from("price_list_items").upsert(legacy));
+  }
   if (error) throw error;
 }
 

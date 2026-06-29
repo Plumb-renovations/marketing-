@@ -18,6 +18,7 @@ import {
   emptyQuote, computeTotals, computeStageAmounts, stagePercentSum, money,
   type Quote, type QuoteItem, type QuoteStage,
 } from "@/lib/quotes/model";
+import { DEFAULT_TRADES, inferTradeType, TRADE_TYPE_LABEL, type TradeType } from "@/lib/quotes/trades";
 import { reviewQuote, type QuoteReviewResult } from "@/lib/quotes/reviewClient";
 import QuoteDocument from "@/components/quotes/QuoteDocument";
 
@@ -114,14 +115,32 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   const upd = (patch: Partial<Quote>) => setQ((p) => (p ? { ...p, ...patch } : p));
   const updItem = (i: number, patch: Partial<QuoteItem>) => upd({ items: q.items.map((it, j) => (j === i ? { ...it, ...patch } : it)) });
   const addItem = (seed?: Partial<QuoteItem>) =>
-    upd({ items: [...q.items, { id: uid(), sectionId: null, description: "", detail: "", qty: 1, unit: "ea", unitPrice: 0, unitCost: null, sortOrder: q.items.length, ...seed }] });
+    upd({ items: [...q.items, { id: uid(), sectionId: null, description: "", detail: "", qty: 1, unit: "ea", unitPrice: 0, unitCost: null, sortOrder: q.items.length, trade: null, tradeType: null, ...seed }] });
   const insertSaved = (s: SavedItem) =>
     addItem({ description: s.description, detail: s.detail, qty: s.defaultQty, unit: s.unit, unitPrice: s.unitPrice });
   // Smart line item: pull the rate + unit from the price list, qty stays 1 for
-  // the user to set → amount = rate × qty (still fully editable/overridable).
-  const insertPriceItem = (p: PriceItem) =>
-    addItem({ description: p.name, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice });
+  // the user to set → amount = rate × qty (still fully editable/overridable). The
+  // price-list item's trade pre-fills the line's trade (+ inferred in-house/sub).
+  const insertPriceItem = (p: PriceItem) => {
+    const trade = (p.trade || "").trim() || null;
+    addItem({ description: p.name, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice, trade, tradeType: trade ? inferTradeType(trade) : null });
+  };
+  // Set/clear a line's trade; when a trade is set and no in-house/sub flag exists
+  // yet, default it from the known in-house trades (still user-overridable).
+  const setItemTrade = (i: number, trade: string) => {
+    const t = trade.trim();
+    const cur = q.items[i];
+    updItem(i, { trade: t || null, tradeType: t ? (cur.tradeType ?? inferTradeType(t)) : null });
+  };
   const removeItem = (i: number) => upd({ items: q.items.filter((_, j) => j !== i) });
+
+  // Trades offered in the per-line picker: defaults + any already used on this
+  // quote or carried by a price-list item (so the list stays extendable).
+  const tradeOptions = Array.from(new Set([
+    ...DEFAULT_TRADES,
+    ...q.items.map((it) => (it.trade || "").trim()).filter(Boolean),
+    ...priceList.map((p) => (p.trade || "").trim()).filter(Boolean),
+  ])).sort();
 
   // ---- Saved quote templates (reusable sets of line items) ----------------
   const loadTemplate = (t: QuoteTemplate) => {
@@ -130,6 +149,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
       id: uid(), sectionId: null, description: li.description || "", detail: li.detail || "",
       qty: Number(li.qty) || 0, unit: li.unit || "ea", unitPrice: Number(li.unitPrice) || 0,
       unitCost: li.unitCost ?? null, sortOrder: i,
+      trade: li.trade ?? null, tradeType: li.tradeType ?? null,
     }));
     upd({
       items,
@@ -143,7 +163,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
     const name = tplName.trim();
     if (!name) return;
     const data: QuoteTemplateData = {
-      items: q.items.map(({ description, detail, qty, unit, unitPrice, unitCost }) => ({ description, detail, qty, unit, unitPrice, unitCost })),
+      items: q.items.map(({ description, detail, qty, unit, unitPrice, unitCost, trade, tradeType }) => ({ description, detail, qty, unit, unitPrice, unitCost, trade, tradeType })),
       scopeDescription: q.scopeDescription, inclusions: q.inclusions, exclusions: q.exclusions,
     };
     const id = uid();
@@ -524,6 +544,17 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                         <td className="px-2 py-1.5">
                           <input value={it.description} onChange={(e) => updItem(i, { description: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter" && i === q.items.length - 1) addItem(); }} placeholder="Description" className={inp} />
                           <input value={it.detail} onChange={(e) => updItem(i, { detail: e.target.value })} placeholder="Detail (optional sub-line)" className={"mt-1 text-xs " + inp} />
+                          {/* Trade tag + in-house/sub flag — the client sees one consolidated line per trade. */}
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <input list="quote-trades" value={it.trade ?? ""} onChange={(e) => setItemTrade(i, e.target.value)} placeholder="Trade (e.g. Plumbing)" className={"text-xs " + inp} style={{ maxWidth: 170 }} />
+                            {(it.trade || "").trim() && (
+                              <div className="flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5">
+                                {(["in_house", "sub_trade"] as TradeType[]).map((tt) => (
+                                  <button key={tt} type="button" onClick={() => updItem(i, { tradeType: tt })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${(it.tradeType ?? "sub_trade") === tt ? "bg-cyan-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}>{TRADE_TYPE_LABEL[tt]}</button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-2 py-1.5"><input type="number" value={it.qty} onChange={(e) => updItem(i, { qty: Number(e.target.value) })} className={"text-right font-data " + inp} /></td>
                         <td className="px-2 py-1.5"><input value={it.unit} onChange={(e) => updItem(i, { unit: e.target.value })} className={"font-data " + inp} /></td>
@@ -538,7 +569,9 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                 </tbody>
               </table>
             </div>
+            <datalist id="quote-trades">{tradeOptions.map((t) => <option key={t} value={t} />)}</datalist>
             <button onClick={() => addItem()} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-slate-800"><Plus className="h-4 w-4" /> Add line</button>
+            <p className="mt-2 text-[11px] text-slate-500">Tag each line with a trade — the client sees one consolidated line per trade (e.g. all carpentry items become a single &ldquo;Carpentry&rdquo; line). In-house / sub-trade is saved for back-costing later.</p>
 
             {/* Totals */}
             <div className="mt-4 flex justify-end">

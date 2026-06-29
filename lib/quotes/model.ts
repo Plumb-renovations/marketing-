@@ -2,6 +2,7 @@
 // the server. The client-facing document NEVER reads unitCost.
 
 export type QuoteStatus = "draft" | "sent" | "viewed" | "accepted" | "declined" | "expired";
+export type TradeType = "in_house" | "sub_trade";
 
 export interface QuoteItem {
   id: string;
@@ -13,6 +14,11 @@ export interface QuoteItem {
   unitPrice: number;
   unitCost: number | null; // INTERNAL only
   sortOrder: number;
+  // Quote-by-trade: the trade this component belongs to (the client sees ONE
+  // consolidated line per trade) and whether it's done in-house or sub-contracted
+  // (a flag for the later back-costing feature). Both optional/null when unset.
+  trade?: string | null;
+  tradeType?: TradeType | null;
 }
 
 export interface QuoteSection {
@@ -137,4 +143,59 @@ export function money(n: number, currency = "AUD") {
   } catch {
     return "$" + (Number(n) || 0).toFixed(2);
   }
+}
+
+// ---- Quote-by-trade consolidation -----------------------------------------
+// The CLIENT-facing view: collapse the individual components into ONE line per
+// trade — trade name + an optional short combined description + the combined
+// total (sum of its components). Components keep their order of first
+// appearance. A line with NO trade stays its own single line (sensible
+// fallback), keyed by its id so it never merges with anything else. Pure — the
+// client document, PDF and public link all render from this.
+export interface TradeLine {
+  key: string;
+  trade: string | null; // null = an untagged single item
+  label: string; // trade name, or the item's own description when untagged
+  description: string; // optional combined description (component descriptions)
+  total: number;
+  count: number;
+}
+
+const summariseDescriptions = (descs: string[]): string => {
+  const seen = new Set<string>();
+  const uniq = descs.map((d) => d.trim()).filter((d) => d && !seen.has(d.toLowerCase()) && seen.add(d.toLowerCase()));
+  const joined = uniq.join(" · ");
+  return joined.length > 160 ? joined.slice(0, 157).trimEnd() + "…" : joined;
+};
+
+export function consolidateByTrade(items: QuoteItem[]): TradeLine[] {
+  const order: string[] = [];
+  const map = new Map<string, { trade: string | null; label: string; descs: string[]; total: number; count: number }>();
+  for (const it of items) {
+    const amt = lineAmount(it);
+    const trade = (it.trade || "").trim();
+    if (trade) {
+      const key = "trade:" + trade.toLowerCase();
+      let g = map.get(key);
+      if (!g) { g = { trade, label: trade, descs: [], total: 0, count: 0 }; map.set(key, g); order.push(key); }
+      g.total += amt;
+      g.count += 1;
+      if (it.description?.trim()) g.descs.push(it.description.trim());
+    } else {
+      const key = "item:" + it.id;
+      map.set(key, { trade: null, label: it.description?.trim() || "Item", descs: it.detail?.trim() ? [it.detail.trim()] : [], total: amt, count: 1 });
+      order.push(key);
+    }
+  }
+  return order.map((key) => {
+    const g = map.get(key)!;
+    return {
+      key,
+      trade: g.trade,
+      label: g.label,
+      description: g.trade ? summariseDescriptions(g.descs) : (g.descs[0] || ""),
+      total: round2(g.total),
+      count: g.count,
+    };
+  });
 }

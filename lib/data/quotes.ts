@@ -2,6 +2,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOrgId } from "@/lib/data/org";
 import { computeTotals, computeStageAmounts, type Quote, type QuoteStatus } from "@/lib/quotes/model";
 
+// True when a Postgres/PostgREST error is "column does not exist" — i.e. a not-
+// yet-applied migration. Lets writes that use a new column degrade gracefully
+// (retry without it) so the quote still saves before the migration is run.
+const isUndefinedColumn = (e: any) =>
+  e?.code === "42703" || /column .* does not exist|could not find the .* column/i.test(e?.message || "");
+
 function mapQuote(row: any): Quote {
   const sections = (row.quote_doc_sections || [])
     .slice()
@@ -20,6 +26,8 @@ function mapQuote(row: any): Quote {
       unitPrice: Number(it.unit_price) || 0,
       unitCost: it.unit_cost != null ? Number(it.unit_cost) : null,
       sortOrder: it.sort_order ?? 0,
+      trade: it.trade ?? null,
+      tradeType: it.trade_type ?? null,
     }));
   const stages = (row.quote_doc_stages || [])
     .slice()
@@ -131,22 +139,29 @@ export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegis
     if (error) throw error;
   }
   if (quote.items.length) {
-    const { error } = await supabase.from("quote_doc_items").insert(
-      quote.items.map((it, i) => ({
-        id: it.id,
-        quote_id: quote.id,
-        org_id: orgId,
-        section_id: it.sectionId,
-        description: it.description,
-        detail: it.detail || null,
-        qty: it.qty,
-        unit: it.unit,
-        unit_price: it.unitPrice,
-        amount: Math.round((it.qty || 0) * (it.unitPrice || 0) * 100) / 100,
-        unit_cost: it.unitCost,
-        sort_order: i,
-      })),
-    );
+    const rows = quote.items.map((it, i) => ({
+      id: it.id,
+      quote_id: quote.id,
+      org_id: orgId,
+      section_id: it.sectionId,
+      description: it.description,
+      detail: it.detail || null,
+      qty: it.qty,
+      unit: it.unit,
+      unit_price: it.unitPrice,
+      amount: Math.round((it.qty || 0) * (it.unitPrice || 0) * 100) / 100,
+      unit_cost: it.unitCost,
+      sort_order: i,
+      trade: it.trade ?? null,
+      trade_type: it.tradeType ?? null,
+    }));
+    let { error } = await supabase.from("quote_doc_items").insert(rows);
+    // If 0032 isn't applied yet, retry without the trade columns so saving still
+    // works (the quote just isn't trade-tagged until the migration runs).
+    if (error && isUndefinedColumn(error)) {
+      const legacy = rows.map(({ trade, trade_type, ...rest }) => rest);
+      ({ error } = await supabase.from("quote_doc_items").insert(legacy));
+    }
     if (error) throw error;
   }
   if (stages.length) {

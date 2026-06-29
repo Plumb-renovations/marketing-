@@ -14,17 +14,26 @@ export interface PublicQuoteBundle {
   businessName: string;
 }
 
-const SELECT =
+// Doc/section/stage columns are fixed; the line-item column list is built so we
+// can drop `trade` (0032) when that column isn't present yet. Internal unit_cost
+// is never selected, so it can never leak to the client document.
+const DOC_COLS =
   "id, org_id, quote_number, reference, status, client_name, client_email, client_phone, client_address, project_name, site_address, quote_date, valid_until, scope_description, intro_note, terms, inclusions, exclusions, gst_inclusive, subtotal, gst_amount, total, public_token, sent_at, viewed_at, view_count, accepted_at, " +
-  "quote_doc_sections(id, name, sort_order), " +
-  "quote_doc_items(id, section_id, description, detail, qty, unit, unit_price, amount, sort_order), " +
-  "quote_doc_stages(id, label, milestone_note, percent, fixed_amount, amount, status, sort_order)";
+  "quote_doc_sections(id, name, sort_order), ";
+const STAGE_COLS = ", quote_doc_stages(id, label, milestone_note, percent, fixed_amount, amount, status, sort_order)";
+const itemCols = (withTrade: boolean) =>
+  `quote_doc_items(id, section_id, description, detail, qty, unit, unit_price, amount, sort_order${withTrade ? ", trade" : ""})`;
 
 export async function fetchPublicQuote(token: string): Promise<PublicQuoteBundle | null> {
   if (!token) return null;
   const admin = createAdminClient();
 
-  const { data: row, error } = await admin.from("quote_docs").select(SELECT).eq("public_token", token).maybeSingle();
+  // Prefer selecting `trade` (for the client's by-trade consolidation); if 0032
+  // isn't applied the column is missing, so fall back to the legacy select.
+  let { data: row, error } = await admin.from("quote_docs").select(DOC_COLS + itemCols(true) + STAGE_COLS).eq("public_token", token).maybeSingle();
+  if (error && (error.code === "42703" || /column .* does not exist/i.test(error.message || ""))) {
+    ({ data: row, error } = await admin.from("quote_docs").select(DOC_COLS + itemCols(false) + STAGE_COLS).eq("public_token", token).maybeSingle());
+  }
   if (error || !row) return null;
 
   const { data: prof } = await admin.from("business_profiles").select("*").eq("org_id", (row as any).org_id).maybeSingle();
@@ -79,6 +88,8 @@ function mapPublicQuote(row: any): Quote {
       unitPrice: Number(it.unit_price) || 0,
       unitCost: null, // never exposed publicly
       sortOrder: it.sort_order ?? 0,
+      trade: it.trade ?? null,
+      tradeType: null, // internal flag — never exposed publicly
     }));
   const stages = computeStageAmounts(
     (row.quote_doc_stages || [])
