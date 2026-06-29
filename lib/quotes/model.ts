@@ -146,56 +146,56 @@ export function money(n: number, currency = "AUD") {
 }
 
 // ---- Quote-by-trade consolidation -----------------------------------------
-// The CLIENT-facing view: collapse the individual components into ONE line per
-// trade — trade name + an optional short combined description + the combined
-// total (sum of its components). Components keep their order of first
-// appearance. A line with NO trade stays its own single line (sensible
-// fallback), keyed by its id so it never merges with anything else. Pure — the
-// client document, PDF and public link all render from this.
+// The CLIENT-facing view: group the components BY TRADE under one heading with
+// ONE combined total per trade — but show the FULL scope detail, every
+// component's description rendered as its own dot point (folded together, never
+// truncated or summarised). Internal per-unit rates / quantities / per-component
+// prices are NOT included here — only the descriptive bullets + the trade total.
+// Components keep their order of first appearance. A line with NO trade stays
+// its own single line (sensible fallback), keyed by its id. Pure — the client
+// document, PDF and public link all render from this.
 export interface TradeLine {
   key: string;
   trade: string | null; // null = an untagged single item
-  label: string; // trade name, or the item's own description when untagged
-  description: string; // optional combined description (component descriptions)
+  label: string; // trade name, or the item's own first line when untagged
+  bullets: string[]; // the FULL combined dot-point scope for this trade
   total: number;
   count: number;
 }
 
-const summariseDescriptions = (descs: string[]): string => {
-  const seen = new Set<string>();
-  const uniq = descs.map((d) => d.trim()).filter((d) => d && !seen.has(d.toLowerCase()) && seen.add(d.toLowerCase()));
-  const joined = uniq.join(" · ");
-  return joined.length > 160 ? joined.slice(0, 157).trimEnd() + "…" : joined;
-};
+// Split a description/detail into clean dot points: one per non-empty line, with
+// any leading bullet glyph the user typed stripped so we render our own. A
+// single-line description simply yields one bullet.
+const toBullets = (text?: string | null): string[] =>
+  (text || "")
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*[-•*·–—]\s*/, "").trim())
+    .filter(Boolean);
 
 export function consolidateByTrade(items: QuoteItem[]): TradeLine[] {
   const order: string[] = [];
-  const map = new Map<string, { trade: string | null; label: string; descs: string[]; total: number; count: number }>();
+  const map = new Map<string, { trade: string | null; label: string; bullets: string[]; total: number; count: number }>();
   for (const it of items) {
     const amt = lineAmount(it);
     const trade = (it.trade || "").trim();
+    const lines = [...toBullets(it.description), ...toBullets(it.detail)];
     if (trade) {
       const key = "trade:" + trade.toLowerCase();
       let g = map.get(key);
-      if (!g) { g = { trade, label: trade, descs: [], total: 0, count: 0 }; map.set(key, g); order.push(key); }
+      if (!g) { g = { trade, label: trade, bullets: [], total: 0, count: 0 }; map.set(key, g); order.push(key); }
       g.total += amt;
       g.count += 1;
-      if (it.description?.trim()) g.descs.push(it.description.trim());
+      g.bullets.push(...lines); // fold this component's full detail into the trade
     } else {
+      // Untagged → its own line: first line becomes the heading, the rest (and
+      // any detail) become its bullets, so nothing is hidden.
       const key = "item:" + it.id;
-      map.set(key, { trade: null, label: it.description?.trim() || "Item", descs: it.detail?.trim() ? [it.detail.trim()] : [], total: amt, count: 1 });
+      map.set(key, { trade: null, label: lines[0] || "Item", bullets: lines.slice(1), total: amt, count: 1 });
       order.push(key);
     }
   }
   return order.map((key) => {
     const g = map.get(key)!;
-    return {
-      key,
-      trade: g.trade,
-      label: g.label,
-      description: g.trade ? summariseDescriptions(g.descs) : (g.descs[0] || ""),
-      total: round2(g.total),
-      count: g.count,
-    };
+    return { key, trade: g.trade, label: g.label, bullets: g.bullets, total: round2(g.total), count: g.count };
   });
 }

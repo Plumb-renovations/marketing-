@@ -204,21 +204,23 @@ export default function PremiumQuoteTemplate({
               <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Scope of works</span>
               <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>by trade</span>
             </div>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <tbody>
-                {tradeLines.map((t, i) => (
-                  <tr key={t.key}>
-                    <td style={{ padding: "13px 0", fontSize: 13.5, verticalAlign: "top", borderBottom: i === tradeLines.length - 1 ? "0" : `1px solid ${hair}`, color: ink }}>
-                      <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 16 }}>{t.label}</span>
-                      {t.description && <small style={{ display: "block", color: faint, fontSize: 12, marginTop: 2 }}>{t.description}</small>}
-                    </td>
-                    <td style={{ padding: "13px 0", fontSize: 13.5, verticalAlign: "top", borderBottom: i === tradeLines.length - 1 ? "0" : `1px solid ${hair}`, textAlign: "right", fontWeight: 600, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", width: 120 }}>
-                      {money(t.total, ccy)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {tradeLines.map((t, i) => (
+              <div key={t.key} style={{ padding: "16px 0", borderBottom: i === tradeLines.length - 1 ? "0" : `1px solid ${hair}` }}>
+                {/* trade heading + ONE combined total */}
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16 }}>
+                  <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 16, color: ink }}>{t.label}</span>
+                  <span style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", color: ink }}>{money(t.total, ccy)}</span>
+                </div>
+                {/* FULL scope — every component's dot points, never truncated */}
+                {t.bullets.length > 0 && (
+                  <ul style={{ margin: "8px 0 0", paddingLeft: 18, listStyle: "disc", color: muted }}>
+                    {t.bullets.map((b, bi) => (
+                      <li key={bi} style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 3, whiteSpace: "pre-wrap" }}>{b}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
           </div>
         ) : groups.map((g, gi) => {
           const sub = g.items.reduce((s, it) => s + amount(it), 0);
