@@ -4,6 +4,7 @@ import { rateLimit } from "@/lib/ai/ratelimit";
 import { getOrgId } from "@/lib/data/org";
 import {
   getJourney, logUpdate, setJourneyStage, setOutcome, advanceFollowup, generateBrief, markLost, generateMessage,
+  bookVisit, cancelVisit,
 } from "@/lib/leadJourney/data";
 
 // Lead Journey Sales Coach — per-lead capture + coaching. GET returns the
@@ -35,7 +36,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const action = String(body?.action || "");
 
   // The AI-spending actions are rate-limited; cheap state changes aren't.
-  if (["log", "brief", "lost", "message", "outcome"].includes(action)) {
+  // (book_visit prepares the pre-quote briefing on first booking → AI.)
+  if (["log", "brief", "lost", "message", "outcome", "book_visit"].includes(action)) {
     const limit = rateLimit(user.id);
     if (!limit.ok) return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
   }
@@ -58,6 +60,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       case "followup":
         await advanceFollowup(supabase, orgId, id, String(body?.channel || "text"));
         return NextResponse.json({ ok: true, journey: await getJourney(supabase, orgId, id) });
+      case "book_visit": {
+        const visitAt = String(body?.visitAt || "");
+        if (!visitAt) return NextResponse.json({ error: "missing_visit" }, { status: 400 });
+        return NextResponse.json(await bookVisit(supabase, orgId, id, visitAt, String(body?.notes || "")));
+      }
+      case "cancel_visit":
+        return NextResponse.json(await cancelVisit(supabase, orgId, id));
       case "brief":
         return NextResponse.json({ briefing: await generateBrief(supabase, orgId, id) });
       case "lost":

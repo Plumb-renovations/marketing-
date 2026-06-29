@@ -37,6 +37,8 @@ export interface JourneyLead {
   lostDetail?: string | null;
   source?: string;
   phone?: string | null;
+  visitAt?: string | null; // booked quote/site-visit datetime (ISO)
+  visitNotes?: string | null; // optional notes for the visit
 }
 
 export const STAGE_LABEL: Record<JourneyStage, string> = {

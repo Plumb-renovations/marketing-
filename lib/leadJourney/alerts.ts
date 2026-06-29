@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CoachAlert } from "@/lib/coach/alerts";
-import { fetchJourneyLeads } from "./data";
-import { needsCallNow, isCold, effectiveStage } from "./coach";
+import { fetchJourneyLeads, fetchUpcomingVisits } from "./data";
+import { needsCallNow, isCold, effectiveStage, visitState } from "./coach";
 
 // Sales-coach alerts for the proactive strip: leads to call NOW + deals going
 // cold. Aggregated (count + a few names) so the strip stays tight; the Sales
@@ -15,6 +15,28 @@ export async function journeyAlerts(supabase: SupabaseClient, orgId: string): Pr
   const names = (ls: typeof open) => ls.map((l) => l.name).slice(0, 3).join(", ") + (ls.length > 3 ? ` +${ls.length - 3}` : "");
 
   const out: CoachAlert[] = [];
+
+  // Imminent quote visits — surface the prep prominently when one is happening
+  // now / within the hour ("here's how to win it"). Timezone-agnostic (keys on
+  // minutes-until, not a calendar day).
+  try {
+    const visits = await fetchUpcomingVisits(supabase);
+    const soon = visits.filter((v) => visitState(v.lead).state === "soon");
+    if (soon.length) {
+      const first = soon[0];
+      out.push({
+        key: "sc-visit-soon",
+        severity: "high",
+        area: "Quote visit",
+        title: soon.length === 1 ? `Quote visit with ${first.lead.name} coming up` : `${soon.length} quote visits coming up`,
+        detail: soon.length === 1
+          ? `Your quote visit with ${first.lead.name} is about to start. Open the pre-quote briefing so you walk in knowing how to win it.`
+          : `${names(soon.map((v) => v.lead))} — visits are about to start. Open the prep for each so you walk in ready.`,
+        link: { href: "/sales-coach", label: "See the prep" },
+      });
+    }
+  } catch { /* visits optional (pre-0030) — never block the strip */ }
+
   if (callNow.length) {
     out.push({
       key: "sc-call-now",

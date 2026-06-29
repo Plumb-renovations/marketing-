@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Mic, MicOff, Loader2, Send, Sparkles, Clipboard, Phone, MessageSquare, CalendarCheck,
-  ClipboardList, X, Check, AlertTriangle, Palette, Trophy, History, Zap,
+  ClipboardList, X, Check, AlertTriangle, Palette, Trophy, History, Zap, CalendarPlus, Clock, Trash2,
 } from "lucide-react";
 import { Chip, Eyebrow } from "@/components/ui/primitives";
 import { fetchJourney, journeyAction, type JourneyDetail } from "@/lib/leadJourney/client";
@@ -21,6 +21,10 @@ export default function LeadJourney({ leadId, onChanged }: { leadId: string; onC
   const [lostOpen, setLostOpen] = useState(false);
   const [lossAdvice, setLossAdvice] = useState<{ advice?: string; system?: string } | null>(null);
   const [err, setErr] = useState("");
+  const [vForm, setVForm] = useState(false);
+  const [vDate, setVDate] = useState("");
+  const [vTime, setVTime] = useState("");
+  const [vNotes, setVNotes] = useState("");
 
   const load = useCallback(async () => { setData(await fetchJourney(leadId)); setLoading(false); }, [leadId]);
   useEffect(() => { load(); }, [load]);
@@ -59,6 +63,24 @@ export default function LeadJourney({ leadId, onChanged }: { leadId: string; onC
     const r = await act({ action: "log", text: note, source: listening ? "voice" : "typed" }, "log");
     if (r) setNote("");
   };
+
+  // ---- Quote-visit booking (local time → ISO; rendered in local time) ----
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const openVisitForm = (iso?: string | null, notes?: string | null) => {
+    const d = iso ? new Date(iso) : null;
+    setVDate(d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : "");
+    setVTime(d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : "");
+    setVNotes(notes || "");
+    setVForm(true);
+  };
+  const bookVisit = async () => {
+    if (!vDate || !vTime) return;
+    const iso = new Date(`${vDate}T${vTime}`).toISOString();
+    const r = await act({ action: "book_visit", visitAt: iso, notes: vNotes || "" }, "book");
+    if (r) setVForm(false);
+  };
+  const fmtVisit = (iso: string) =>
+    new Date(iso).toLocaleString("en-AU", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
   if (loading) return <div className="flex items-center gap-2 py-3 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading sales coach…</div>;
   if (!data) return <p className="text-xs text-slate-500">Sales coach data isn't available for this lead yet.</p>;
@@ -100,6 +122,46 @@ export default function LeadJourney({ leadId, onChanged }: { leadId: string; onC
             <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/60 p-2">
               <p className="whitespace-pre-wrap text-xs text-slate-200">{message}</p>
               <button onClick={() => { navigator.clipboard?.writeText(message).catch(() => {}); }} className="mt-1 inline-flex items-center gap-1 text-[11px] text-cyan-300 hover:text-cyan-200"><Clipboard className="h-3 w-3" /> Copy</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Quote visit scheduling — book + prep a site visit once qualified */}
+      {stage !== "won" && stage !== "lost" && (lead.visitAt || stage === "qualified" || stage === "contacted") && (
+        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3">
+          <div className="flex items-center gap-2">
+            <CalendarCheck className="h-3.5 w-3.5 text-emerald-300" />
+            <span className="text-sm font-medium text-slate-100">Quote visit</span>
+          </div>
+
+          {lead.visitAt && !vForm ? (
+            <div className="mt-2">
+              <p className="flex items-center gap-1.5 text-sm text-emerald-200"><Clock className="h-3.5 w-3.5" /> {fmtVisit(lead.visitAt)}</p>
+              {lead.visitNotes && <p className="mt-1 text-[11px] text-slate-400">Notes: <span className="text-slate-300">{lead.visitNotes}</span></p>}
+              <p className="mt-1 text-[11px] text-slate-500">Open the briefing below before you go — it's your prep to win this visit.</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <button onClick={() => openVisitForm(lead.visitAt, lead.visitNotes)} className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-800"><CalendarPlus className="h-3.5 w-3.5" /> Reschedule</button>
+                <button onClick={() => act({ action: "cancel_visit" }, "cancelv")} disabled={busy === "cancelv"} className="inline-flex items-center gap-1 rounded-lg border border-red-500/40 px-2.5 py-1.5 text-xs text-red-300 hover:bg-red-500/10 disabled:opacity-50">{busy === "cancelv" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Cancel visit</button>
+              </div>
+            </div>
+          ) : vForm ? (
+            <div className="mt-2 space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <input type="date" value={vDate} onChange={(e) => setVDate(e.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500/50" />
+                <input type="time" value={vTime} onChange={(e) => setVTime(e.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500/50" />
+              </div>
+              <textarea value={vNotes} onChange={(e) => setVNotes(e.target.value)} rows={2} placeholder="Optional notes (access, parking, who'll be there…)" className="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50" />
+              <div className="flex items-center gap-1.5">
+                <button onClick={bookVisit} disabled={busy === "book" || !vDate || !vTime} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-1.5 text-xs font-medium text-slate-950 hover:bg-cyan-400 disabled:opacity-50">{busy === "book" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarCheck className="h-3.5 w-3.5" />} Book visit</button>
+                <button onClick={() => setVForm(false)} className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-400 hover:bg-slate-800">Cancel</button>
+              </div>
+              <p className="text-[11px] text-slate-600">Booking preps Hazel's pre-quote briefing so you walk in ready to win it.</p>
+            </div>
+          ) : (
+            <div className="mt-2">
+              <p className="text-[11px] text-slate-400">Lock in a measure &amp; quote visit. Hazel will prep a briefing so you walk in ready to win this customer.</p>
+              <button onClick={() => openVisitForm()} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/90 px-3 py-1.5 text-xs font-medium text-slate-950 hover:bg-emerald-400"><CalendarPlus className="h-3.5 w-3.5" /> Book quote visit</button>
             </div>
           )}
         </div>

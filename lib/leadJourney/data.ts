@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getBusinessProfile } from "@/lib/business/profileServer";
 import { runGenerator } from "@/lib/ai/server";
 import { CADENCE, type JourneyLead, type JourneyStage, type LeadQual } from "./model";
-import { analysePatterns } from "./coach";
+import { analysePatterns, effectiveStage } from "./coach";
 
 // Server-side journey ops: capture (AI extract → update lead + event), staging,
 // follow-up cadence, pre-quote briefing, and loss capture + advice. Reuses the
@@ -18,6 +18,7 @@ export function mapJourneyLead(r: any): JourneyLead {
     followupStep: r.followup_step ?? 0, followupDue: r.followup_due ?? null, lastTouchAt: r.last_touch_at ?? null,
     qual: (r.qual ?? {}) as LeadQual, lostReason: r.lost_reason ?? null, lostDetail: r.lost_detail ?? null,
     source: r.source, phone: r.phone ?? null,
+    visitAt: r.visit_at ?? null, visitNotes: r.visit_notes ?? null,
   };
 }
 
@@ -25,24 +26,29 @@ export function mapJourneyLead(r: any): JourneyLead {
 // does (lib/data/leads.fetchLeads): select * and rely on RLS — is_member(org_id)
 // — for tenancy, NOT an extra `.eq("org_id", …)` filter.
 //
-// Why this matters (the "Call now shows no uncontacted leads" bug): the board
-// has no org filter, but this query used `.eq("org_id", getOrgId())`. getOrgId
-// resolves to the user's EARLIEST membership; when a lead lives under a
-// different membership org (the documented multi-tenant footgun), that filter
-// silently dropped it here while the board still listed it via RLS. Selecting *
-// instead of an explicit column list also means a not-yet-migrated journey
-// column can never error the whole query into an empty []. And we now surface
-// the error instead of swallowing it, so a real failure can't masquerade as
-// "no uncontacted leads — you're on top of it".
+// Why this matters (the "Call now shows no uncontacted leads" bug): the real
+// cause was this query referencing `archived_at` in SQL (`.is("archived_at",
+// null)`) — a column that doesn't exist in every environment — which errored
+// with 42703; the error was then swallowed (`const { data } = …`) so it
+// rendered as "no uncontacted leads — you're on top of it". The board never
+// hits this: fetchLeads selects * and excludes archived rows in CODE
+// (DataProvider filters `!l.archivedAt`); reading `row.archived_at` off a row
+// is harmless when the column is absent (just undefined). So we do the same —
+// exclude archived leads after the query, not via a SQL filter — and surface
+// any real error instead of hiding it. (Selecting * rather than an explicit
+// column list also keeps a not-yet-migrated journey column from erroring the
+// whole query, and dropping the org filter matches the board, which has none.)
 export async function fetchJourneyLeads(supabase: SupabaseClient, _orgId?: string): Promise<JourneyLead[]> {
   const { data, error } = await supabase
-    .from("leads").select("*").is("archived_at", null)
+    .from("leads").select("*")
     .order("created_at", { ascending: false }).limit(500);
   if (error) {
     console.error("[journey] fetchJourneyLeads failed:", error.message);
     throw error;
   }
-  return (data || []).map(mapJourneyLead);
+  // Drop archived leads in code, exactly like the board does. `r.archived_at`
+  // is undefined where the column doesn't exist → treated as active.
+  return (data || []).filter((r: any) => !r.archived_at).map(mapJourneyLead);
 }
 
 export async function getJourney(supabase: SupabaseClient, orgId: string, leadId: string) {
@@ -175,6 +181,45 @@ export async function setJourneyStage(supabase: SupabaseClient, orgId: string, l
   await insertEvent(supabase, orgId, leadId, { kind: "stage", source: "system", body: `Stage → ${stage}` });
 }
 
+// Book (or reschedule) a quote/site visit against a qualified lead. Stores the
+// date/time + optional notes, makes sure the lead is at least "qualified" (a
+// visit means it's qualified), and prepares the pre-quote briefing if one
+// hasn't been generated yet so the prep is ready before the visit. Requires the
+// 0030 visit_at/visit_notes columns — without them the update errors clearly.
+export async function bookVisit(supabase: SupabaseClient, orgId: string, leadId: string, visitAtIso: string, notes?: string) {
+  const cur = await getJourney(supabase, orgId, leadId);
+  if (!cur) throw new Error("lead not found");
+  const t = Date.parse(visitAtIso);
+  if (isNaN(t)) throw new Error("invalid visit date/time");
+  const now = new Date().toISOString();
+  const patch: Record<string, any> = { visit_at: new Date(t).toISOString(), visit_notes: notes?.trim() || null, last_touch_at: now, updated_at: now };
+  // A booked visit implies the lead is qualified — promote it, but never
+  // downgrade a lead that's already further along (quote_sent/following_up/won).
+  const st = effectiveStage(cur.lead);
+  if (st === "new" || st === "contacted") { patch.journey_stage = "qualified"; patch.stage = "qualified"; }
+  const { error } = await supabase.from("leads").update(patch).eq("id", leadId);
+  if (error) throw error;
+
+  // Prep the briefing now so opening the booked visit shows "how to win it".
+  // Best-effort — a missing briefing shouldn't fail the booking.
+  if (!cur.briefing) {
+    try { await generateBrief(supabase, orgId, leadId); } catch (e) { console.error("[journey] brief on booking failed:", (e as Error).message); }
+  }
+  await insertEvent(supabase, orgId, leadId, { kind: "visit", source: "typed", body: `Quote visit booked for ${new Date(t).toISOString()}${notes?.trim() ? ` — ${notes.trim()}` : ""}` });
+  return { journey: await getJourney(supabase, orgId, leadId) };
+}
+
+// Cancel a booked visit (clears the date + notes).
+export async function cancelVisit(supabase: SupabaseClient, orgId: string, leadId: string) {
+  const cur = await getJourney(supabase, orgId, leadId);
+  if (!cur) throw new Error("lead not found");
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("leads").update({ visit_at: null, visit_notes: null, last_touch_at: now, updated_at: now }).eq("id", leadId);
+  if (error) throw error;
+  await insertEvent(supabase, orgId, leadId, { kind: "visit", source: "typed", body: "Quote visit cancelled" });
+  return { journey: await getJourney(supabase, orgId, leadId) };
+}
+
 // Record that a follow-up was done → advance the cadence to the next step.
 export async function advanceFollowup(supabase: SupabaseClient, orgId: string, leadId: string, channel: string) {
   const cur = await getJourney(supabase, orgId, leadId);
@@ -220,4 +265,31 @@ export async function generateMessage(supabase: SupabaseClient, orgId: string, l
   const profile = await getBusinessProfile(orgId);
   const ai: any = await runGenerator("lead-message", { journey: { name: cur.lead.name, channel, tone, qual: cur.lead.qual } }, profile);
   return { message: String(ai?.message || "") };
+}
+
+// A booked quote visit + its prep, ready for the Sales Coach schedule and the
+// future Board Meeting home page ("you have 2 quote visits today").
+export interface VisitItem {
+  lead: JourneyLead;
+  briefing: any | null;
+}
+
+// All upcoming/active booked quote visits for the org, soonest first. Read the
+// SAME way the board does — select * + RLS (no org_id filter, the documented
+// multi-tenancy footgun) — and filter in CODE, never referencing visit_at in
+// SQL, so the rest of the Sales Coach keeps working before 0030 is applied
+// (visit_at simply reads as undefined → no visits, no error). Excludes
+// archived, won and lost leads, and visits more than a day in the past.
+export async function fetchUpcomingVisits(supabase: SupabaseClient, now = Date.now()): Promise<VisitItem[]> {
+  const { data, error } = await supabase.from("leads").select("*").limit(500);
+  if (error) {
+    console.error("[journey] fetchUpcomingVisits failed:", error.message);
+    throw error;
+  }
+  const cutoff = now - DAY;
+  return (data || [])
+    .filter((r: any) => !r.archived_at && r.visit_at && !isNaN(Date.parse(r.visit_at)) && Date.parse(r.visit_at) >= cutoff)
+    .map((r: any) => ({ lead: mapJourneyLead(r), briefing: r.briefing ?? null }))
+    .filter((v: VisitItem) => !["won", "lost"].includes(effectiveStage(v.lead)))
+    .sort((a: VisitItem, b: VisitItem) => Date.parse(a.lead.visitAt!) - Date.parse(b.lead.visitAt!));
 }
