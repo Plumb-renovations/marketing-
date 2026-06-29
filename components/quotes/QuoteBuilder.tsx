@@ -89,6 +89,15 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
     })();
   }, [supabase, id, isNew, leadPrefill]);
 
+  // Group the price list by category for the picker's optgroups. MUST stay above
+  // the early return below — hooks run unconditionally, in the same order, every
+  // render (it only depends on priceList, not on the loaded quote).
+  const priceGroups = useMemo(() => {
+    const m = new Map<string, PriceItem[]>();
+    for (const p of priceList) { const k = p.category.trim() || "Other"; (m.get(k) ?? m.set(k, []).get(k)!).push(p); }
+    return [...m.entries()];
+  }, [priceList]);
+
   if (!q) {
     return <div className="flex items-center gap-2 py-16 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading quote…</div>;
   }
@@ -109,13 +118,6 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   const insertPriceItem = (p: PriceItem) =>
     addItem({ description: p.name, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice });
   const removeItem = (i: number) => upd({ items: q.items.filter((_, j) => j !== i) });
-
-  // Group the price list by category for the picker's optgroups.
-  const priceGroups = useMemo(() => {
-    const m = new Map<string, PriceItem[]>();
-    for (const p of priceList) { const k = p.category.trim() || "Other"; (m.get(k) ?? m.set(k, []).get(k)!).push(p); }
-    return [...m.entries()];
-  }, [priceList]);
 
   // ---- Saved quote templates (reusable sets of line items) ----------------
   const loadTemplate = (t: QuoteTemplate) => {
