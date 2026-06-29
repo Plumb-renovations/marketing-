@@ -3,13 +3,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Eye, Pencil, Save, Send, Loader2, Plus, Trash2, GripVertical, Columns3, Copy, RefreshCw, AlertTriangle, ArrowLeft, CheckCircle2, Printer,
+  Eye, Pencil, Save, Send, Loader2, Plus, Trash2, GripVertical, Columns3, Copy, RefreshCw, AlertTriangle, ArrowLeft, CheckCircle2, Printer, Tags, BookmarkPlus, LayoutTemplate, X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchQuote, saveQuote } from "@/lib/data/quotes";
 import { fetchBrandSettings } from "@/lib/data/brand";
 import { fetchBusinessProfile } from "@/lib/data/businessProfile";
 import { fetchSavedItems, type SavedItem } from "@/lib/data/savedItems";
+import { fetchPriceList, type PriceItem } from "@/lib/data/priceList";
+import { fetchQuoteTemplates, saveQuoteTemplate, deleteQuoteTemplate, type QuoteTemplate, type QuoteTemplateData } from "@/lib/data/quoteTemplates";
 import { fetchLeads } from "@/lib/data/leads";
 import { DEFAULT_BRAND, type BrandSettings } from "@/lib/business/brand";
 import {
@@ -37,6 +39,10 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   const [brand, setBrand] = useState<BrandSettings>(DEFAULT_BRAND);
   const [businessName, setBusinessName] = useState("");
   const [saved, setSavedItems] = useState<SavedItem[]>([]);
+  const [priceList, setPriceList] = useState<PriceItem[]>([]);
+  const [templates, setTemplates] = useState<QuoteTemplate[]>([]);
+  const [tplOpen, setTplOpen] = useState(false);
+  const [tplName, setTplName] = useState("");
   const [leads, setLeads] = useState<{ id: string; name: string; email?: string; phone?: string; suburb?: string; project?: string }[]>([]);
   const [tab, setTab] = useState<"details" | "preview">("details");
   const [showInternal, setShowInternal] = useState(false);
@@ -47,15 +53,19 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
 
   useEffect(() => {
     (async () => {
-      const [b, prof, lib, ld] = await Promise.all([
+      const [b, prof, lib, pl, tpls, ld] = await Promise.all([
         fetchBrandSettings(supabase).catch(() => DEFAULT_BRAND),
         fetchBusinessProfile(supabase).catch(() => null),
         fetchSavedItems(supabase).catch(() => []),
+        fetchPriceList(supabase).catch(() => []),
+        fetchQuoteTemplates(supabase).catch(() => []),
         fetchLeads(supabase).catch(() => []),
       ]);
       setBrand(b);
       setBusinessName(prof?.businessName || "");
       setSavedItems(lib);
+      setPriceList(pl);
+      setTemplates(tpls);
       setLeads(ld.map((l: any) => ({ id: l.id, name: l.name, suburb: l.suburb, project: l.project })));
 
       if (isNew) {
@@ -94,7 +104,56 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
     upd({ items: [...q.items, { id: uid(), sectionId: null, description: "", detail: "", qty: 1, unit: "ea", unitPrice: 0, unitCost: null, sortOrder: q.items.length, ...seed }] });
   const insertSaved = (s: SavedItem) =>
     addItem({ description: s.description, detail: s.detail, qty: s.defaultQty, unit: s.unit, unitPrice: s.unitPrice });
+  // Smart line item: pull the rate + unit from the price list, qty stays 1 for
+  // the user to set → amount = rate × qty (still fully editable/overridable).
+  const insertPriceItem = (p: PriceItem) =>
+    addItem({ description: p.name, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice });
   const removeItem = (i: number) => upd({ items: q.items.filter((_, j) => j !== i) });
+
+  // Group the price list by category for the picker's optgroups.
+  const priceGroups = useMemo(() => {
+    const m = new Map<string, PriceItem[]>();
+    for (const p of priceList) { const k = p.category.trim() || "Other"; (m.get(k) ?? m.set(k, []).get(k)!).push(p); }
+    return [...m.entries()];
+  }, [priceList]);
+
+  // ---- Saved quote templates (reusable sets of line items) ----------------
+  const loadTemplate = (t: QuoteTemplate) => {
+    if (q.items.length && !window.confirm(`Replace the current line items with the "${t.name}" template?`)) return;
+    const items: QuoteItem[] = (t.data.items || []).map((li, i) => ({
+      id: uid(), sectionId: null, description: li.description || "", detail: li.detail || "",
+      qty: Number(li.qty) || 0, unit: li.unit || "ea", unitPrice: Number(li.unitPrice) || 0,
+      unitCost: li.unitCost ?? null, sortOrder: i,
+    }));
+    upd({
+      items,
+      scopeDescription: q.scopeDescription || t.data.scopeDescription || "",
+      inclusions: q.inclusions || t.data.inclusions || "",
+      exclusions: q.exclusions || t.data.exclusions || "",
+    });
+    setNote(`Loaded template "${t.name}"`);
+  };
+  const saveAsTemplate = async () => {
+    const name = tplName.trim();
+    if (!name) return;
+    const data: QuoteTemplateData = {
+      items: q.items.map(({ description, detail, qty, unit, unitPrice, unitCost }) => ({ description, detail, qty, unit, unitPrice, unitCost })),
+      scopeDescription: q.scopeDescription, inclusions: q.inclusions, exclusions: q.exclusions,
+    };
+    const id = uid();
+    try {
+      await saveQuoteTemplate(supabase, { id, name, data, sortOrder: templates.length });
+      setTemplates((p) => [...p, { id, name, data, sortOrder: p.length, createdAt: null }]);
+      setTplName(""); setTplOpen(false); setNote(`Saved template "${name}"`);
+    } catch (e: any) {
+      setError(e?.message || "Couldn't save the template. If migration 0031 isn't applied yet, run it first.");
+    }
+  };
+  const removeTemplate = async (t: QuoteTemplate) => {
+    if (!window.confirm(`Delete the "${t.name}" template?`)) return;
+    try { await deleteQuoteTemplate(supabase, t.id); setTemplates((p) => p.filter((x) => x.id !== t.id)); }
+    catch (e: any) { setError(e?.message || "Couldn't delete the template."); }
+  };
 
   const onDrop = (to: number) => {
     const from = dragIdx.current;
@@ -239,11 +298,55 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
             <label className="mt-3 block"><span className={lbl}>Scope description</span><textarea value={q.scopeDescription} onChange={(e) => upd({ scopeDescription: e.target.value })} rows={3} placeholder="Overall scope of works…" className={"mt-1 " + inp} /></label>
           </div>
 
+          {/* Quote templates — load a reusable set of line items, or save this one */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <LayoutTemplate className="h-4 w-4 text-cyan-400" />
+                <h3 className="font-display text-sm font-semibold text-slate-200">Quote templates</h3>
+                <span className="text-[11px] text-slate-500">load a pre-built set of lines, then adjust</span>
+              </div>
+              <button onClick={() => { setTplOpen((v) => !v); setTplName(""); }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800"><BookmarkPlus className="h-3.5 w-3.5" /> Save current as template</button>
+            </div>
+
+            {tplOpen && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input value={tplName} onChange={(e) => setTplName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveAsTemplate(); }} placeholder="Template name (e.g. Ground floor bathroom)" className={"max-w-xs " + inp} />
+                <button onClick={saveAsTemplate} disabled={!tplName.trim() || !q.items.length} className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50"><Save className="h-4 w-4" /> Save template</button>
+                <button onClick={() => setTplOpen(false)} className="rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-400 hover:bg-slate-800">Cancel</button>
+                {!q.items.length && <span className="text-[11px] text-amber-300">Add some line items first.</span>}
+              </div>
+            )}
+
+            {templates.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {templates.map((t) => (
+                  <span key={t.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950/60 py-1 pl-2.5 pr-1 text-xs text-slate-200">
+                    <button onClick={() => loadTemplate(t)} className="inline-flex items-center gap-1.5 hover:text-cyan-200" title="Load this template's line items"><LayoutTemplate className="h-3.5 w-3.5 text-cyan-400" /> {t.name} <span className="text-slate-500">· {t.data.items?.length || 0} lines</span></button>
+                    <button onClick={() => removeTemplate(t)} className="rounded p-1 text-slate-500 hover:text-red-300" title="Delete template"><X className="h-3 w-3" /></button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">No templates yet. Build a quote, then &ldquo;Save current as template&rdquo; to reuse it for the next job.</p>
+            )}
+          </div>
+
           {/* Line items */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-display text-sm font-semibold text-slate-200">Line items</h3>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {priceGroups.length > 0 && (
+                  <select title="Add a line from your price list — fills the rate, then set the quantity" onChange={(e) => { const p = priceList.find((x) => x.id === e.target.value); if (p) insertPriceItem(p); e.currentTarget.selectedIndex = 0; }} className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-2 py-1.5 text-xs text-cyan-200 focus:border-cyan-500/50">
+                    <option value="">＋ From price list…</option>
+                    {priceGroups.map(([cat, list]) => (
+                      <optgroup key={cat} label={cat}>
+                        {list.map((p) => <option key={p.id} value={p.id}>{p.name} · {money(p.unitPrice, brand.currency)}/{p.unit}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                )}
                 <select onChange={(e) => { const s = saved.find((x) => x.id === e.target.value); if (s) insertSaved(s); e.currentTarget.selectedIndex = 0; }} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-300 focus:border-cyan-500/50">
                   <option value="">Insert saved item…</option>
                   {saved.map((s) => <option key={s.id} value={s.id}>{s.description} · {money(s.unitPrice, brand.currency)}</option>)}
