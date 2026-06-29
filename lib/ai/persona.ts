@@ -394,10 +394,12 @@ ALREADY CHECKED (shown to the owner separately — don't re-list these, but you 
 - Scope / keyword flags: ${ctx.keywordText || "none"}
 
 YOUR JOB — WORDING TO CLOSE:
-Review the descriptions and scope WORDING and suggest specific improvements that help WIN this job: lead with the transformation/outcome, replace bare or transactional lines with value, reassure on quality / warranty / licensing, and lean on the customer's real motivation from the briefing where you have it. These are SUGGESTIONS the owner can apply — never rewrite the whole quote, and don't change the prices. Australian English, concrete and brief.
+Review the descriptions and scope WORDING and suggest specific improvements that help WIN this job: lead with the transformation/outcome, replace bare or transactional lines with value, reassure on quality / warranty / licensing, and lean on the customer's real motivation from the briefing where you have it. Never change the prices.
+
+Each line item above is numbered like [1], [2]. For every wording suggestion, the "suggestion" MUST be the EXACT replacement text the owner can drop straight in (a finished, ready-to-use description — NOT an instruction like "mention the warranty"), and "line" MUST be the [n] number of the line item it replaces, or null when the suggestion is for the overall scope description. The owner applies each suggestion with one click, so it has to read as the final wording. If a tip is an angle rather than a drop-in line (e.g. "ring them before you send"), put it in closeTips instead, not in wording. Australian English, concrete and brief.
 
 Return ONLY valid JSON, no markdown:
-{"headline":string (one line — the single most useful thing to do before sending),"wording":[{"target":string (the line or section this is about),"suggestion":string (the improved wording or angle to use),"why":string (why it helps close this customer)}],"closeTips":string[] (0-3 short extra tips to win the job, optional)}`;
+{"headline":string (one line — the single most useful thing to do before sending),"wording":[{"line":number|null (the [n] of the line item this rewrites, or null for the overall scope description),"suggestion":string (the EXACT drop-in replacement wording),"why":string (why it helps close this customer)}],"closeTips":string[] (0-3 short extra tips to win the job, optional)}`;
 }
 
 // "Paste & beat": analyse a competitor's pasted live ad(s), then out-position
