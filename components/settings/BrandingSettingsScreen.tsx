@@ -8,6 +8,7 @@ import { fetchBrandSettings, saveBrandSettings } from "@/lib/data/brand";
 import { DEFAULT_BRAND, scheduleSum, type BrandSettings } from "@/lib/business/brand";
 import { fetchSavedItems, upsertSavedItem, deleteSavedItem, type SavedItem } from "@/lib/data/savedItems";
 import { QUOTE_TEMPLATES } from "@/lib/quotes/templates";
+import PriceListPanel from "@/components/settings/PriceListPanel";
 
 const uid = () => crypto.randomUUID();
 
@@ -276,6 +277,10 @@ export default function BrandingSettingsScreen() {
           </button>
         </div>
       </Panel>
+
+      {/* Price list (rate card) — the foundation the smart line-item picker and
+          the future AI reviewer read. */}
+      <PriceListPanel />
     </div>
   );
 }
