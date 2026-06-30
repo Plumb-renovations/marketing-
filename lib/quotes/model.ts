@@ -43,6 +43,12 @@ export interface QuoteItem {
   // Good/Better/Best: null = SHARED across all tiers (the base build); else this
   // component belongs only to that tier's finishes. Ignored unless quote.tiered.
   tier?: TierKey | null;
+  // Tile & Fixture Allowance: when true this line is a fixture/tile allowance
+  // item — shown in its own allowance section, NOT in the build scope, and never
+  // locked to a build tier. sourcePriceItemId links it back to the price-list
+  // item it was toggled on from (so the PC selector knows what's included).
+  allowance?: boolean;
+  sourcePriceItemId?: string | null;
 }
 
 export interface QuoteSection {
@@ -93,6 +99,7 @@ export interface Quote {
   tiered: boolean; // Good/Better/Best mode (off = normal single-price quote)
   acceptedTier: TierKey | null; // which tier the client accepted
   tierNames: Record<TierKey, string>; // editable display labels per tier
+  allowanceNote: string; // framing text atop the Tile & Fixture Allowance section
   sections: QuoteSection[];
   items: QuoteItem[];
   stages: QuoteStage[];
@@ -183,11 +190,22 @@ export function emptyQuote(id: string): Quote {
     tiered: false,
     acceptedTier: null,
     tierNames: { ...DEFAULT_TIER_NAMES },
+    allowanceNote: "",
     sections: [],
     items: [],
     stages: [],
   };
 }
+
+// Default framing text for the Tile & Fixture Allowance section. The org can
+// save its own default (business_profiles.default_allowance_note); a new quote
+// auto-fills from that, falling back to this.
+export const DEFAULT_ALLOWANCE_NOTE =
+  "This allowance is based on higher-end selections to provide a realistic estimate of overall project cost. Selections can be adjusted to suit your budget, with any variations confirmed prior to ordering.";
+
+// Split a quote's items into the build scope vs the fixture/tile allowance.
+export const buildItemsOf = (items: QuoteItem[]): QuoteItem[] => items.filter((i) => !i.allowance);
+export const allowanceItemsOf = (items: QuoteItem[]): QuoteItem[] => items.filter((i) => i.allowance);
 
 export function money(n: number, currency = "AUD") {
   try {

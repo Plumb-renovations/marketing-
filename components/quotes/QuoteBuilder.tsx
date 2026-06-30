@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchQuote, saveQuote } from "@/lib/data/quotes";
-import { fetchBrandSettings } from "@/lib/data/brand";
+import { fetchBrandSettings, saveBrandSettings } from "@/lib/data/brand";
 import { fetchBusinessProfile } from "@/lib/data/businessProfile";
 import { fetchSavedItems, type SavedItem } from "@/lib/data/savedItems";
 import { fetchPriceList, type PriceItem } from "@/lib/data/priceList";
@@ -16,6 +16,7 @@ import { fetchLeads } from "@/lib/data/leads";
 import { DEFAULT_BRAND, type BrandSettings } from "@/lib/business/brand";
 import {
   emptyQuote, computeTotals, computeStageAmounts, stagePercentSum, money, tierTotals, TIERS, tierName,
+  DEFAULT_ALLOWANCE_NOTE, allowanceItemsOf,
   type Quote, type QuoteItem, type QuoteStage, type TierKey,
 } from "@/lib/quotes/model";
 import { DEFAULT_TRADES, inferTradeType, TRADE_TYPE_LABEL, type TradeType } from "@/lib/quotes/trades";
@@ -49,6 +50,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   const [reviewBusy, setReviewBusy] = useState(false);
   const [appliedWording, setAppliedWording] = useState<Set<number>>(new Set());
   const [dismissedFlags, setDismissedFlags] = useState<Set<string>>(new Set());
+  const [savingAllowanceDefault, setSavingAllowanceDefault] = useState(false);
   const [leads, setLeads] = useState<{ id: string; name: string; email?: string; phone?: string; suburb?: string; project?: string }[]>([]);
   const [tab, setTab] = useState<"details" | "preview">("details");
   const [showInternal, setShowInternal] = useState(false);
@@ -77,6 +79,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
       if (isNew) {
         const nq = emptyQuote(uid());
         nq.terms = b.defaultTerms || "";
+        nq.allowanceNote = b.defaultAllowanceNote || DEFAULT_ALLOWANCE_NOTE;
         nq.stages = (b.defaultPaymentSchedule || []).map((s, i) => ({
           id: uid(), label: s.label, milestoneNote: "", percent: Number(s.percent) || 0, fixedAmount: null, amount: 0, status: "pending", sortOrder: i,
         }));
@@ -90,7 +93,10 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
         setQ(nq);
       } else {
         const loaded = await fetchQuote(supabase, id).catch(() => null);
-        setQ(loaded || emptyQuote(id));
+        const qq = loaded || emptyQuote(id);
+        // Auto-fill the allowance framing text if this quote hasn't got one yet.
+        if (!qq.allowanceNote) qq.allowanceNote = b.defaultAllowanceNote || DEFAULT_ALLOWANCE_NOTE;
+        setQ(qq);
       }
     })();
   }, [supabase, id, isNew, leadPrefill]);
@@ -141,6 +147,33 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
     updItem(i, { trade: t || null, tradeType: t ? (cur.tradeType ?? inferTradeType(t)) : null });
   };
   const removeItem = (i: number) => upd({ items: q.items.filter((_, j) => j !== i) });
+
+  // ---- Tile & Fixture Allowance (PC items / tiles — decoupled from build) ----
+  const allowanceLineFor = (priceId: string) => q.items.find((it) => it.allowance && it.sourcePriceItemId === priceId);
+  // Toggle a price-list item into/out of the allowance. On → add a priced line
+  // flagged allowance (and tier-decoupled); off → remove that line.
+  const togglePriceItemAllowance = (p: PriceItem) => {
+    const existing = allowanceLineFor(p.id);
+    if (existing) { upd({ items: q.items.filter((it) => it.id !== existing.id) }); return; }
+    const trade = (p.trade || "").trim() || null;
+    const description = (p.notes || "").trim() || p.name;
+    addItem({ description, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice, trade, tradeType: trade ? inferTradeType(trade) : null, tier: null, allowance: true, sourcePriceItemId: p.id });
+  };
+  const allowanceItems = allowanceItemsOf(q.items);
+  const allowanceSubtotal = computeTotals(allowanceItems, brand.gstRegistered, q.gstInclusive).total;
+  const saveAllowanceDefault = async () => {
+    setSavingAllowanceDefault(true); setError("");
+    try {
+      const next = { ...brand, defaultAllowanceNote: q.allowanceNote };
+      await saveBrandSettings(supabase, next);
+      setBrand(next);
+      setNote("Saved as your default framing text");
+    } catch (e: any) {
+      setError(e?.message || "Couldn't save the default.");
+    } finally {
+      setSavingAllowanceDefault(false);
+    }
+  };
 
   // Trades offered in the per-line picker: defaults + any already used on this
   // quote or carried by a price-list item (so the list stays extendable).
@@ -592,15 +625,22 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                               </div>
                             )}
                           </div>
-                          {/* Good/Better/Best: Shared (base build) or this tier's finishes. */}
-                          {q.tiered && (
-                            <div className="mt-1 flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5" style={{ width: "fit-content" }}>
-                              <button type="button" onClick={() => updItem(i, { tier: null })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${!it.tier ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`} title="Shared across all options">Shared</button>
-                              {TIERS.map((t) => (
-                                <button key={t.key} type="button" onClick={() => updItem(i, { tier: t.key })} title={tierName(q.tierNames, t.key)} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${it.tier === t.key ? "bg-cyan-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}>{tierName(q.tierNames, t.key)}</button>
-                              ))}
+                          {/* Build vs Tile & Fixture Allowance (allowance is tier-decoupled). */}
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <div className="flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5" style={{ width: "fit-content" }}>
+                              <button type="button" onClick={() => updItem(i, { allowance: false })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${!it.allowance ? "bg-cyan-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`} title="Part of the build scope">Build</button>
+                              <button type="button" onClick={() => updItem(i, { allowance: true, tier: null })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${it.allowance ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`} title="Fixture/tile allowance — shown in its own section, decoupled from the build tier">Allowance</button>
                             </div>
-                          )}
+                            {/* Good/Better/Best: Shared (base build) or this tier's finishes. Hidden for allowance lines (they're decoupled). */}
+                            {q.tiered && !it.allowance && (
+                              <div className="flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5" style={{ width: "fit-content" }}>
+                                <button type="button" onClick={() => updItem(i, { tier: null })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${!it.tier ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`} title="Shared across all options">Shared</button>
+                                {TIERS.map((t) => (
+                                  <button key={t.key} type="button" onClick={() => updItem(i, { tier: t.key })} title={tierName(q.tierNames, t.key)} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${it.tier === t.key ? "bg-cyan-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}>{tierName(q.tierNames, t.key)}</button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-2 py-1.5"><input type="number" value={it.qty} onChange={(e) => updItem(i, { qty: Number(e.target.value) })} className={"text-right font-data " + inp} /></td>
                         <td className="px-2 py-1.5"><input value={it.unit} onChange={(e) => updItem(i, { unit: e.target.value })} className={"font-data " + inp} /></td>
@@ -648,6 +688,52 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                   {brand.gstRegistered && <Row label={`GST (10%)${q.gstInclusive ? " incl." : ""}`} value={money(totals.gstAmount, brand.currency)} />}
                   <div className="flex items-center justify-between border-t border-slate-700 pt-1.5 text-base font-semibold text-slate-100"><span>Total</span><span className="font-data text-cyan-300">{money(totals.total, brand.currency)}</span></div>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Tile & Fixture Allowance — PC items / tiles, decoupled from build tier */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <h3 className="font-display text-sm font-semibold text-slate-200">Tile &amp; Fixture Allowance</h3>
+              <span className="text-[11px] text-slate-500">PC items &amp; tiles — a separate layer, not locked to the build tier</span>
+            </div>
+
+            <label className="block">
+              <span className={lbl}>Framing text (shown atop the allowance on the client quote)</span>
+              <textarea value={q.allowanceNote} onChange={(e) => upd({ allowanceNote: e.target.value })} rows={3} placeholder={DEFAULT_ALLOWANCE_NOTE} className={"mt-1 " + inp} />
+            </label>
+            <div className="mt-1.5">
+              <button onClick={saveAllowanceDefault} disabled={savingAllowanceDefault} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800 disabled:opacity-50">{savingAllowanceDefault ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save as my default</button>
+            </div>
+
+            {priceGroups.length > 0 ? (
+              <div className="mt-3 space-y-3">
+                <p className="text-[11px] text-slate-500">Tick the items in this bathroom — each adds a priced allowance line; untick to remove. Where there are multiple versions, pick the one to include.</p>
+                {priceGroups.map(([cat, list]) => (
+                  <div key={cat}>
+                    <p className="mb-1 text-[11px] uppercase tracking-wider text-slate-500 font-display">{cat}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {list.map((p) => {
+                        const on = !!allowanceLineFor(p.id);
+                        return (
+                          <button key={p.id} type="button" onClick={() => togglePriceItemAllowance(p)} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition ${on ? "border-amber-500/50 bg-amber-500/10 text-amber-200" : "border-slate-700 text-slate-300 hover:bg-slate-800"}`}>
+                            {on ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />} {p.name} <span className="text-slate-500">· {money(p.unitPrice, brand.currency)}/{p.unit}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">Add PC items / tiles (with a category) to your price list in Branding &amp; Quotes to tick them on here. You can also flag any line in the table above as &ldquo;Allowance&rdquo;.</p>
+            )}
+
+            {allowanceItems.length > 0 && (
+              <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-3 text-sm">
+                <span className="text-slate-400">{allowanceItems.length} allowance item{allowanceItems.length === 1 ? "" : "s"} — edit price/qty/description in the table above</span>
+                <span className="font-data font-semibold text-amber-300">{money(allowanceSubtotal, brand.currency)} <span className="text-[11px] font-normal text-slate-500">{brand.gstRegistered ? "inc GST" : ""} allowance</span></span>
               </div>
             )}
           </div>
