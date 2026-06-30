@@ -21,15 +21,19 @@ export async function saveBrandSettings(supabase: SupabaseClient, brand: BrandSe
   const row = brandToRow(orgId, brand);
   const undef = (e: any) => e && (e.code === "42703" || /column .* does not exist|could not find/i.test(e.message || ""));
   let { error } = await supabase.from("business_profiles").upsert(row, { onConflict: "org_id" });
-  // Granular fallback (newest migration first): drop default_configurator_intro
-  // (0039), then default_allowance_note (0035), so a save still works before
-  // each migration is applied.
+  // Granular fallback (newest migration first): drop default_comfort_question
+  // (0040), then default_configurator_intro (0039), then default_allowance_note
+  // (0035), so a save still works before each migration is applied.
   if (error && undef(error)) {
-    const { default_configurator_intro, ...noIntro } = row;
-    ({ error } = await supabase.from("business_profiles").upsert(noIntro, { onConflict: "org_id" }));
+    const { default_comfort_question, ...noComfort } = row;
+    ({ error } = await supabase.from("business_profiles").upsert(noComfort, { onConflict: "org_id" }));
     if (error && undef(error)) {
-      const { default_allowance_note, ...legacy } = noIntro;
-      ({ error } = await supabase.from("business_profiles").upsert(legacy, { onConflict: "org_id" }));
+      const { default_configurator_intro, ...noIntro } = noComfort;
+      ({ error } = await supabase.from("business_profiles").upsert(noIntro, { onConflict: "org_id" }));
+      if (error && undef(error)) {
+        const { default_allowance_note, ...legacy } = noIntro;
+        ({ error } = await supabase.from("business_profiles").upsert(legacy, { onConflict: "org_id" }));
+      }
     }
   }
   if (error) throw error;

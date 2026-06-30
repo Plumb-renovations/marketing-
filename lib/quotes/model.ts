@@ -44,6 +44,13 @@ export const DEFAULT_CONFIGURATOR_INTRO =
   "Your quote, your way.\n" +
   "We've built this quote with options so you can tailor your renovation to exactly what you want — and what suits your budget. Choose your construction level and your fixtures and tiles below, and watch your price update as you go. There's no one-size-fits-all here; this is your bathroom, designed around you.";
 
+// The gentle reassurance shown UNDER the client's combined total — gives them
+// permission to quietly adjust their selections to suit their budget, so a high
+// price feels adjustable rather than a reason to go quiet. Editable per quote;
+// the org saves its own default.
+export const DEFAULT_COMFORT_QUESTION =
+  "Does this suit your needs and budget? If not, you can adjust your selections above to find the right fit for you — there's no pressure, and no wrong choice.";
+
 // The visible journey/process roadmap shown on the client quote.
 export interface JourneyStage { label: string; note?: string }
 export const DEFAULT_JOURNEY: JourneyStage[] = [
@@ -141,6 +148,7 @@ export interface Quote {
   pcTierNames: Record<TierKey, string>; // editable PC-tier labels
   allowanceNote: string; // framing text atop the Tile & Fixture Allowance section
   configuratorIntro: string; // framing message atop the client configurator
+  comfortQuestion: string; // reassurance shown under the combined total
   journey: JourneyStage[]; // the process roadmap shown on the quote
   sections: QuoteSection[];
   items: QuoteItem[];
@@ -260,6 +268,7 @@ export function emptyQuote(id: string): Quote {
     pcTierNames: { ...DEFAULT_PC_TIER_NAMES },
     allowanceNote: "",
     configuratorIntro: "",
+    comfortQuestion: "",
     journey: [],
     sections: [],
     items: [],

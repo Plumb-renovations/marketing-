@@ -35,10 +35,10 @@ const SECTIONS = "quote_doc_sections(id, name, sort_order)";
 const STAGES = "quote_doc_stages(id, label, milestone_note, percent, fixed_amount, amount, status, sort_order)";
 const itemCols = (extra: boolean, allow: boolean, pc: boolean) =>
   `quote_doc_items(id, section_id, description, detail, qty, unit, unit_price, amount, sort_order${extra ? ", trade, tier" : ""}${allow ? ", allowance" : ""}${pc ? ", pc_tier" : ""})`;
-const docExtraCols = (extra: boolean, names: boolean, allow: boolean, pc: boolean, intro: boolean) =>
-  [extra ? "tiered, accepted_tier" : null, names ? "tier_names" : null, allow ? "allowance_note" : null, pc ? "pc_tiered, accepted_pc_tier, pc_tier_names, journey" : null, intro ? "configurator_intro" : null].filter(Boolean).join(", ");
-const buildSelect = (extra: boolean, names: boolean, allow: boolean, pc: boolean, intro: boolean) =>
-  [DOC_SCALARS, docExtraCols(extra, names, allow, pc, intro) || null, SECTIONS, itemCols(extra, allow, pc), STAGES].filter(Boolean).join(", ");
+const docExtraCols = (extra: boolean, names: boolean, allow: boolean, pc: boolean, intro: boolean, comfort: boolean) =>
+  [extra ? "tiered, accepted_tier" : null, names ? "tier_names" : null, allow ? "allowance_note" : null, pc ? "pc_tiered, accepted_pc_tier, pc_tier_names, journey" : null, intro ? "configurator_intro" : null, comfort ? "comfort_question" : null].filter(Boolean).join(", ");
+const buildSelect = (extra: boolean, names: boolean, allow: boolean, pc: boolean, intro: boolean, comfort: boolean) =>
+  [DOC_SCALARS, docExtraCols(extra, names, allow, pc, intro, comfort) || null, SECTIONS, itemCols(extra, allow, pc), STAGES].filter(Boolean).join(", ");
 
 export async function fetchPublicQuote(token: string): Promise<PublicQuoteBundle | null> {
   if (!token) return null;
@@ -46,14 +46,14 @@ export async function fetchPublicQuote(token: string): Promise<PublicQuoteBundle
   const undef = (e: any) => e && (e.code === "42703" || /column .* does not exist/i.test(e.message || ""));
 
   // Prefer the full select (trade + construction tiers + PC tiers + journey +
-  // configurator intro). Fall back step-by-step (newest migration first) if
-  // 0039 / 0037 / 0035 / 0034 / 0033 / 0032 aren't applied yet, rather than
-  // 500-ing the public page.
-  const attempts: [boolean, boolean, boolean, boolean, boolean][] = [[true, true, true, true, true], [true, true, true, true, false], [true, true, true, false, false], [true, true, false, false, false], [true, false, false, false, false], [false, false, false, false, false]];
+  // configurator intro + comfort question). Fall back step-by-step (newest
+  // migration first) if 0040 / 0039 / 0037 / 0035 / 0034 / 0033 / 0032 aren't
+  // applied yet, rather than 500-ing the public page.
+  const attempts: [boolean, boolean, boolean, boolean, boolean, boolean][] = [[true, true, true, true, true, true], [true, true, true, true, true, false], [true, true, true, true, false, false], [true, true, true, false, false, false], [true, true, false, false, false, false], [true, false, false, false, false, false], [false, false, false, false, false, false]];
   let row: any = null;
   let error: any = null;
-  for (const [extra, names, allow, pc, intro] of attempts) {
-    ({ data: row, error } = await admin.from("quote_docs").select(buildSelect(extra, names, allow, pc, intro)).eq("public_token", token).maybeSingle());
+  for (const [extra, names, allow, pc, intro, comfort] of attempts) {
+    ({ data: row, error } = await admin.from("quote_docs").select(buildSelect(extra, names, allow, pc, intro, comfort)).eq("public_token", token).maybeSingle());
     if (!undef(error)) break;
   }
   if (error || !row) return null;
@@ -169,6 +169,7 @@ function mapPublicQuote(row: any): Quote {
     pcTierNames: mapNames(row.pc_tier_names, DEFAULT_PC_TIER_NAMES),
     allowanceNote: row.allowance_note ?? "",
     configuratorIntro: row.configurator_intro ?? "",
+    comfortQuestion: row.comfort_question ?? "",
     journey: mapJourney(row.journey),
     sections,
     items,

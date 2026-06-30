@@ -118,6 +118,11 @@ input[type="number"]::-webkit-inner-spin-button {
   .quote-accept-print-only {
     display: block !important;
   }
+  /* Live, interactive-only controls inside the document (Accept button, name
+     field) are hidden on the PDF — the decorative accept/sign block prints. */
+  .no-print {
+    display: none !important;
+  }
   body {
     background: #fff !important;
   }

@@ -33,6 +33,7 @@ export interface BrandSettings {
   defaultPaymentSchedule: PaymentStagePreset[];
   defaultAllowanceNote: string; // saved framing text for the Tile & Fixture Allowance section
   defaultConfiguratorIntro: string; // saved intro framing for the client configurator
+  defaultComfortQuestion: string; // saved reassurance shown under the combined total
 }
 
 export const DEFAULT_BRAND: BrandSettings = {
@@ -61,6 +62,7 @@ export const DEFAULT_BRAND: BrandSettings = {
   defaultPaymentSchedule: [],
   defaultAllowanceNote: "",
   defaultConfiguratorIntro: "",
+  defaultComfortQuestion: "",
 };
 
 export function rowToBrand(row: any): BrandSettings {
@@ -91,6 +93,7 @@ export function rowToBrand(row: any): BrandSettings {
     defaultPaymentSchedule: Array.isArray(row.default_payment_schedule) ? row.default_payment_schedule : [],
     defaultAllowanceNote: row.default_allowance_note ?? "",
     defaultConfiguratorIntro: row.default_configurator_intro ?? "",
+    defaultComfortQuestion: row.default_comfort_question ?? "",
   };
 }
 
@@ -123,6 +126,7 @@ export function brandToRow(orgId: string, b: BrandSettings): Record<string, any>
     default_payment_schedule: (b.defaultPaymentSchedule || []).map((s) => ({ label: s.label, percent: Number(s.percent) || 0 })),
     default_allowance_note: b.defaultAllowanceNote?.trim() || null,
     default_configurator_intro: b.defaultConfiguratorIntro?.trim() || null,
+    default_comfort_question: b.defaultComfortQuestion?.trim() || null,
   };
 }
 

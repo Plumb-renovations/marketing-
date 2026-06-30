@@ -96,6 +96,7 @@ function mapQuote(row: any): Quote {
     pcTierNames: mapNames(row.pc_tier_names, DEFAULT_PC_TIER_NAMES),
     allowanceNote: row.allowance_note ?? "",
     configuratorIntro: row.configurator_intro ?? "",
+    comfortQuestion: row.comfort_question ?? "",
     journey: mapJourney(row.journey),
     sections,
     items,
@@ -161,18 +162,22 @@ export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegis
     tier_names: quote.tierNames ?? null,
     allowance_note: quote.allowanceNote || null,
     configurator_intro: quote.configuratorIntro || null,
+    comfort_question: quote.comfortQuestion || null,
     pc_tiered: quote.pcTiered,
     accepted_pc_tier: quote.acceptedPcTier ?? null,
     pc_tier_names: quote.pcTierNames ?? null,
     journey: quote.journey?.length ? quote.journey : null,
   };
   let { error: qErr } = await supabase.from("quote_docs").upsert(docRow);
-  // Granular fallback (newest migration first): drop configurator_intro (0039),
-  // then the PC/journey columns (0037), then allowance_note (0035), then
-  // tier_names (0034), then tiered (0033) — so a quote still saves when a later
-  // migration isn't applied.
+  // Granular fallback (newest migration first): drop comfort_question (0040),
+  // then configurator_intro (0039), then the PC/journey columns (0037), then
+  // allowance_note (0035), then tier_names (0034), then tiered (0033) — so a
+  // quote still saves when a later migration isn't applied.
   if (qErr && isUndefinedColumn(qErr)) {
-    const { configurator_intro, ...noIntro } = docRow;
+    const { comfort_question, ...noComfort } = docRow;
+    ({ error: qErr } = await supabase.from("quote_docs").upsert(noComfort));
+    if (qErr && isUndefinedColumn(qErr)) {
+    const { configurator_intro, ...noIntro } = noComfort;
     ({ error: qErr } = await supabase.from("quote_docs").upsert(noIntro));
     if (qErr && isUndefinedColumn(qErr)) {
     const { pc_tiered, accepted_pc_tier, pc_tier_names, journey, ...noPc } = noIntro;
@@ -188,6 +193,7 @@ export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegis
           ({ error: qErr } = await supabase.from("quote_docs").upsert(legacy));
         }
       }
+    }
     }
     }
   }
