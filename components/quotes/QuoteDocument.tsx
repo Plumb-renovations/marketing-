@@ -2,7 +2,7 @@
 
 import type { Quote } from "@/lib/quotes/model";
 import type { BrandSettings } from "@/lib/business/brand";
-import PremiumQuoteTemplate from "@/components/quotes/templates/PremiumQuoteTemplate";
+import PremiumQuoteTemplate, { type QuoteConfiguratorConfig } from "@/components/quotes/templates/PremiumQuoteTemplate";
 
 // The client-facing quote document. Picks the org's chosen template (premium is
 // the flagship/default) and themes it from the Branding & Quotes settings. LIGHT
@@ -12,6 +12,7 @@ export default function QuoteDocument({
   brand,
   businessName,
   acceptBlockPrintOnly = false,
+  config,
 }: {
   quote: Quote;
   brand: BrandSettings;
@@ -20,10 +21,12 @@ export default function QuoteDocument({
   // accept/sign block becomes print-only (the wired Accept action lives outside
   // the document), so there's no dead duplicate on screen.
   acceptBlockPrintOnly?: boolean;
+  // Inline-selection configurator wiring (public client view only).
+  config?: QuoteConfiguratorConfig;
 }) {
   switch (brand.quoteTemplate) {
     case "premium":
     default:
-      return <PremiumQuoteTemplate quote={quote} brand={brand} businessName={businessName} acceptBlockPrintOnly={acceptBlockPrintOnly} />;
+      return <PremiumQuoteTemplate quote={quote} brand={brand} businessName={businessName} acceptBlockPrintOnly={acceptBlockPrintOnly} config={config} />;
   }
 }

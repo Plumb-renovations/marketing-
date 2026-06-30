@@ -1,7 +1,22 @@
 "use client";
 
-import { money, consolidateByTrade, computeTotals, buildItemsForTier, pcAllowanceItems, TIERS, tierName, pcTierName, type Quote } from "@/lib/quotes/model";
+import type { ReactNode } from "react";
+import { money, consolidateByTrade, computeTotals, buildItemsForTier, pcAllowanceItems, TIERS, tierName, pcTierName, type Quote, type TierKey } from "@/lib/quotes/model";
 import type { BrandSettings } from "@/lib/business/brand";
+
+// Optional interactive configurator wiring. When provided (the public client
+// view), the construction + PC tier cards become INLINE-SELECTABLE in place, an
+// intro slot renders above the scope, and a summary slot (the calm total reveal
+// + comfort question + accept) replaces the static price summary. When absent
+// (PDF / builder preview) the document renders fully static, unchanged.
+export interface QuoteConfiguratorConfig {
+  cTier: TierKey | null;
+  pcTier: TierKey | null;
+  onSelectTier?: (k: TierKey) => void;
+  onSelectPcTier?: (k: TierKey) => void;
+  intro?: ReactNode;
+  summary?: ReactNode;
+}
 
 // The PREMIUM client-facing quote — a faithful reproduction of the "Cream &
 // Copper" design: warm cream paper, soft charcoal ink, script wordmark + ribbon
@@ -37,6 +52,7 @@ export default function PremiumQuoteTemplate({
   brand,
   businessName,
   acceptBlockPrintOnly = false,
+  config,
 }: {
   quote: Quote;
   brand: BrandSettings;
@@ -45,6 +61,8 @@ export default function PremiumQuoteTemplate({
   // hidden on screen and kept only for the printed PDF — the real, wired Accept
   // action is rendered separately, so the client never sees a dead duplicate.
   acceptBlockPrintOnly?: boolean;
+  // Inline-selection wiring for the public configurator (see type above).
+  config?: QuoteConfiguratorConfig;
 }) {
   // Brand-driven palette
   const copper = brand.brandColor || "#A86A45";
@@ -121,6 +139,14 @@ export default function PremiumQuoteTemplate({
     total: computeTotals(buildItemsForTier(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).total,
     accepted: quote.acceptedTier === t.key,
   }));
+
+  // Inline-selection wiring (public configurator). A card is "selected" when it
+  // matches the live config selection (else falls back to the stored accepted
+  // tier for a read-only/accepted view); clickable only when a handler is given.
+  const tierClickable = !!(config && config.onSelectTier);
+  const pcClickable = !!(config && config.onSelectPcTier);
+  const tierSelected = (k: TierKey) => (config ? config.cTier === k : tierBlocks.find((t) => t.key === k)?.accepted ?? false);
+  const pcSelected = (k: TierKey) => (config ? config.pcTier === k : pcTierBlocks.find((t) => t.key === k)?.accepted ?? false);
 
   // Wordmark fallback (no uploaded logo): business name → first word in script,
   // the remaining words as a spaced sub-label (matches the reference lockup).
@@ -240,6 +266,9 @@ export default function PremiumQuoteTemplate({
           <p style={{ margin: "30px 0 4px", fontSize: 14, color: muted, maxWidth: "62ch" }}>{quote.introNote}</p>
         )}
 
+        {/* Configurator intro — "Your quote, your way." (interactive view only) */}
+        {config?.intro}
+
         {/* ===================== SCOPE ===================== */}
         {tiered ? (
           <>
@@ -268,14 +297,25 @@ export default function PremiumQuoteTemplate({
             <div style={{ marginTop: 34 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
                 <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Choose your construction option</span>
-                <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>{sharedLines.length > 0 ? "each adds to the base build above" : "three options — pick one"}</span>
+                <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>{tierClickable ? "tap the one you'd like" : sharedLines.length > 0 ? "each adds to the base build above" : "three options — pick one"}</span>
               </div>
               <div className="quote-tier-grid" style={{ marginTop: 16 }}>
-                {tierBlocks.map((t) => (
-                  <div key={t.key} style={{ border: `1px solid ${t.accepted ? copper : hairStrong}`, borderRadius: 6, padding: "16px 16px 18px", background: t.accepted ? bandBg : "transparent", display: "flex", flexDirection: "column" }}>
-                    <div style={{ fontFamily: DISP, fontWeight: 700, fontSize: 18, color: ink }}>{t.label}</div>
+                {tierBlocks.map((t) => {
+                  const sel = tierSelected(t.key);
+                  return (
+                  <div key={t.key}
+                    onClick={tierClickable ? () => config!.onSelectTier!(t.key) : undefined}
+                    role={tierClickable ? "button" : undefined}
+                    tabIndex={tierClickable ? 0 : undefined}
+                    aria-pressed={tierClickable ? sel : undefined}
+                    onKeyDown={tierClickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); config!.onSelectTier!(t.key); } } : undefined}
+                    style={{ border: `${sel ? 2 : 1}px solid ${sel ? copper : hairStrong}`, borderRadius: 6, padding: sel ? "15px 15px 17px" : "16px 16px 18px", background: sel ? bandBg : "transparent", display: "flex", flexDirection: "column", cursor: tierClickable ? "pointer" : "default", transition: "border-color .12s, background .12s" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ fontFamily: DISP, fontWeight: 700, fontSize: 18, color: ink }}>{t.label}</div>
+                      {tierClickable && <span style={{ fontSize: 11, fontWeight: 700, color: sel ? copper : faint, whiteSpace: "nowrap" }}>{sel ? "✓ Selected" : "Select"}</span>}
+                    </div>
                     <div style={{ fontFamily: DISP, fontWeight: 600, fontSize: 24, color: copper, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>{money(t.total, ccy)}</div>
-                    <div style={{ fontSize: 10.5, color: faint, marginBottom: 10 }}>{brand.gstRegistered ? "inc GST" : ccy}{t.accepted ? " · accepted" : ""}</div>
+                    <div style={{ fontSize: 10.5, color: faint, marginBottom: 10 }}>{brand.gstRegistered ? "inc GST" : ccy}{!config && t.accepted ? " · accepted" : ""}</div>
                     {t.lines.length > 0 ? (
                       t.lines.map((g) => (
                         <div key={g.key} style={{ marginBottom: 8 }}>
@@ -291,7 +331,8 @@ export default function PremiumQuoteTemplate({
                       <div style={{ fontSize: 12, color: faint }}>{sharedLines.length > 0 ? "The base build, as above." : "Full build scope included."}</div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </>
@@ -384,17 +425,28 @@ export default function PremiumQuoteTemplate({
             <div style={{ marginTop: 34 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
                 <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Choose your PC items &amp; tiles</span>
-                <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>{pcSharedLines.length > 0 ? "each adds to the base above" : "fixtures & tiles — pick a level"}</span>
+                <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>{pcClickable ? "tap the level you'd like" : pcSharedLines.length > 0 ? "each adds to the base above" : "fixtures & tiles — pick a level"}</span>
               </div>
               {quote.allowanceNote && (
                 <p style={{ margin: "12px 0 4px", fontSize: 13, color: muted, lineHeight: 1.6, maxWidth: "64ch" }}>{quote.allowanceNote}</p>
               )}
               <div className="quote-tier-grid" style={{ marginTop: 16 }}>
-                {pcTierBlocks.map((t) => (
-                  <div key={t.key} style={{ border: `1px solid ${t.accepted ? copper : hairStrong}`, borderRadius: 6, padding: "16px 16px 18px", background: t.accepted ? bandBg : "transparent", display: "flex", flexDirection: "column" }}>
-                    <div style={{ fontFamily: DISP, fontWeight: 700, fontSize: 18, color: ink }}>{t.label}</div>
+                {pcTierBlocks.map((t) => {
+                  const sel = pcSelected(t.key);
+                  return (
+                  <div key={t.key}
+                    onClick={pcClickable ? () => config!.onSelectPcTier!(t.key) : undefined}
+                    role={pcClickable ? "button" : undefined}
+                    tabIndex={pcClickable ? 0 : undefined}
+                    aria-pressed={pcClickable ? sel : undefined}
+                    onKeyDown={pcClickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); config!.onSelectPcTier!(t.key); } } : undefined}
+                    style={{ border: `${sel ? 2 : 1}px solid ${sel ? copper : hairStrong}`, borderRadius: 6, padding: sel ? "15px 15px 17px" : "16px 16px 18px", background: sel ? bandBg : "transparent", display: "flex", flexDirection: "column", cursor: pcClickable ? "pointer" : "default", transition: "border-color .12s, background .12s" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ fontFamily: DISP, fontWeight: 700, fontSize: 18, color: ink }}>{t.label}</div>
+                      {pcClickable && <span style={{ fontSize: 11, fontWeight: 700, color: sel ? copper : faint, whiteSpace: "nowrap" }}>{sel ? "✓ Selected" : "Select"}</span>}
+                    </div>
                     <div style={{ fontFamily: DISP, fontWeight: 600, fontSize: 24, color: copper, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>{money(t.total, ccy)}</div>
-                    <div style={{ fontSize: 10.5, color: faint, marginBottom: 10 }}>{brand.gstRegistered ? "inc GST" : ccy} allowance{t.accepted ? " · accepted" : ""}</div>
+                    <div style={{ fontSize: 10.5, color: faint, marginBottom: 10 }}>{brand.gstRegistered ? "inc GST" : ccy} allowance{!config && t.accepted ? " · accepted" : ""}</div>
                     {t.lines.length > 0 ? (
                       t.lines.map((g) => (
                         <div key={g.key} style={{ marginBottom: 8 }}>
@@ -410,7 +462,8 @@ export default function PremiumQuoteTemplate({
                       <div style={{ fontSize: 12, color: faint }}>{pcSharedLines.length > 0 ? "The base fixtures, as above." : "Fixtures &amp; tiles as listed."}</div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </>
@@ -433,31 +486,38 @@ export default function PremiumQuoteTemplate({
           </div>
         ) : null}
 
-        {/* ===================== PRICE SUMMARY ===================== */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 28 }}>
-          <div style={{ width: 360 }}>
-            <div style={totalRow(muted)}>
-              <span>Construction{brand.gstRegistered ? " (inc GST)" : ""}</span>
-              <b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{tiered ? "choose an option" : money(constructionSingleTotal, ccy)}</b>
-            </div>
-            {(pcTiered || hasAllowance) && (
+        {/* ===================== PRICE SUMMARY / CALM REVEAL ===================== */}
+        {config ? (
+          // Interactive view: the calm total reveal + comfort question + accept,
+          // appearing only once both selections are made (built by the public
+          // view and injected here, right where the client finishes choosing).
+          config.summary
+        ) : (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 28 }}>
+            <div style={{ width: 360 }}>
               <div style={totalRow(muted)}>
-                <span>PC items &amp; tiles{brand.gstRegistered ? " (inc GST)" : ""}</span>
-                <b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{pcTiered ? "choose a level" : money(allowanceFlatTotal, ccy)}</b>
+                <span>Construction{brand.gstRegistered ? " (inc GST)" : ""}</span>
+                <b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{tiered ? "choose an option" : money(constructionSingleTotal, ccy)}</b>
               </div>
-            )}
-            <div style={{ borderTop: `2px solid ${ink}`, marginTop: 6, paddingTop: 14, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 19 }}>Total{brand.gstRegistered ? " (inc GST)" : ""}</span>
-              {tiered || pcTiered ? (
-                <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 15, color: muted, textAlign: "right", maxWidth: 220 }}>your chosen construction + fixtures</span>
-              ) : (
-                <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 30, fontVariantNumeric: "tabular-nums", color: ink }}>{money(quote.total, ccy)}</span>
+              {(pcTiered || hasAllowance) && (
+                <div style={totalRow(muted)}>
+                  <span>PC items &amp; tiles{brand.gstRegistered ? " (inc GST)" : ""}</span>
+                  <b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{pcTiered ? "choose a level" : money(allowanceFlatTotal, ccy)}</b>
+                </div>
               )}
+              <div style={{ borderTop: `2px solid ${ink}`, marginTop: 6, paddingTop: 14, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 19 }}>Total{brand.gstRegistered ? " (inc GST)" : ""}</span>
+                {tiered || pcTiered ? (
+                  <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 15, color: muted, textAlign: "right", maxWidth: 220 }}>your chosen construction + fixtures</span>
+                ) : (
+                  <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 30, fontVariantNumeric: "tabular-nums", color: ink }}>{money(quote.total, ccy)}</span>
+                )}
+              </div>
+              <div style={{ textAlign: "right", fontSize: 11.5, color: faint, marginTop: 6 }}>{gstNote}</div>
+              <div style={{ textAlign: "right", fontSize: 11.5, color: muted, marginTop: 4 }}>A {brand.depositPercent || 5}% deposit (on the construction total) secures your booking.</div>
             </div>
-            <div style={{ textAlign: "right", fontSize: 11.5, color: faint, marginTop: 6 }}>{gstNote}</div>
-            <div style={{ textAlign: "right", fontSize: 11.5, color: muted, marginTop: 4 }}>A {brand.depositPercent || 5}% deposit (on the construction total) secures your booking.</div>
           </div>
-        </div>
+        )}
 
         {/* ===================== YOUR JOURNEY ===================== */}
         {quote.journey && quote.journey.length > 0 && (
