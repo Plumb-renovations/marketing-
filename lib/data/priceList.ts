@@ -10,6 +10,10 @@ import { getOrgId } from "@/lib/data/org";
 // resilient: if 0031 hasn't been applied yet the table is missing, so we log
 // and return an empty list rather than failing the page.
 
+// A price-list item is either a CONSTRUCTION rate (trades/labour) or a PC ITEM
+// (fixture/tile). The quote builder keeps the two palettes separate.
+export type PriceKind = "construction" | "pc";
+
 export interface PriceItem {
   id: string;
   category: string;
@@ -19,6 +23,7 @@ export interface PriceItem {
   notes: string;
   sortOrder: number;
   trade?: string | null; // suggested trade when this rate is added to a quote
+  kind: PriceKind; // 'construction' (default) or 'pc' (fixtures & tiles)
 }
 
 function mapItem(row: any): PriceItem {
@@ -31,6 +36,8 @@ function mapItem(row: any): PriceItem {
     notes: row.notes ?? "",
     sortOrder: row.sort_order ?? 0,
     trade: row.trade ?? null,
+    // Tolerate 0038 not being applied yet — rows without `kind` are construction.
+    kind: row.kind === "pc" ? "pc" : "construction",
   };
 }
 
@@ -58,12 +65,18 @@ export async function upsertPriceItem(supabase: SupabaseClient, item: PriceItem)
     notes: item.notes.trim() || null,
     sort_order: item.sortOrder,
     trade: item.trade?.trim() || null,
+    kind: item.kind === "pc" ? "pc" : "construction",
   };
   let { error } = await supabase.from("price_list_items").upsert(row);
-  // Retry without `trade` if 0032 hasn't been applied yet.
+  // Granular fallback (newest migration first): drop `kind` (0038), then `trade`
+  // (0032), so a save still works before those migrations are applied.
   if (error && isUndefinedColumn(error)) {
-    const { trade, ...legacy } = row;
-    ({ error } = await supabase.from("price_list_items").upsert(legacy));
+    const { kind, ...noKind } = row;
+    ({ error } = await supabase.from("price_list_items").upsert(noKind));
+    if (error && isUndefinedColumn(error)) {
+      const { trade, ...legacy } = noKind;
+      ({ error } = await supabase.from("price_list_items").upsert(legacy));
+    }
   }
   if (error) throw error;
 }
