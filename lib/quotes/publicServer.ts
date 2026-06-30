@@ -2,16 +2,19 @@
 // client component.
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rowToBrand, type BrandSettings } from "@/lib/business/brand";
-import { computeStageAmounts, DEFAULT_TIER_NAMES, type Quote, type QuoteStatus, type TierKey } from "@/lib/quotes/model";
+import { computeStageAmounts, DEFAULT_TIER_NAMES, DEFAULT_PC_TIER_NAMES, type Quote, type QuoteStatus, type TierKey, type JourneyStage } from "@/lib/quotes/model";
 
-function mapTierNames(raw: any): Record<TierKey, string> {
+function mapNames(raw: any, defaults: Record<TierKey, string>): Record<TierKey, string> {
   const r = raw && typeof raw === "object" ? raw : {};
   return {
-    good: typeof r.good === "string" && r.good.trim() ? r.good : DEFAULT_TIER_NAMES.good,
-    better: typeof r.better === "string" && r.better.trim() ? r.better : DEFAULT_TIER_NAMES.better,
-    best: typeof r.best === "string" && r.best.trim() ? r.best : DEFAULT_TIER_NAMES.best,
+    good: typeof r.good === "string" && r.good.trim() ? r.good : defaults.good,
+    better: typeof r.better === "string" && r.better.trim() ? r.better : defaults.better,
+    best: typeof r.best === "string" && r.best.trim() ? r.best : defaults.best,
   };
 }
+const mapTierNames = (raw: any) => mapNames(raw, DEFAULT_TIER_NAMES);
+const mapJourney = (raw: any): JourneyStage[] =>
+  Array.isArray(raw) ? raw.filter((s: any) => s && typeof s.label === "string").map((s: any) => ({ label: s.label, note: typeof s.note === "string" ? s.note : "" })) : [];
 
 // Loads a quote for the PUBLIC tracked page by its token. Uses the service-role
 // client because the visitor is anonymous (no org membership), so this is the
@@ -30,26 +33,26 @@ const DOC_SCALARS =
   "id, org_id, quote_number, reference, status, client_name, client_email, client_phone, client_address, project_name, site_address, quote_date, valid_until, scope_description, intro_note, terms, inclusions, exclusions, gst_inclusive, subtotal, gst_amount, total, public_token, sent_at, viewed_at, view_count, accepted_at";
 const SECTIONS = "quote_doc_sections(id, name, sort_order)";
 const STAGES = "quote_doc_stages(id, label, milestone_note, percent, fixed_amount, amount, status, sort_order)";
-const itemCols = (extra: boolean, allow: boolean) =>
-  `quote_doc_items(id, section_id, description, detail, qty, unit, unit_price, amount, sort_order${extra ? ", trade, tier" : ""}${allow ? ", allowance" : ""})`;
-const docExtraCols = (extra: boolean, names: boolean, allow: boolean) =>
-  [extra ? "tiered, accepted_tier" : null, names ? "tier_names" : null, allow ? "allowance_note" : null].filter(Boolean).join(", ");
-const buildSelect = (extra: boolean, names: boolean, allow: boolean) =>
-  [DOC_SCALARS, docExtraCols(extra, names, allow) || null, SECTIONS, itemCols(extra, allow), STAGES].filter(Boolean).join(", ");
+const itemCols = (extra: boolean, allow: boolean, pc: boolean) =>
+  `quote_doc_items(id, section_id, description, detail, qty, unit, unit_price, amount, sort_order${extra ? ", trade, tier" : ""}${allow ? ", allowance" : ""}${pc ? ", pc_tier" : ""})`;
+const docExtraCols = (extra: boolean, names: boolean, allow: boolean, pc: boolean) =>
+  [extra ? "tiered, accepted_tier" : null, names ? "tier_names" : null, allow ? "allowance_note" : null, pc ? "pc_tiered, accepted_pc_tier, pc_tier_names, journey" : null].filter(Boolean).join(", ");
+const buildSelect = (extra: boolean, names: boolean, allow: boolean, pc: boolean) =>
+  [DOC_SCALARS, docExtraCols(extra, names, allow, pc) || null, SECTIONS, itemCols(extra, allow, pc), STAGES].filter(Boolean).join(", ");
 
 export async function fetchPublicQuote(token: string): Promise<PublicQuoteBundle | null> {
   if (!token) return null;
   const admin = createAdminClient();
   const undef = (e: any) => e && (e.code === "42703" || /column .* does not exist/i.test(e.message || ""));
 
-  // Prefer the full select (trade + tiers + tier names + allowance). Fall back
-  // step-by-step (newest migration first) if 0035 / 0034 / 0033 / 0032 aren't
-  // applied yet, rather than 500-ing the public page.
-  const attempts: [boolean, boolean, boolean][] = [[true, true, true], [true, true, false], [true, false, false], [false, false, false]];
+  // Prefer the full select (trade + construction tiers + PC tiers + journey).
+  // Fall back step-by-step (newest migration first) if 0037 / 0035 / 0034 /
+  // 0033 / 0032 aren't applied yet, rather than 500-ing the public page.
+  const attempts: [boolean, boolean, boolean, boolean][] = [[true, true, true, true], [true, true, true, false], [true, true, false, false], [true, false, false, false], [false, false, false, false]];
   let row: any = null;
   let error: any = null;
-  for (const [extra, names, allow] of attempts) {
-    ({ data: row, error } = await admin.from("quote_docs").select(buildSelect(extra, names, allow)).eq("public_token", token).maybeSingle());
+  for (const [extra, names, allow, pc] of attempts) {
+    ({ data: row, error } = await admin.from("quote_docs").select(buildSelect(extra, names, allow, pc)).eq("public_token", token).maybeSingle());
     if (!undef(error)) break;
   }
   if (error || !row) return null;
@@ -111,6 +114,7 @@ function mapPublicQuote(row: any): Quote {
       tier: it.tier ?? null,
       allowance: it.allowance ?? false,
       sourcePriceItemId: null, // internal — not needed/exposed publicly
+      pcTier: it.pc_tier ?? null,
     }));
   const stages = computeStageAmounts(
     (row.quote_doc_stages || [])
@@ -159,7 +163,11 @@ function mapPublicQuote(row: any): Quote {
     tiered: row.tiered ?? false,
     acceptedTier: row.accepted_tier ?? null,
     tierNames: mapTierNames(row.tier_names),
+    pcTiered: row.pc_tiered ?? false,
+    acceptedPcTier: row.accepted_pc_tier ?? null,
+    pcTierNames: mapNames(row.pc_tier_names, DEFAULT_PC_TIER_NAMES),
     allowanceNote: row.allowance_note ?? "",
+    journey: mapJourney(row.journey),
     sections,
     items,
     stages,
