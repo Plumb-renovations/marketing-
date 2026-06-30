@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FileText, Plus, Loader2, Eye } from "lucide-react";
+import { FileText, Plus, Loader2, Eye, Pencil, ExternalLink, Trash2 } from "lucide-react";
 import { Panel, SectionHeader } from "@/components/ui/primitives";
 import { createClient } from "@/lib/supabase/client";
-import { listQuotes } from "@/lib/data/quotes";
+import { listQuotes, deleteQuote } from "@/lib/data/quotes";
 import { fetchBrandSettings } from "@/lib/data/brand";
 import { money, type Quote } from "@/lib/quotes/model";
 import { DEFAULT_BRAND } from "@/lib/business/brand";
@@ -34,6 +34,24 @@ export default function QuotesScreen() {
   const [currency, setCurrency] = useState("AUD");
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("all");
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  // Permanently remove a quote (and its line items, via on-delete cascade) — for
+  // clearing out test/junk quotes. Confirmed first; real sent quotes keep their
+  // public client link unless deleted here.
+  const onDelete = async (q: Quote) => {
+    const label = q.quoteNumber || q.clientName || "this quote";
+    if (!window.confirm(`Delete ${label}? This permanently removes the quote and its line items, and can't be undone.`)) return;
+    setDeleting(q.id);
+    try {
+      await deleteQuote(supabase, q.id);
+      setQuotes((p) => p.filter((x) => x.id !== q.id));
+    } catch (e: any) {
+      window.alert(e?.message || "Couldn't delete the quote. Please try again.");
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -97,16 +115,19 @@ export default function QuotesScreen() {
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 text-right font-medium">Total</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">
               {visible.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">No {active.label.toLowerCase()} quotes.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">No {active.label.toLowerCase()} quotes.</td></tr>
               )}
-              {visible.map((q) => (
+              {visible.map((q) => {
+                const iconBtn = "inline-flex items-center justify-center rounded-md border border-slate-700 p-2 text-slate-400 transition hover:bg-slate-800 hover:text-slate-200";
+                return (
                 <tr key={q.id} className="transition hover:bg-slate-800/30">
                   <td className="px-4 py-3"><Link href={`/quotes/${q.id}`} className="font-data text-cyan-300 hover:text-cyan-200">{q.quoteNumber || "Draft"}</Link></td>
-                  <td className="px-4 py-3 text-slate-200">{q.clientName || "—"}</td>
+                  <td className="px-4 py-3 text-slate-200"><Link href={`/quotes/${q.id}`} className="hover:text-cyan-200">{q.clientName || "—"}</Link></td>
                   <td className="px-4 py-3 text-slate-400">{q.quoteDate ? new Date(q.quoteDate).toLocaleDateString() : "—"}</td>
                   <td className="px-4 py-3 text-right font-data text-slate-200">{money(q.total, currency)}</td>
                   <td className="px-4 py-3">
@@ -115,8 +136,20 @@ export default function QuotesScreen() {
                       <span className="ml-2 inline-flex items-center gap-1 text-[11px] text-slate-500"><Eye className="h-3 w-3" /> {q.viewCount}</span>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <Link href={`/quotes/${q.id}`} title="Open and review (edit / preview)" aria-label="Open quote" className={iconBtn}><Pencil className="h-4 w-4" /></Link>
+                      {q.publicToken && q.status !== "draft" && (
+                        <a href={`/q/${q.publicToken}`} target="_blank" rel="noopener noreferrer" title="Open the client view — your internal open isn't counted as a client open" aria-label="Open client view" className={iconBtn}><ExternalLink className="h-4 w-4" /></a>
+                      )}
+                      <button onClick={() => onDelete(q)} disabled={deleting === q.id} title="Delete quote" aria-label="Delete quote" className={iconBtn + " hover:border-red-500/40 hover:text-red-300 disabled:opacity-50"}>
+                        {deleting === q.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
