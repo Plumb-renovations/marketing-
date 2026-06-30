@@ -77,14 +77,15 @@ export default function PremiumQuoteTemplate({
   const constructionSingleTotal = computeTotals(buildItems, brand.gstRegistered, quote.gstInclusive).total;
   const allowanceFlatTotal = computeTotals(allowanceItems, brand.gstRegistered, quote.gstInclusive).total;
 
-  // PC-items tiers — an EXACT replica of the construction tier mechanism: one
-  // SELF-CONTAINED option card per PC level, each showing that level's complete
-  // covered fixtures/tiles (shared PC base + that level's items) trade-grouped,
-  // per-item prices hidden, and ONE combined allowance total. Pick one.
+  // PC-items tiers — an EXACT replica of the construction tier mechanism: the
+  // SHARED PC base (pcTier null) shown ONCE, then one card per PC level showing
+  // ONLY that level's EXTRAS (pcTier === key). Per-item prices hidden; the card
+  // total is the full level price (shared base + that level's extras).
+  const pcSharedLines = consolidateByTrade(allowanceItems.filter((i) => !i.pcTier));
   const pcTierBlocks = TIERS.map((t) => ({
     key: t.key,
     label: pcTierName(quote.pcTierNames, t.key),
-    lines: consolidateByTrade(pcAllowanceItems(quote.items, t.key)),
+    lines: consolidateByTrade(allowanceItems.filter((i) => i.pcTier === t.key)),
     total: computeTotals(pcAllowanceItems(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).total,
     accepted: quote.acceptedPcTier === t.key,
   }));
@@ -107,17 +108,16 @@ export default function PremiumQuoteTemplate({
   const tradeLines = consolidateByTrade(buildItems);
   const hasTrades = buildItems.some((i) => (i.trade || "").trim());
 
-  // Good/Better/Best: the shared base build (scope shown once) + a priced option
-  // per tier (each tier's finishes + its combined total = base + finishes).
-  // Tier totals include the (shared) allowance; the finish LINES are build-only.
-  // Construction option cards are SELF-CONTAINED: each shows that option's
-  // COMPLETE build scope (shared base + that tier's lines), trade-grouped, with
-  // ONE build-only total. Three clearly-separated options, pick one.
+  // Good/Better/Best: the SHARED base build (tier null) is shown ONCE at the top,
+  // then one card per tier shows ONLY that tier's EXTRAS (tier === key) — the
+  // differences, never the whole build repeated. Per-item prices hidden; the
+  // card total is the full option price (shared base + that tier's extras).
   const tiered = !!quote.tiered;
+  const sharedLines = consolidateByTrade(buildItems.filter((i) => !i.tier));
   const tierBlocks = TIERS.map((t) => ({
     key: t.key,
     label: tierName(quote.tierNames, t.key),
-    lines: consolidateByTrade(buildItemsForTier(quote.items, t.key)),
+    lines: consolidateByTrade(buildItems.filter((i) => i.tier === t.key)),
     total: computeTotals(buildItemsForTier(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).total,
     accepted: quote.acceptedTier === t.key,
   }));
@@ -243,13 +243,32 @@ export default function PremiumQuoteTemplate({
         {/* ===================== SCOPE ===================== */}
         {tiered ? (
           <>
-            {/* Choose your construction option — three SELF-CONTAINED tiers, each
-                showing that option's complete build scope (trade-grouped) + ONE
-                build-only total. Pick one. */}
+            {/* Shared base build — listed ONCE, common to all three options. */}
+            {sharedLines.length > 0 && (
+              <div style={{ marginTop: 30 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
+                  <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Included in every option</span>
+                  <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>the base build</span>
+                </div>
+                {sharedLines.map((t) => (
+                  <div key={t.key} style={{ padding: "14px 0", borderBottom: `1px solid ${hair}` }}>
+                    <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 16, color: ink }}>{t.label}</span>
+                    {t.bullets.length > 0 && (
+                      <ul style={{ margin: "8px 0 0", paddingLeft: 18, listStyle: "disc", color: muted }}>
+                        {t.bullets.map((b, bi) => <li key={bi} style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 3, whiteSpace: "pre-wrap" }}>{b}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Choose your option — each card shows ONLY what that tier ADDS on
+                top of the base build above, plus its full option price. */}
             <div style={{ marginTop: 34 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
                 <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Choose your construction option</span>
-                <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>three options — pick one</span>
+                <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>{sharedLines.length > 0 ? "each adds to the base build above" : "three options — pick one"}</span>
               </div>
               <div className="quote-tier-grid" style={{ marginTop: 16 }}>
                 {tierBlocks.map((t) => (
@@ -269,7 +288,7 @@ export default function PremiumQuoteTemplate({
                         </div>
                       ))
                     ) : (
-                      <div style={{ fontSize: 12, color: faint }}>Full build scope included.</div>
+                      <div style={{ fontSize: 12, color: faint }}>{sharedLines.length > 0 ? "The base build, as above." : "Full build scope included."}</div>
                     )}
                   </div>
                 ))}
@@ -337,15 +356,35 @@ export default function PremiumQuoteTemplate({
         })}
 
         {/* ============== PC ITEMS & TILES — parallel tier choice ==============
-            Mirrors the construction tiers exactly: one SELF-CONTAINED option card
-            per PC level (that level's complete covered items trade-grouped + ONE
-            combined allowance total; per-item prices hidden). Pick one. */}
+            Mirrors the construction tiers exactly: the SHARED PC base listed ONCE,
+            then one card per PC level showing ONLY that level's EXTRAS + its full
+            combined allowance total (per-item prices hidden). Pick one. */}
         {pcTiered ? (
           <>
+            {/* Shared PC base — listed ONCE, common to all three levels. */}
+            {pcSharedLines.length > 0 && (
+              <div style={{ marginTop: 34 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
+                  <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Included in every level</span>
+                  <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>the base fixtures &amp; tiles</span>
+                </div>
+                {pcSharedLines.map((t) => (
+                  <div key={t.key} style={{ padding: "14px 0", borderBottom: `1px solid ${hair}` }}>
+                    <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 16, color: ink }}>{t.label}</span>
+                    {t.bullets.length > 0 && (
+                      <ul style={{ margin: "8px 0 0", paddingLeft: 18, listStyle: "disc", color: muted }}>
+                        {t.bullets.map((b, bi) => <li key={bi} style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 3, whiteSpace: "pre-wrap" }}>{b}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div style={{ marginTop: 34 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
                 <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Choose your PC items &amp; tiles</span>
-                <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>fixtures &amp; tiles — pick a level</span>
+                <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>{pcSharedLines.length > 0 ? "each adds to the base above" : "fixtures & tiles — pick a level"}</span>
               </div>
               {quote.allowanceNote && (
                 <p style={{ margin: "12px 0 4px", fontSize: 13, color: muted, lineHeight: 1.6, maxWidth: "64ch" }}>{quote.allowanceNote}</p>
@@ -368,7 +407,7 @@ export default function PremiumQuoteTemplate({
                         </div>
                       ))
                     ) : (
-                      <div style={{ fontSize: 12, color: faint }}>Fixtures &amp; tiles as listed.</div>
+                      <div style={{ fontSize: 12, color: faint }}>{pcSharedLines.length > 0 ? "The base fixtures, as above." : "Fixtures &amp; tiles as listed."}</div>
                     )}
                   </div>
                 ))}
