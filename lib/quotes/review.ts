@@ -15,6 +15,8 @@ export interface ReviewLine {
   unit: string;
   unitPrice: number;
   unitCost: number | null; // INTERNAL — never shown to the client
+  tier?: string | null; // good/better/best, or null (shared) — context for the AI
+  allowance?: boolean; // fixture/tile allowance line
 }
 
 export interface ReviewQuote {

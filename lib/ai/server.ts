@@ -45,25 +45,32 @@ const dataUrlParts = (u?: string | null) => {
 const parseJSON = (t: string) =>
   JSON.parse((t || "").replace(/```json/gi, "").replace(/```/g, "").trim());
 
-// One Anthropic call: persona system prompt + a single multimodal user turn.
-async function callClaude(content: any[], maxTokens: number, system: string) {
+// One Anthropic call: persona system prompt + a single multimodal user turn. An
+// optional AbortSignal lets a caller (e.g. a timed route) cancel a slow call so
+// it can return a partial result instead of running into the function timeout.
+async function callClaude(content: any[], maxTokens: number, system: string, signal?: AbortSignal) {
   const client = getClient();
-  const res = await client.messages.create({
-    model: model!,
-    max_tokens: maxTokens,
-    system,
-    messages: [{ role: "user", content }],
-  });
+  const res = await client.messages.create(
+    {
+      model: model!,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: "user", content }],
+    },
+    signal ? { signal } : undefined,
+  );
   return (res.content || [])
     .map((b: any) => (b.type === "text" ? b.text : ""))
     .join("");
 }
 
-// Call + parse with one retry (the model occasionally wraps JSON in prose).
-async function callJSON(content: any[], maxTokens: number, system: string) {
+// Call + parse with one retry (the model occasionally wraps JSON in prose). A
+// retry is skipped once the signal has aborted.
+async function callJSON(content: any[], maxTokens: number, system: string, signal?: AbortSignal) {
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const text = await callClaude(content, maxTokens, system);
+    if (signal?.aborted) throw new Error("aborted");
+    const text = await callClaude(content, maxTokens, system, signal);
     try {
       return parseJSON(text);
     } catch (e) {
@@ -128,13 +135,13 @@ interface Payload {
 // Dispatch a generator by kind. The org's Business Profile drives the system
 // prompt + business context so copy fits any service business. Returns the
 // parsed JSON the client expects.
-export async function runGenerator(kind: string, payload: Payload, profile: BusinessProfile) {
+export async function runGenerator(kind: string, payload: Payload, profile: BusinessProfile, signal?: AbortSignal) {
   const leads = payload.leads || [];
   const isCoach = kind === "coach" || kind === "coach-ask" || kind === "quote-review";
   const sys = isCoach ? coachSystemPrompt(profile) : adPersona(profile);
   switch (kind) {
     case "quote-review":
-      return callJSON(buildContent(quoteReviewPrompt(profile, (payload.quoteReview || {}) as any)), 1500, sys);
+      return callJSON(buildContent(quoteReviewPrompt(profile, (payload.quoteReview || {}) as any)), 1200, sys, signal);
     case "coach":
       return callJSON(buildContent(coachPrompt(profile, payload.dataBlock || "")), 1600, sys);
     case "coach-ask":

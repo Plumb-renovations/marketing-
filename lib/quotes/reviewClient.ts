@@ -20,6 +20,7 @@ export interface QuoteReviewResult {
   pricing: PricingFlag[];
   keywords: KeywordFlag[];
   aiAvailable: boolean;
+  note?: string; // set when the AI wording timed out (partial result returned)
 }
 
 export async function reviewQuote(quote: ReviewQuote, total: number): Promise<QuoteReviewResult> {
