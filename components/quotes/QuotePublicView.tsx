@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Printer, Loader2, CheckCircle2 } from "lucide-react";
 import QuoteDocument from "@/components/quotes/QuoteDocument";
-import { money, tierTotals, TIERS, type Quote, type TierKey } from "@/lib/quotes/model";
+import { money, tierTotals, TIERS, tierName, type Quote, type TierKey } from "@/lib/quotes/model";
 import type { BrandSettings } from "@/lib/business/brand";
 
 // The public, mobile-friendly view of a sent quote. Renders the branded
@@ -133,7 +133,7 @@ export default function QuotePublicView({
           <div style={{ borderRadius: 12, padding: "22px 24px", background: "#fff", border: `1px solid ${accent}55`, textAlign: "center" }}>
             <CheckCircle2 style={{ width: 30, height: 30, color: "#3aa757", margin: "0 auto 8px" }} />
             <div style={{ fontSize: 18, fontWeight: 700, color: "#242220" }}>
-              {chosenTier ? `${TIERS.find((t) => t.key === chosenTier)?.label} option accepted — thank you!` : "Quote accepted — thank you!"}
+              {chosenTier ? `${tierName(quote.tierNames, chosenTier)} option accepted — thank you!` : "Quote accepted — thank you!"}
             </div>
             <p style={{ fontSize: 14, color: "#6b6358", marginTop: 6, lineHeight: 1.6 }}>
               {businessName || "We"} will be in touch to confirm your start date. A deposit invoice
@@ -157,7 +157,7 @@ export default function QuotePublicView({
                 <div key={t.key} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, border: `1px solid ${t.key === "better" ? accent : "#DBD2C4"}`, borderRadius: 10, padding: "12px 14px" }}>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 700, color: "#242220" }}>
-                      {t.label}{t.key === "better" ? <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: accent }}>Most popular</span> : null}
+                      {tierName(quote.tierNames, t.key)}{t.key === "better" ? <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: accent }}>Most popular</span> : null}
                     </div>
                     <div style={{ fontSize: 18, fontWeight: 700, color: accent, marginTop: 2 }}>{money(tiers[t.key].total, ccy)} <span style={{ fontSize: 11, fontWeight: 500, color: "#9e978b" }}>{brand.gstRegistered ? "inc GST" : ""}</span></div>
                   </div>
@@ -166,7 +166,7 @@ export default function QuotePublicView({
                     disabled={busy !== null}
                     style={{ display: "inline-flex", alignItems: "center", gap: 8, background: accent, color: "#fff", border: 0, borderRadius: 8, padding: "11px 18px", fontSize: 14, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy && busy !== t.key ? 0.5 : 1 }}
                   >
-                    {busy === t.key ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : null} Accept {t.label}
+                    {busy === t.key ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : null} Accept {tierName(quote.tierNames, t.key)}
                   </button>
                 </div>
               ))}

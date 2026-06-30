@@ -2,7 +2,16 @@
 // client component.
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rowToBrand, type BrandSettings } from "@/lib/business/brand";
-import { computeStageAmounts, type Quote, type QuoteStatus } from "@/lib/quotes/model";
+import { computeStageAmounts, DEFAULT_TIER_NAMES, type Quote, type QuoteStatus, type TierKey } from "@/lib/quotes/model";
+
+function mapTierNames(raw: any): Record<TierKey, string> {
+  const r = raw && typeof raw === "object" ? raw : {};
+  return {
+    good: typeof r.good === "string" && r.good.trim() ? r.good : DEFAULT_TIER_NAMES.good,
+    better: typeof r.better === "string" && r.better.trim() ? r.better : DEFAULT_TIER_NAMES.better,
+    best: typeof r.best === "string" && r.best.trim() ? r.best : DEFAULT_TIER_NAMES.best,
+  };
+}
 
 // Loads a quote for the PUBLIC tracked page by its token. Uses the service-role
 // client because the visitor is anonymous (no org membership), so this is the
@@ -23,20 +32,21 @@ const SECTIONS = "quote_doc_sections(id, name, sort_order)";
 const STAGES = "quote_doc_stages(id, label, milestone_note, percent, fixed_amount, amount, status, sort_order)";
 const itemCols = (extra: boolean) =>
   `quote_doc_items(id, section_id, description, detail, qty, unit, unit_price, amount, sort_order${extra ? ", trade, tier" : ""})`;
-const buildSelect = (extra: boolean) =>
-  [DOC_SCALARS, extra ? "tiered, accepted_tier" : null, SECTIONS, itemCols(extra), STAGES].filter(Boolean).join(", ");
+const tierDocCols = (names: boolean) => (names ? "tiered, accepted_tier, tier_names" : "tiered, accepted_tier");
+const buildSelect = (extra: boolean, names: boolean) =>
+  [DOC_SCALARS, extra ? tierDocCols(names) : null, SECTIONS, itemCols(extra), STAGES].filter(Boolean).join(", ");
 
 export async function fetchPublicQuote(token: string): Promise<PublicQuoteBundle | null> {
   if (!token) return null;
   const admin = createAdminClient();
+  const undef = (e: any) => e && (e.code === "42703" || /column .* does not exist/i.test(e.message || ""));
 
-  // Prefer the full select (trade grouping + Good/Better/Best tiers); if 0032/
-  // 0033 aren't applied those columns are missing, so fall back to the legacy
-  // select rather than 500-ing the public page.
-  let { data: row, error } = await admin.from("quote_docs").select(buildSelect(true)).eq("public_token", token).maybeSingle();
-  if (error && (error.code === "42703" || /column .* does not exist/i.test(error.message || ""))) {
-    ({ data: row, error } = await admin.from("quote_docs").select(buildSelect(false)).eq("public_token", token).maybeSingle());
-  }
+  // Prefer the full select (trade grouping + tiers + tier names). Fall back
+  // step-by-step if 0034 / 0033 / 0032 aren't applied yet, rather than 500-ing
+  // the public page: drop tier_names first, then all the tier/trade columns.
+  let { data: row, error } = await admin.from("quote_docs").select(buildSelect(true, true)).eq("public_token", token).maybeSingle();
+  if (undef(error)) ({ data: row, error } = await admin.from("quote_docs").select(buildSelect(true, false)).eq("public_token", token).maybeSingle());
+  if (undef(error)) ({ data: row, error } = await admin.from("quote_docs").select(buildSelect(false, false)).eq("public_token", token).maybeSingle());
   if (error || !row) return null;
 
   const { data: prof } = await admin.from("business_profiles").select("*").eq("org_id", (row as any).org_id).maybeSingle();
@@ -141,6 +151,7 @@ function mapPublicQuote(row: any): Quote {
     publicToken: row.public_token ?? null,
     tiered: row.tiered ?? false,
     acceptedTier: row.accepted_tier ?? null,
+    tierNames: mapTierNames(row.tier_names),
     sections,
     items,
     stages,

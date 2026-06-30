@@ -11,6 +11,20 @@ export const TIERS: { key: TierKey; label: string }[] = [
   { key: "best", label: "Best" },
 ];
 
+// The three tiers keep their internal identity (good/better/best), but the
+// DISPLAY name is editable per quote. New tiered quotes start with these.
+export const DEFAULT_TIER_NAMES: Record<TierKey, string> = {
+  good: "Essential",
+  better: "Premium",
+  best: "Luxury",
+};
+
+// The label to SHOW for a tier — the quote's custom name, falling back to the
+// default. Use everywhere a tier is shown so the internal key never leaks.
+export function tierName(names: Partial<Record<TierKey, string>> | null | undefined, key: TierKey): string {
+  return (names?.[key] || "").trim() || DEFAULT_TIER_NAMES[key];
+}
+
 export interface QuoteItem {
   id: string;
   sectionId: string | null;
@@ -78,6 +92,7 @@ export interface Quote {
   publicToken: string | null;
   tiered: boolean; // Good/Better/Best mode (off = normal single-price quote)
   acceptedTier: TierKey | null; // which tier the client accepted
+  tierNames: Record<TierKey, string>; // editable display labels per tier
   sections: QuoteSection[];
   items: QuoteItem[];
   stages: QuoteStage[];
@@ -167,6 +182,7 @@ export function emptyQuote(id: string): Quote {
     publicToken: null,
     tiered: false,
     acceptedTier: null,
+    tierNames: { ...DEFAULT_TIER_NAMES },
     sections: [],
     items: [],
     stages: [],

@@ -15,7 +15,7 @@ import { fetchQuoteTemplates, saveQuoteTemplate, deleteQuoteTemplate, type Quote
 import { fetchLeads } from "@/lib/data/leads";
 import { DEFAULT_BRAND, type BrandSettings } from "@/lib/business/brand";
 import {
-  emptyQuote, computeTotals, computeStageAmounts, stagePercentSum, money, tierTotals, TIERS,
+  emptyQuote, computeTotals, computeStageAmounts, stagePercentSum, money, tierTotals, TIERS, tierName,
   type Quote, type QuoteItem, type QuoteStage, type TierKey,
 } from "@/lib/quotes/model";
 import { DEFAULT_TRADES, inferTradeType, TRADE_TYPE_LABEL, type TradeType } from "@/lib/quotes/trades";
@@ -597,7 +597,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                             <div className="mt-1 flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5" style={{ width: "fit-content" }}>
                               <button type="button" onClick={() => updItem(i, { tier: null })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${!it.tier ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`} title="Shared across all options">Shared</button>
                               {TIERS.map((t) => (
-                                <button key={t.key} type="button" onClick={() => updItem(i, { tier: t.key })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${it.tier === t.key ? "bg-cyan-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}>{t.label}</button>
+                                <button key={t.key} type="button" onClick={() => updItem(i, { tier: t.key })} title={tierName(q.tierNames, t.key)} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${it.tier === t.key ? "bg-cyan-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}>{tierName(q.tierNames, t.key)}</button>
                               ))}
                             </div>
                           )}
@@ -625,16 +625,21 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   {TIERS.map((t) => (
                     <div key={t.key} className={`rounded-xl border p-3 ${t.key === "better" ? "border-cyan-500/40 bg-cyan-500/5" : "border-slate-800 bg-slate-950/40"}`}>
-                      <div className="flex items-center justify-between">
-                        <span className="font-display text-sm font-semibold text-slate-200">{t.label}</span>
-                        {t.key === "better" && <span className="rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">Most pick this</span>}
+                      <div className="flex items-center justify-between gap-2">
+                        <input
+                          value={q.tierNames[t.key]}
+                          onChange={(e) => upd({ tierNames: { ...q.tierNames, [t.key]: e.target.value } })}
+                          placeholder={tierName(null, t.key)}
+                          className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 font-display text-sm font-semibold text-slate-100 focus:border-cyan-500/50"
+                        />
+                        {t.key === "better" && <span className="shrink-0 rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">Most pick this</span>}
                       </div>
                       <div className="mt-1 font-data text-lg font-semibold text-cyan-300">{money(tiers[t.key].total, brand.currency)}</div>
-                      <div className="text-[11px] text-slate-500">{brand.gstRegistered ? "inc GST" : ""} · base + {t.label.toLowerCase()} finishes</div>
+                      <div className="text-[11px] text-slate-500">{brand.gstRegistered ? "inc GST" : ""} · base + {tierName(q.tierNames, t.key).toLowerCase()} finishes</div>
                     </div>
                   ))}
                 </div>
-                <p className="mt-2 text-[11px] text-slate-500">Each option = the shared base build + that tier&apos;s finishes. Mark fixtures/tiles/coverage lines with a tier above; leave the base build as &ldquo;Shared&rdquo;.</p>
+                <p className="mt-2 text-[11px] text-slate-500">Name each option above (defaults: Essential / Premium / Luxury). Each option = the shared base build + that tier&apos;s finishes. Mark fixtures/tiles/coverage lines with a tier; leave the base build as &ldquo;Shared&rdquo;.</p>
               </div>
             ) : (
               <div className="mt-4 flex justify-end">

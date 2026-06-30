@@ -1,6 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOrgId } from "@/lib/data/org";
-import { computeTotals, computeStageAmounts, tierTotals, representativeTier, type Quote, type QuoteStatus } from "@/lib/quotes/model";
+import { computeTotals, computeStageAmounts, tierTotals, representativeTier, DEFAULT_TIER_NAMES, type Quote, type QuoteStatus, type TierKey } from "@/lib/quotes/model";
+
+// Merge stored tier names over the defaults so all three keys are always present.
+function mapTierNames(raw: any): Record<TierKey, string> {
+  const r = raw && typeof raw === "object" ? raw : {};
+  return {
+    good: typeof r.good === "string" && r.good.trim() ? r.good : DEFAULT_TIER_NAMES.good,
+    better: typeof r.better === "string" && r.better.trim() ? r.better : DEFAULT_TIER_NAMES.better,
+    best: typeof r.best === "string" && r.best.trim() ? r.best : DEFAULT_TIER_NAMES.best,
+  };
+}
 
 // True when a Postgres/PostgREST error is "column does not exist" — i.e. a not-
 // yet-applied migration. Lets writes that use a new column degrade gracefully
@@ -73,6 +83,7 @@ function mapQuote(row: any): Quote {
     publicToken: row.public_token ?? null,
     tiered: row.tiered ?? false,
     acceptedTier: row.accepted_tier ?? null,
+    tierNames: mapTierNames(row.tier_names),
     sections,
     items,
     stages,
@@ -134,12 +145,19 @@ export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegis
     total: totals.total,
     tiered: quote.tiered,
     accepted_tier: quote.acceptedTier ?? null,
+    tier_names: quote.tierNames ?? null,
   };
   let { error: qErr } = await supabase.from("quote_docs").upsert(docRow);
-  // Retry without the tier columns if 0033 isn't applied yet.
+  // Granular fallback: drop tier_names (0034) first, then tiered/accepted_tier
+  // (0033) — so a quote still saves if 0034 isn't applied yet WITHOUT also
+  // losing the tiered flag when only 0033 is present.
   if (qErr && isUndefinedColumn(qErr)) {
-    const { tiered, accepted_tier, ...legacy } = docRow;
-    ({ error: qErr } = await supabase.from("quote_docs").upsert(legacy));
+    const { tier_names, ...noNames } = docRow;
+    ({ error: qErr } = await supabase.from("quote_docs").upsert(noNames));
+    if (qErr && isUndefinedColumn(qErr)) {
+      const { tiered, accepted_tier, ...legacy } = noNames;
+      ({ error: qErr } = await supabase.from("quote_docs").upsert(legacy));
+    }
   }
   if (qErr) throw qErr;
 
