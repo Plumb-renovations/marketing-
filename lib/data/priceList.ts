@@ -27,6 +27,13 @@ export interface PriceItem {
   // PC cost→markup→sell. INTERNAL ONLY — never shown to the client.
   costPrice: number | null; // what the business pays the supplier
   markupPct: number | null; // per-item markup override (null → org default)
+  // Supplier-import provenance (0042). INTERNAL except unitPrice (the sell).
+  supplier: string | null; // e.g. 'naga'
+  code: string | null; // supplier SKU — matched on re-import
+  rrpInc: number | null; // supplier RRP, GST-inclusive (the sell basis)
+  widthMm: number | null;
+  depthMm: number | null;
+  heightMm: number | null;
 }
 
 function mapItem(row: any): PriceItem {
@@ -44,7 +51,50 @@ function mapItem(row: any): PriceItem {
     // Tolerate 0041 not being applied yet — rows without cost/markup are null.
     costPrice: row.cost_price != null ? Number(row.cost_price) : null,
     markupPct: row.markup_pct != null ? Number(row.markup_pct) : null,
+    // Tolerate 0042 not being applied yet — supplier fields absent → null.
+    supplier: row.supplier ?? null,
+    code: row.code ?? null,
+    rrpInc: row.rrp_inc != null ? Number(row.rrp_inc) : null,
+    widthMm: row.width_mm != null ? Number(row.width_mm) : null,
+    depthMm: row.depth_mm != null ? Number(row.depth_mm) : null,
+    heightMm: row.height_mm != null ? Number(row.height_mm) : null,
   };
+}
+
+// Build the DB row for a price item (shared by single + batch upserts).
+function priceRow(orgId: string, item: PriceItem, sortOrder: number): Record<string, any> {
+  return {
+    id: item.id,
+    org_id: orgId,
+    category: (item.category || "").trim(),
+    name: (item.name || "").trim(),
+    unit: (item.unit || "").trim() || "ea",
+    unit_price: item.unitPrice,
+    notes: (item.notes || "").trim() || null,
+    sort_order: sortOrder,
+    trade: item.trade?.trim() || null,
+    kind: item.kind === "pc" ? "pc" : "construction",
+    cost_price: item.costPrice != null ? item.costPrice : null,
+    markup_pct: item.markupPct != null ? item.markupPct : null,
+    supplier: item.supplier?.trim() || null,
+    code: item.code?.trim() || null,
+    rrp_inc: item.rrpInc != null ? item.rrpInc : null,
+    width_mm: item.widthMm != null ? item.widthMm : null,
+    depth_mm: item.depthMm != null ? item.depthMm : null,
+    height_mm: item.heightMm != null ? item.heightMm : null,
+  };
+}
+
+// Strip the not-yet-migrated columns from a row, newest migration first, so an
+// upsert still succeeds before a migration is applied. Returns the same row
+// shape minus the dropped keys.
+function stripNewestColumns(row: Record<string, any>, level: number): Record<string, any> {
+  const r = { ...row };
+  if (level >= 1) { delete r.supplier; delete r.code; delete r.rrp_inc; delete r.width_mm; delete r.depth_mm; delete r.height_mm; } // 0042
+  if (level >= 2) { delete r.cost_price; delete r.markup_pct; } // 0041
+  if (level >= 3) { delete r.kind; } // 0038
+  if (level >= 4) { delete r.trade; } // 0032
+  return r;
 }
 
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
@@ -70,39 +120,43 @@ export async function fetchPriceList(supabase: SupabaseClient): Promise<PriceIte
   return (data || []).map(mapItem);
 }
 
-export async function upsertPriceItem(supabase: SupabaseClient, item: PriceItem): Promise<void> {
-  const orgId = await getOrgId(supabase);
-  const row: Record<string, any> = {
-    id: item.id,
-    org_id: orgId,
-    category: item.category.trim(),
-    name: item.name.trim(),
-    unit: item.unit.trim() || "ea",
-    unit_price: item.unitPrice,
-    notes: item.notes.trim() || null,
-    sort_order: item.sortOrder,
-    trade: item.trade?.trim() || null,
-    kind: item.kind === "pc" ? "pc" : "construction",
-    cost_price: item.costPrice != null ? item.costPrice : null,
-    markup_pct: item.markupPct != null ? item.markupPct : null,
-  };
-  let { error } = await supabase.from("price_list_items").upsert(row);
-  // Granular fallback (newest migration first): drop cost/markup (0041), then
-  // `kind` (0038), then `trade` (0032), so a save still works before each
-  // migration is applied.
-  if (error && isUndefinedColumn(error)) {
-    const { cost_price, markup_pct, ...noCost } = row;
-    ({ error } = await supabase.from("price_list_items").upsert(noCost));
-    if (error && isUndefinedColumn(error)) {
-      const { kind, ...noKind } = noCost;
-      ({ error } = await supabase.from("price_list_items").upsert(noKind));
-      if (error && isUndefinedColumn(error)) {
-        const { trade, ...legacy } = noKind;
-        ({ error } = await supabase.from("price_list_items").upsert(legacy));
-      }
-    }
+// Upsert a batch of rows, retrying with newer columns stripped (newest migration
+// first) if the DB doesn't have them yet. Shared by single + bulk-import saves.
+async function upsertRows(supabase: SupabaseClient, rows: Record<string, any>[]): Promise<void> {
+  let { error } = await supabase.from("price_list_items").upsert(rows);
+  for (let level = 1; error && isUndefinedColumn(error) && level <= 4; level++) {
+    ({ error } = await supabase.from("price_list_items").upsert(rows.map((r) => stripNewestColumns(r, level))));
   }
   if (error) throw error;
+}
+
+export async function upsertPriceItem(supabase: SupabaseClient, item: PriceItem): Promise<void> {
+  const orgId = await getOrgId(supabase);
+  await upsertRows(supabase, [priceRow(orgId, item, item.sortOrder)]);
+}
+
+// Bulk import: upsert many items in ONE round-trip. Items keep their id, so a
+// re-import (callers reuse the existing id when a supplier `code` matches) UPDATES
+// rather than duplicating. Sort order continues after the current max.
+export async function importPriceItems(supabase: SupabaseClient, items: PriceItem[], startSort = 0): Promise<void> {
+  if (!items.length) return;
+  const orgId = await getOrgId(supabase);
+  const rows = items.map((it, i) => priceRow(orgId, it, it.sortOrder ?? startSort + i));
+  await upsertRows(supabase, rows);
+}
+
+// Recompute the internal COST (and nothing the client sees) for every item of a
+// supplier from its stored RRP and a (changed) trade discount — so adjusting the
+// discount updates costs/margins WITHOUT re-importing. Returns the count touched.
+export async function recomputeSupplierCosts(supabase: SupabaseClient, supplier: string, tradeDiscountPct: number): Promise<number> {
+  const all = await fetchPriceList(supabase);
+  const disc = Math.max(0, Number(tradeDiscountPct) || 0);
+  const mine = all
+    .filter((p) => (p.supplier || "") === supplier && p.rrpInc != null)
+    .map((p) => ({ ...p, costPrice: round2((p.rrpInc as number) / 1.1 * (1 - disc / 100)) }));
+  if (!mine.length) return 0;
+  await importPriceItems(supabase, mine);
+  return mine.length;
 }
 
 export async function deletePriceItem(supabase: SupabaseClient, id: string): Promise<void> {

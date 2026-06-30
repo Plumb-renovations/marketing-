@@ -11,6 +11,8 @@ import { STARTER_PRICE_LIST, STARTER_PC_LIST } from "@/lib/quotes/priceListDefau
 import { DEFAULT_TRADES } from "@/lib/quotes/trades";
 
 const uid = () => crypto.randomUUID();
+// Blank supplier-import fields for manually-added rows (not from an import).
+const EMPTY_SUPPLIER = { supplier: null, code: null, rrpInc: null, widthMm: null, depthMm: null, heightMm: null } as const;
 const cls = "w-full rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50";
 const money = (n: number, ccy = "AUD") => { try { return new Intl.NumberFormat("en-AU", { style: "currency", currency: ccy }).format(Number(n) || 0); } catch { return "$" + (Number(n) || 0).toFixed(2); } };
 
@@ -47,11 +49,11 @@ export default function PriceListPanel() {
 
   const set = (i: number, patch: Partial<PriceItem>) => setItems((p) => p.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const add = (kind: PriceKind, category = "") =>
-    setItems((p) => [...p, { id: uid(), category, name: "", unit: "ea", unitPrice: 0, notes: "", sortOrder: p.length, trade: "", kind, costPrice: null, markupPct: null }]);
+    setItems((p) => [...p, { id: uid(), category, name: "", unit: "ea", unitPrice: 0, notes: "", sortOrder: p.length, trade: "", kind, costPrice: null, markupPct: null, ...EMPTY_SUPPLIER }]);
   const remove = (i: number) => setItems((p) => { const it = p[i]; if (it) removed.add(it.id); return p.filter((_, j) => j !== i); });
   const loadStarter = (kind: PriceKind) => {
     const starter = kind === "pc" ? STARTER_PC_LIST : STARTER_PRICE_LIST;
-    setItems((p) => [...p, ...starter.map((s, i) => ({ ...s, id: uid(), sortOrder: p.length + i, kind, costPrice: null, markupPct: null }))]);
+    setItems((p) => [...p, ...starter.map((s, i) => ({ ...s, id: uid(), sortOrder: p.length + i, kind, costPrice: null, markupPct: null, ...EMPTY_SUPPLIER }))]);
   };
 
   // Cost/markup edits keep the SELL (unit_price) in step; the user can still type

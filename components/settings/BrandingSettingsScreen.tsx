@@ -10,6 +10,7 @@ import { fetchSavedItems, upsertSavedItem, deleteSavedItem, type SavedItem } fro
 import { QUOTE_TEMPLATES } from "@/lib/quotes/templates";
 import { DEFAULT_CONFIGURATOR_INTRO, DEFAULT_COMFORT_QUESTION } from "@/lib/quotes/model";
 import PriceListPanel from "@/components/settings/PriceListPanel";
+import SupplierImportPanel from "@/components/settings/SupplierImportPanel";
 
 const uid = () => crypto.randomUUID();
 
@@ -286,6 +287,9 @@ export default function BrandingSettingsScreen() {
       {/* Price list (rate card) — the foundation the smart line-item picker and
           the future AI reviewer read. */}
       <PriceListPanel />
+
+      {/* Bulk supplier import → PC items (Naga first; supplier-aware). */}
+      <SupplierImportPanel />
     </div>
   );
 }
