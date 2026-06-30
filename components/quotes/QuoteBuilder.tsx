@@ -103,14 +103,17 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
     })();
   }, [supabase, id, isNew, leadPrefill]);
 
-  // Group the price list by category for the picker's optgroups. MUST stay above
-  // the early return below — hooks run unconditionally, in the same order, every
-  // render (it only depends on priceList, not on the loaded quote).
-  const priceGroups = useMemo(() => {
+  // Group the price list by category for the picker's optgroups, SEPARATED into
+  // construction trades vs PC items/tiles so neither palette bleeds into the
+  // other. MUST stay above the early return below — hooks run unconditionally,
+  // in the same order, every render (depends only on priceList).
+  const groupByCategory = (list: PriceItem[]) => {
     const m = new Map<string, PriceItem[]>();
-    for (const p of priceList) { const k = p.category.trim() || "Other"; (m.get(k) ?? m.set(k, []).get(k)!).push(p); }
+    for (const p of list) { const k = p.category.trim() || "Other"; (m.get(k) ?? m.set(k, []).get(k)!).push(p); }
     return [...m.entries()];
-  }, [priceList]);
+  };
+  const constructionGroups = useMemo(() => groupByCategory(priceList.filter((p) => p.kind !== "pc")), [priceList]);
+  const pcGroups = useMemo(() => groupByCategory(priceList.filter((p) => p.kind === "pc")), [priceList]);
 
   if (!q) {
     return <div className="flex items-center gap-2 py-16 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading quote…</div>;
@@ -128,6 +131,8 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
 
   const upd = (patch: Partial<Quote>) => setQ((p) => (p ? { ...p, ...patch } : p));
   const updItem = (i: number, patch: Partial<QuoteItem>) => upd({ items: q.items.map((it, j) => (j === i ? { ...it, ...patch } : it)) });
+  const updItemById = (id: string, patch: Partial<QuoteItem>) => upd({ items: q.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
+  const removeItemById = (id: string) => upd({ items: q.items.filter((it) => it.id !== id) });
   const addItem = (seed?: Partial<QuoteItem>) =>
     upd({ items: [...q.items, { id: uid(), sectionId: null, description: "", detail: "", qty: 1, unit: "ea", unitPrice: 0, unitCost: null, sortOrder: q.items.length, trade: null, tradeType: null, tier: null, ...seed }] });
   const insertSaved = (s: SavedItem) =>
@@ -585,10 +590,10 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-display text-sm font-semibold text-slate-200">Line items</h3>
               <div className="flex flex-wrap items-center gap-2">
-                {priceGroups.length > 0 && (
-                  <select title="Add a line from your price list — fills the rate, then set the quantity" onChange={(e) => { const p = priceList.find((x) => x.id === e.target.value); if (p) insertPriceItem(p); e.currentTarget.selectedIndex = 0; }} className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-2 py-1.5 text-xs text-cyan-200 focus:border-cyan-500/50">
+                {constructionGroups.length > 0 && (
+                  <select title="Add a construction line from your price list — fills the rate, then set the quantity" onChange={(e) => { const p = priceList.find((x) => x.id === e.target.value); if (p) insertPriceItem(p); e.currentTarget.selectedIndex = 0; }} className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-2 py-1.5 text-xs text-cyan-200 focus:border-cyan-500/50">
                     <option value="">＋ From price list…</option>
-                    {priceGroups.map(([cat, list]) => (
+                    {constructionGroups.map(([cat, list]) => (
                       <optgroup key={cat} label={cat}>
                         {list.map((p) => <option key={p.id} value={p.id}>{p.name} · {money(p.unitPrice, brand.currency)}/{p.unit}</option>)}
                       </optgroup>
@@ -731,10 +736,10 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
               <button onClick={saveAllowanceDefault} disabled={savingAllowanceDefault} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800 disabled:opacity-50">{savingAllowanceDefault ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save as my default</button>
             </div>
 
-            {priceGroups.length > 0 ? (
+            {pcGroups.length > 0 ? (
               <div className="mt-3 space-y-3">
-                <p className="text-[11px] text-slate-500">Tick the items in this bathroom — each adds a priced allowance line; untick to remove. Where there are multiple versions, pick the one to include.</p>
-                {priceGroups.map(([cat, list]) => (
+                <p className="text-[11px] text-slate-500">Tick the PC items &amp; tiles for this bathroom — each adds a priced allowance line; untick to remove. Where there are multiple versions, pick the one to include.</p>
+                {pcGroups.map(([cat, list]) => (
                   <div key={cat}>
                     <p className="mb-1 text-[11px] uppercase tracking-wider text-slate-500 font-display">{cat}</p>
                     <div className="flex flex-wrap gap-1.5">
@@ -751,29 +756,51 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                 ))}
               </div>
             ) : (
-              <p className="mt-3 text-xs text-slate-500">Add PC items / tiles (with a category) to your price list in Branding &amp; Quotes to tick them on here. You can also flag any line in the table above as &ldquo;Allowance&rdquo;.</p>
+              <p className="mt-3 text-xs text-slate-500">Add PC items &amp; tiles in Branding &amp; Quotes &rarr; Price list (the &ldquo;PC items &amp; tiles&rdquo; section) to tick them on here. You can also flag any line in the table above as &ldquo;Allowance&rdquo;.</p>
             )}
 
             {allowanceItems.length > 0 && (
-              q.pcTiered ? (
-                <div className="mt-3 border-t border-slate-800 pt-3">
-                  <p className="mb-2 text-[11px] text-slate-500">Tag each fixture above with a PC level (Standard/Premium/Luxury). Each level = the shared fixtures + that level&apos;s items. The client picks one level (separate from the construction option).</p>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {TIERS.map((t) => (
-                      <div key={t.key} className={`rounded-xl border p-3 ${t.key === "better" ? "border-amber-500/40 bg-amber-500/5" : "border-slate-800 bg-slate-950/40"}`}>
-                        <input value={q.pcTierNames[t.key]} onChange={(e) => upd({ pcTierNames: { ...q.pcTierNames, [t.key]: e.target.value } })} placeholder={pcTierName(null, t.key)} className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 font-display text-sm font-semibold text-slate-100 focus:border-amber-500/50" />
-                        <div className="mt-1 font-data text-lg font-semibold text-amber-300">{money(pcTiers[t.key].total, brand.currency)}</div>
-                        <div className="text-[11px] text-slate-500">{brand.gstRegistered ? "inc GST" : ""} fixture allowance</div>
-                      </div>
-                    ))}
-                  </div>
+              <div className="mt-3 border-t border-slate-800 pt-3">
+                {q.pcTiered && (
+                  <>
+                    <p className="mb-2 text-[11px] text-slate-500">Tag each PC item with a level (Shared / {pcTierName(q.pcTierNames, "good")} / {pcTierName(q.pcTierNames, "better")} / {pcTierName(q.pcTierNames, "best")}) — exactly like the construction options. The client picks one level (separate from the construction option).</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      {TIERS.map((t) => (
+                        <div key={t.key} className={`rounded-xl border p-3 ${t.key === "better" ? "border-amber-500/40 bg-amber-500/5" : "border-slate-800 bg-slate-950/40"}`}>
+                          <input value={q.pcTierNames[t.key]} onChange={(e) => upd({ pcTierNames: { ...q.pcTierNames, [t.key]: e.target.value } })} placeholder={pcTierName(null, t.key)} className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 font-display text-sm font-semibold text-slate-100 focus:border-amber-500/50" />
+                          <div className="mt-1 font-data text-lg font-semibold text-amber-300">{money(pcTiers[t.key].total, brand.currency)}</div>
+                          <div className="text-[11px] text-slate-500">{brand.gstRegistered ? "inc GST" : ""} fixture allowance</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* Per-PC-item rows with the SAME tier selector as construction
+                    lines — a direct replica, just with the PC level labels. */}
+                <div className="mt-3 space-y-1.5">
+                  {allowanceItems.map((it) => (
+                    <div key={it.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/40 px-2.5 py-2">
+                      <span className="min-w-0 flex-1 truncate text-sm text-slate-200" title={it.description}>{(it.description || "").split(/\r?\n/)[0] || "Item"}</span>
+                      <span className="font-data text-xs text-slate-400">{money((it.qty || 0) * (it.unitPrice || 0), brand.currency)}</span>
+                      {q.pcTiered && (
+                        <div className="flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5" style={{ width: "fit-content" }}>
+                          <button type="button" onClick={() => updItemById(it.id, { pcTier: null })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${!it.pcTier ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`} title="Shared across all PC levels">Shared</button>
+                          {TIERS.map((t) => (
+                            <button key={t.key} type="button" onClick={() => updItemById(it.id, { pcTier: t.key })} title={pcTierName(q.pcTierNames, t.key)} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${it.pcTier === t.key ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}>{pcTierName(q.pcTierNames, t.key)}</button>
+                          ))}
+                        </div>
+                      )}
+                      <button onClick={() => removeItemById(it.id)} className="rounded-md border border-slate-700 p-1.5 text-slate-400 hover:text-red-300" title="Remove this PC item"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  ))}
                 </div>
-              ) : (
-                <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-3 text-sm">
-                  <span className="text-slate-400">{allowanceItems.length} fixture{allowanceItems.length === 1 ? "" : "s"} — edit in the table above</span>
+
+                <div className="mt-3 flex items-center justify-between text-sm">
+                  <span className="text-slate-400">{allowanceItems.length} PC item{allowanceItems.length === 1 ? "" : "s"}{q.pcTiered ? "" : " — flat allowance"}</span>
                   <span className="font-data font-semibold text-amber-300">{money(allowanceSubtotal, brand.currency)} <span className="text-[11px] font-normal text-slate-500">{brand.gstRegistered ? "inc GST" : ""} allowance</span></span>
                 </div>
-              )
+              </div>
             )}
           </div>
 
