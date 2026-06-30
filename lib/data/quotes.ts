@@ -1,15 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOrgId } from "@/lib/data/org";
-import { computeTotals, computeStageAmounts, tierTotals, representativeTier, DEFAULT_TIER_NAMES, type Quote, type QuoteStatus, type TierKey } from "@/lib/quotes/model";
+import { computeTotals, computeStageAmounts, priceableItems, representativeTier, DEFAULT_TIER_NAMES, DEFAULT_PC_TIER_NAMES, type Quote, type QuoteStatus, type TierKey, type JourneyStage } from "@/lib/quotes/model";
 
-// Merge stored tier names over the defaults so all three keys are always present.
-function mapTierNames(raw: any): Record<TierKey, string> {
+// Merge stored tier names over the given defaults so all three keys are present.
+function mapNames(raw: any, defaults: Record<TierKey, string>): Record<TierKey, string> {
   const r = raw && typeof raw === "object" ? raw : {};
   return {
-    good: typeof r.good === "string" && r.good.trim() ? r.good : DEFAULT_TIER_NAMES.good,
-    better: typeof r.better === "string" && r.better.trim() ? r.better : DEFAULT_TIER_NAMES.better,
-    best: typeof r.best === "string" && r.best.trim() ? r.best : DEFAULT_TIER_NAMES.best,
+    good: typeof r.good === "string" && r.good.trim() ? r.good : defaults.good,
+    better: typeof r.better === "string" && r.better.trim() ? r.better : defaults.better,
+    best: typeof r.best === "string" && r.best.trim() ? r.best : defaults.best,
   };
+}
+const mapTierNames = (raw: any) => mapNames(raw, DEFAULT_TIER_NAMES);
+function mapJourney(raw: any): JourneyStage[] {
+  return Array.isArray(raw) ? raw.filter((s: any) => s && typeof s.label === "string").map((s: any) => ({ label: s.label, note: typeof s.note === "string" ? s.note : "" })) : [];
 }
 
 // True when a Postgres/PostgREST error is "column does not exist" — i.e. a not-
@@ -41,6 +45,7 @@ function mapQuote(row: any): Quote {
       tier: it.tier ?? null,
       allowance: it.allowance ?? false,
       sourcePriceItemId: it.source_price_item_id ?? null,
+      pcTier: it.pc_tier ?? null,
     }));
   const stages = (row.quote_doc_stages || [])
     .slice()
@@ -86,7 +91,11 @@ function mapQuote(row: any): Quote {
     tiered: row.tiered ?? false,
     acceptedTier: row.accepted_tier ?? null,
     tierNames: mapTierNames(row.tier_names),
+    pcTiered: row.pc_tiered ?? false,
+    acceptedPcTier: row.accepted_pc_tier ?? null,
+    pcTierNames: mapNames(row.pc_tier_names, DEFAULT_PC_TIER_NAMES),
     allowanceNote: row.allowance_note ?? "",
+    journey: mapJourney(row.journey),
     sections,
     items,
     stages,
@@ -114,12 +123,12 @@ export async function fetchQuote(supabase: SupabaseClient, id: string): Promise<
 // with the org's GST registration). Returns the recomputed totals.
 export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegistered: boolean) {
   const orgId = await getOrgId(supabase);
-  // For a tiered quote the stored headline total is the representative tier
-  // (accepted, else "better") — a single all-items total would be meaningless
-  // (it'd add all three tiers' finishes). A normal quote totals all its items.
-  const totals = quote.tiered
-    ? tierTotals(quote.items, gstRegistered, quote.gstInclusive)[representativeTier(quote.acceptedTier)]
-    : computeTotals(quote.items, gstRegistered, quote.gstInclusive);
+  // Stored headline total = the representative construction tier (build) + the
+  // representative PC tier (allowance). For a non-tiered axis the representative
+  // is null (all build / all fixtures). Only the chosen options ever count.
+  const ctier = quote.tiered ? representativeTier(quote.acceptedTier) : null;
+  const ptier = quote.pcTiered ? representativeTier(quote.acceptedPcTier) : null;
+  const totals = computeTotals(priceableItems(quote.items, ctier, ptier), gstRegistered, quote.gstInclusive);
   const stages = computeStageAmounts(quote.stages, totals.total);
 
   const docRow: Record<string, any> = {
@@ -150,20 +159,28 @@ export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegis
     accepted_tier: quote.acceptedTier ?? null,
     tier_names: quote.tierNames ?? null,
     allowance_note: quote.allowanceNote || null,
+    pc_tiered: quote.pcTiered,
+    accepted_pc_tier: quote.acceptedPcTier ?? null,
+    pc_tier_names: quote.pcTierNames ?? null,
+    journey: quote.journey?.length ? quote.journey : null,
   };
   let { error: qErr } = await supabase.from("quote_docs").upsert(docRow);
-  // Granular fallback (newest migration first): drop allowance_note (0035), then
-  // tier_names (0034), then tiered/accepted_tier (0033) — so a quote still saves
-  // when a later migration isn't applied without losing earlier columns.
+  // Granular fallback (newest migration first): drop the PC/journey columns
+  // (0037), then allowance_note (0035), then tier_names (0034), then tiered
+  // (0033) — so a quote still saves when a later migration isn't applied.
   if (qErr && isUndefinedColumn(qErr)) {
-    const { allowance_note, ...noAllowance } = docRow;
-    ({ error: qErr } = await supabase.from("quote_docs").upsert(noAllowance));
+    const { pc_tiered, accepted_pc_tier, pc_tier_names, journey, ...noPc } = docRow;
+    ({ error: qErr } = await supabase.from("quote_docs").upsert(noPc));
     if (qErr && isUndefinedColumn(qErr)) {
-      const { tier_names, ...noNames } = noAllowance;
-      ({ error: qErr } = await supabase.from("quote_docs").upsert(noNames));
+      const { allowance_note, ...noAllowance } = noPc;
+      ({ error: qErr } = await supabase.from("quote_docs").upsert(noAllowance));
       if (qErr && isUndefinedColumn(qErr)) {
-        const { tiered, accepted_tier, ...legacy } = noNames;
-        ({ error: qErr } = await supabase.from("quote_docs").upsert(legacy));
+        const { tier_names, ...noNames } = noAllowance;
+        ({ error: qErr } = await supabase.from("quote_docs").upsert(noNames));
+        if (qErr && isUndefinedColumn(qErr)) {
+          const { tiered, accepted_tier, ...legacy } = noNames;
+          ({ error: qErr } = await supabase.from("quote_docs").upsert(legacy));
+        }
       }
     }
   }
@@ -199,17 +216,22 @@ export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegis
       tier: it.tier ?? null,
       allowance: it.allowance ?? false,
       source_price_item_id: it.sourcePriceItemId ?? null,
+      pc_tier: it.pcTier ?? null,
     }));
     let { error } = await supabase.from("quote_doc_items").insert(rows);
-    // If 0032/0033/0035 aren't applied yet, retry without the optional columns so
-    // saving still works (the quote just isn't trade/tier/allowance-tagged until
-    // they run). Drop the newest (allowance, 0035) first, then trade/tier.
+    // Retry without optional columns (newest migration first) so saving still
+    // works before each migration runs: drop pc_tier (0037), then allowance
+    // (0035), then trade/tier (0032/0033).
     if (error && isUndefinedColumn(error)) {
-      const noAllowance = rows.map(({ allowance, source_price_item_id, ...rest }) => rest);
-      ({ error } = await supabase.from("quote_doc_items").insert(noAllowance));
+      const noPc = rows.map(({ pc_tier, ...rest }) => rest);
+      ({ error } = await supabase.from("quote_doc_items").insert(noPc));
       if (error && isUndefinedColumn(error)) {
-        const legacy = noAllowance.map(({ trade, trade_type, tier, ...rest }) => rest);
-        ({ error } = await supabase.from("quote_doc_items").insert(legacy));
+        const noAllowance = noPc.map(({ allowance, source_price_item_id, ...rest }) => rest);
+        ({ error } = await supabase.from("quote_doc_items").insert(noAllowance));
+        if (error && isUndefinedColumn(error)) {
+          const legacy = noAllowance.map(({ trade, trade_type, tier, ...rest }) => rest);
+          ({ error } = await supabase.from("quote_doc_items").insert(legacy));
+        }
       }
     }
     if (error) throw error;

@@ -15,8 +15,8 @@ import { fetchQuoteTemplates, saveQuoteTemplate, deleteQuoteTemplate, type Quote
 import { fetchLeads } from "@/lib/data/leads";
 import { DEFAULT_BRAND, type BrandSettings } from "@/lib/business/brand";
 import {
-  emptyQuote, computeTotals, computeStageAmounts, stagePercentSum, money, tierTotals, TIERS, tierName,
-  DEFAULT_ALLOWANCE_NOTE, allowanceItemsOf,
+  emptyQuote, computeTotals, computeStageAmounts, stagePercentSum, money, tierTotals, pcTierTotals, TIERS, tierName, pcTierName,
+  priceableItems, DEFAULT_ALLOWANCE_NOTE, DEFAULT_JOURNEY, allowanceItemsOf,
   type Quote, type QuoteItem, type QuoteStage, type TierKey,
 } from "@/lib/quotes/model";
 import { DEFAULT_TRADES, inferTradeType, TRADE_TYPE_LABEL, type TradeType } from "@/lib/quotes/trades";
@@ -80,6 +80,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
         const nq = emptyQuote(uid());
         nq.terms = b.defaultTerms || "";
         nq.allowanceNote = b.defaultAllowanceNote || DEFAULT_ALLOWANCE_NOTE;
+        nq.journey = DEFAULT_JOURNEY.map((s) => ({ ...s }));
         nq.stages = (b.defaultPaymentSchedule || []).map((s, i) => ({
           id: uid(), label: s.label, milestoneNote: "", percent: Number(s.percent) || 0, fixedAmount: null, amount: 0, status: "pending", sortOrder: i,
         }));
@@ -94,8 +95,9 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
       } else {
         const loaded = await fetchQuote(supabase, id).catch(() => null);
         const qq = loaded || emptyQuote(id);
-        // Auto-fill the allowance framing text if this quote hasn't got one yet.
+        // Auto-fill the allowance framing text + journey if not set yet.
         if (!qq.allowanceNote) qq.allowanceNote = b.defaultAllowanceNote || DEFAULT_ALLOWANCE_NOTE;
+        if (!qq.journey?.length) qq.journey = DEFAULT_JOURNEY.map((s) => ({ ...s }));
         setQ(qq);
       }
     })();
@@ -114,10 +116,12 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
     return <div className="flex items-center gap-2 py-16 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading quote…</div>;
   }
 
-  // Tiered: each option = shared base + that tier's finishes. The headline total
-  // (used for the stages + stored figure) is the middle "better" option.
+  // Two parallel axes: construction tiers (build-only) + PC-item tiers (fixture
+  // allowance). The headline total = representative construction + representative
+  // PC. tierTotals = build-only; pcTiers = the fixture allowance per PC level.
   const tiers = tierTotals(q.items, brand.gstRegistered, q.gstInclusive);
-  const totals = q.tiered ? tiers.better : computeTotals(q.items, brand.gstRegistered, q.gstInclusive);
+  const pcTiers = pcTierTotals(q.items, brand.gstRegistered, q.gstInclusive);
+  const totals = computeTotals(priceableItems(q.items, q.tiered ? "better" : null, q.pcTiered ? "better" : null), brand.gstRegistered, q.gstInclusive);
   const stages = computeStageAmounts(q.stages, totals.total);
   const pctSum = stagePercentSum(q.stages);
   const preview: Quote = { ...q, ...totals, stages };
@@ -290,7 +294,9 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   };
 
   const persist = async (status?: Quote["status"]) => {
-    const toSave = { ...q, ...computeTotals(q.items, brand.gstRegistered, q.gstInclusive), stages: computeStageAmounts(q.stages, totals.total), ...(status ? { status } : {}) };
+    // saveQuote recomputes the stored total itself (representative construction +
+    // PC); here we just keep the in-memory copy + stages consistent.
+    const toSave = { ...q, ...totals, stages: computeStageAmounts(q.stages, totals.total), ...(status ? { status } : {}) };
     await saveQuote(supabase, toSave, brand.gstRegistered);
     return toSave;
   };
@@ -521,10 +527,18 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                 </div>
               </label>
               <label className="block">
-                <span className={lbl}>Pricing options</span>
+                <span className={lbl}>Construction options</span>
                 <div className="mt-1 flex items-center gap-1 rounded-lg border border-slate-700 p-0.5">
                   {([["false", "Single price"], ["true", "Good / Better / Best"]] as const).map(([v, l]) => (
                     <button key={v} onClick={() => upd({ tiered: v === "true" })} className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${q.tiered === (v === "true") ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}>{l}</button>
+                  ))}
+                </div>
+              </label>
+              <label className="block">
+                <span className={lbl}>PC items &amp; tiles options</span>
+                <div className="mt-1 flex items-center gap-1 rounded-lg border border-slate-700 p-0.5">
+                  {([["false", "Flat allowance"], ["true", "Standard / Premium / Luxury"]] as const).map(([v, l]) => (
+                    <button key={v} onClick={() => upd({ pcTiered: v === "true" })} className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${q.pcTiered === (v === "true") ? "bg-amber-500 text-slate-950" : "text-slate-400"}`}>{l}</button>
                   ))}
                 </div>
               </label>
@@ -632,12 +646,21 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                               <button type="button" onClick={() => updItem(i, { allowance: false })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${!it.allowance ? "bg-cyan-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`} title="Part of the build scope">Build</button>
                               <button type="button" onClick={() => updItem(i, { allowance: true, tier: null })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${it.allowance ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`} title="Fixture/tile allowance — shown in its own section, decoupled from the build tier">Allowance</button>
                             </div>
-                            {/* Good/Better/Best: Shared (base build) or this tier's finishes. Hidden for allowance lines (they're decoupled). */}
+                            {/* CONSTRUCTION tier: Shared base / that tier's finishes (build lines only). */}
                             {q.tiered && !it.allowance && (
                               <div className="flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5" style={{ width: "fit-content" }}>
                                 <button type="button" onClick={() => updItem(i, { tier: null })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${!it.tier ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`} title="Shared across all options">Shared</button>
                                 {TIERS.map((t) => (
                                   <button key={t.key} type="button" onClick={() => updItem(i, { tier: t.key })} title={tierName(q.tierNames, t.key)} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${it.tier === t.key ? "bg-cyan-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}>{tierName(q.tierNames, t.key)}</button>
+                                ))}
+                              </div>
+                            )}
+                            {/* PC tier: which fixtures/tiles level this allowance line belongs to. */}
+                            {q.pcTiered && it.allowance && (
+                              <div className="flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5" style={{ width: "fit-content" }}>
+                                <button type="button" onClick={() => updItem(i, { pcTier: null })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${!it.pcTier ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`} title="Shared across all PC levels">Shared</button>
+                                {TIERS.map((t) => (
+                                  <button key={t.key} type="button" onClick={() => updItem(i, { pcTier: t.key })} title={pcTierName(q.pcTierNames, t.key)} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${it.pcTier === t.key ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}>{pcTierName(q.pcTierNames, t.key)}</button>
                                 ))}
                               </div>
                             )}
@@ -732,11 +755,48 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
             )}
 
             {allowanceItems.length > 0 && (
-              <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-3 text-sm">
-                <span className="text-slate-400">{allowanceItems.length} allowance item{allowanceItems.length === 1 ? "" : "s"} — edit price/qty/description in the table above</span>
-                <span className="font-data font-semibold text-amber-300">{money(allowanceSubtotal, brand.currency)} <span className="text-[11px] font-normal text-slate-500">{brand.gstRegistered ? "inc GST" : ""} allowance</span></span>
-              </div>
+              q.pcTiered ? (
+                <div className="mt-3 border-t border-slate-800 pt-3">
+                  <p className="mb-2 text-[11px] text-slate-500">Tag each fixture above with a PC level (Standard/Premium/Luxury). Each level = the shared fixtures + that level&apos;s items. The client picks one level (separate from the construction option).</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {TIERS.map((t) => (
+                      <div key={t.key} className={`rounded-xl border p-3 ${t.key === "better" ? "border-amber-500/40 bg-amber-500/5" : "border-slate-800 bg-slate-950/40"}`}>
+                        <input value={q.pcTierNames[t.key]} onChange={(e) => upd({ pcTierNames: { ...q.pcTierNames, [t.key]: e.target.value } })} placeholder={pcTierName(null, t.key)} className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 font-display text-sm font-semibold text-slate-100 focus:border-amber-500/50" />
+                        <div className="mt-1 font-data text-lg font-semibold text-amber-300">{money(pcTiers[t.key].total, brand.currency)}</div>
+                        <div className="text-[11px] text-slate-500">{brand.gstRegistered ? "inc GST" : ""} fixture allowance</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-3 text-sm">
+                  <span className="text-slate-400">{allowanceItems.length} fixture{allowanceItems.length === 1 ? "" : "s"} — edit in the table above</span>
+                  <span className="font-data font-semibold text-amber-300">{money(allowanceSubtotal, brand.currency)} <span className="text-[11px] font-normal text-slate-500">{brand.gstRegistered ? "inc GST" : ""} allowance</span></span>
+                </div>
+              )
             )}
+          </div>
+
+          {/* Renovation journey roadmap */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="font-display text-sm font-semibold text-slate-200">Renovation journey</h3>
+              <span className="text-[11px] text-slate-500">the process roadmap shown on the client quote</span>
+            </div>
+            <div className="space-y-2">
+              {q.journey.map((s, i) => (
+                <div key={i} className="grid grid-cols-12 items-start gap-2">
+                  <span className="col-span-1 pt-2 text-center font-data text-xs text-slate-500">{i + 1}</span>
+                  <input value={s.label} onChange={(e) => upd({ journey: q.journey.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} placeholder="Stage" className={"col-span-4 " + inp} />
+                  <input value={s.note ?? ""} onChange={(e) => upd({ journey: q.journey.map((x, j) => (j === i ? { ...x, note: e.target.value } : x)) })} placeholder="Short note (optional)" className={"col-span-6 " + inp} />
+                  <button onClick={() => upd({ journey: q.journey.filter((_, j) => j !== i) })} className="col-span-1 rounded-md border border-slate-700 p-2 text-slate-400 hover:text-red-300"><Trash2 className="h-4 w-4" /></button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button onClick={() => upd({ journey: [...q.journey, { label: "", note: "" }] })} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800"><Plus className="h-3.5 w-3.5" /> Add stage</button>
+              <button onClick={() => upd({ journey: DEFAULT_JOURNEY.map((s) => ({ ...s })) })} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800">Reset to default roadmap</button>
+            </div>
           </div>
 
           {/* Payment schedule */}

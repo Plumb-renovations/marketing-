@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Printer, Loader2, CheckCircle2 } from "lucide-react";
 import QuoteDocument from "@/components/quotes/QuoteDocument";
-import { money, tierTotals, TIERS, tierName, type Quote, type TierKey } from "@/lib/quotes/model";
+import { money, tierTotals, pcTierTotals, pcAllowanceItems, TIERS, tierName, pcTierName, type Quote, type TierKey } from "@/lib/quotes/model";
 import type { BrandSettings } from "@/lib/business/brand";
 
 // The public, mobile-friendly view of a sent quote. Renders the branded
@@ -53,17 +53,22 @@ export default function QuotePublicView({
   const [error, setError] = useState("");
   const [chosenTier, setChosenTier] = useState<TierKey | null>(quote.acceptedTier);
 
-  // Per-tier prices for the option cards (shared base + that tier's finishes).
+  // Two parallel choices: construction tier (Accept button) + PC-items tier
+  // (radio). Construction cards = build-only price; PC cards = fixture allowance.
   const tiers = tierTotals(quote.items, brand.gstRegistered, quote.gstInclusive);
+  const pcTiers = pcTierTotals(quote.items, brand.gstRegistered, quote.gstInclusive);
+  const pcTiered = !!quote.pcTiered && quote.items.some((i) => i.allowance);
+  const [pcChoice, setPcChoice] = useState<TierKey>(quote.acceptedPcTier ?? "better");
 
   const accept = async (tier?: TierKey) => {
+    if (pcTiered && !pcChoice) { setError("Please choose a PC items & tiles level first."); return; }
     setBusy(tier || "single");
     setError("");
     try {
       const res = await fetch("/api/quotes/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, name, tier }),
+        body: JSON.stringify({ token, name, tier, pcTier: pcTiered ? pcChoice : undefined }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j?.ok) {
@@ -125,6 +130,35 @@ export default function QuotePublicView({
             screen (the wired Accept action is below) but keep it on the PDF. */}
         <QuoteDocument quote={quote} brand={brand} businessName={businessName} acceptBlockPrintOnly />
       </div>
+
+      {/* Choose your PC items & tiles level (parallel to the construction option).
+          Hidden when printing / once accepted. */}
+      {!accepted && pcTiered && (
+        <div className="no-print" style={{ maxWidth: 820, margin: "0 auto", padding: "0 16px 16px", fontFamily: "var(--font-body), Inter, system-ui, sans-serif" }}>
+          <div style={{ borderRadius: 12, padding: "20px 22px", background: "#fff", border: "1px solid #DBD2C4" }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#242220" }}>Choose your PC items &amp; tiles</div>
+            <p style={{ fontSize: 13.5, color: "#6b6358", margin: "6px 0 14px", lineHeight: 1.6 }}>Pick a fixtures &amp; tiles level — this is separate from your construction option.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+              {TIERS.map((t) => {
+                const on = pcChoice === t.key;
+                const covered = pcAllowanceItems(quote.items, t.key).map((it) => (it.description || "").split(/\r?\n/)[0].trim()).filter(Boolean);
+                return (
+                  <label key={t.key} style={{ display: "block", padding: "12px 14px", borderRadius: 10, cursor: "pointer", border: `1px solid ${on ? accent : "#E3DCCF"}`, background: on ? `${accent}0f` : "#fff" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700, color: "#242220" }}>
+                        <input type="radio" name="pc-tier" checked={on} onChange={() => setPcChoice(t.key)} style={{ accentColor: accent }} />
+                        {pcTierName(quote.pcTierNames, t.key)}{t.key === "better" ? <span style={{ fontSize: 11, fontWeight: 600, color: accent }}> Most popular</span> : null}
+                      </span>
+                      <span style={{ fontSize: 17, fontWeight: 700, color: accent, fontVariantNumeric: "tabular-nums" }}>{money(pcTiers[t.key].total, ccy)} <span style={{ fontSize: 11, fontWeight: 500, color: "#9e978b" }}>{brand.gstRegistered ? "inc GST" : ""}</span></span>
+                    </div>
+                    {covered.length > 0 && <div style={{ fontSize: 12.5, color: "#6b6358", marginTop: 6 }}>Covered: {covered.join(" · ")}</div>}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Functional accept (hidden when printing). The template's accept block is
           decorative; this is the real, wired action. */}

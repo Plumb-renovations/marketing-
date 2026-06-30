@@ -25,6 +25,31 @@ export function tierName(names: Partial<Record<TierKey, string>> | null | undefi
   return (names?.[key] || "").trim() || DEFAULT_TIER_NAMES[key];
 }
 
+// PC-items tiers reuse the same internal keys (good/better/best) but default to
+// Standard / Premium / Luxury, editable per quote.
+export const DEFAULT_PC_TIER_NAMES: Record<TierKey, string> = {
+  good: "Standard",
+  better: "Premium",
+  best: "Luxury",
+};
+export function pcTierName(names: Partial<Record<TierKey, string>> | null | undefined, key: TierKey): string {
+  return (names?.[key] || "").trim() || DEFAULT_PC_TIER_NAMES[key];
+}
+
+// The visible journey/process roadmap shown on the client quote.
+export interface JourneyStage { label: string; note?: string }
+export const DEFAULT_JOURNEY: JourneyStage[] = [
+  { label: "Quote accepted", note: "We confirm your selections and lock in your spot." },
+  { label: "Deposit & booking", note: "Your deposit secures your start date." },
+  { label: "Design & selections", note: "Finalise fixtures, tiles and finishes together." },
+  { label: "Demolition & strip-out", note: "" },
+  { label: "Rough-in — plumbing & electrical", note: "" },
+  { label: "Waterproofing", note: "Inspected and certified to AS 3740." },
+  { label: "Tiling", note: "" },
+  { label: "Fit-off & finishing", note: "Fixtures installed, painting, detailing." },
+  { label: "Final clean & handover", note: "Walk-through and warranty." },
+];
+
 export interface QuoteItem {
   id: string;
   sectionId: string | null;
@@ -49,6 +74,10 @@ export interface QuoteItem {
   // item it was toggled on from (so the PC selector knows what's included).
   allowance?: boolean;
   sourcePriceItemId?: string | null;
+  // PC-items tier (Standard/Premium/Luxury) — the PARALLEL fixture choice. On an
+  // allowance line: null = shared across all PC tiers; else good/better/best =
+  // the PC level this fixture belongs to. Mirrors `tier` for the build.
+  pcTier?: TierKey | null;
 }
 
 export interface QuoteSection {
@@ -97,9 +126,13 @@ export interface Quote {
   acceptedAt: string | null;
   publicToken: string | null;
   tiered: boolean; // Good/Better/Best mode (off = normal single-price quote)
-  acceptedTier: TierKey | null; // which tier the client accepted
-  tierNames: Record<TierKey, string>; // editable display labels per tier
+  acceptedTier: TierKey | null; // which CONSTRUCTION tier the client accepted
+  tierNames: Record<TierKey, string>; // editable construction-tier labels
+  pcTiered: boolean; // offer the Standard/Premium/Luxury PC-items choice
+  acceptedPcTier: TierKey | null; // which PC tier the client accepted
+  pcTierNames: Record<TierKey, string>; // editable PC-tier labels
   allowanceNote: string; // framing text atop the Tile & Fixture Allowance section
+  journey: JourneyStage[]; // the process roadmap shown on the quote
   sections: QuoteSection[];
   items: QuoteItem[];
   stages: QuoteStage[];
@@ -123,24 +156,47 @@ export function computeTotals(items: { qty: number; unitPrice: number }[], gstRe
   return { subtotal: lineSum, gstAmount, total: round2(lineSum + gstAmount) };
 }
 
-// ---- Good/Better/Best tiers -----------------------------------------------
-// The items that make up a tier: every SHARED line (tier == null) PLUS the lines
-// tagged for that tier. So each tier = the shared base build + its own finishes.
-export function itemsForTier(items: QuoteItem[], tier: TierKey): QuoteItem[] {
-  return items.filter((it) => !it.tier || it.tier === tier);
-}
-
+// ---- Two parallel tier axes: construction (build) + PC items (fixtures) ----
 export interface Totals { subtotal: number; gstAmount: number; total: number }
 
-// Totals for each tier (shared base + that tier's finishes), GST-correct.
+// BUILD scope for a construction tier (shared base + that tier's finishes), or
+// all build when tier is null. EXCLUDES allowance/fixture lines — those are the
+// separate PC-items layer.
+export function buildItemsForTier(items: QuoteItem[], tier: TierKey | null): QuoteItem[] {
+  return items.filter((i) => !i.allowance && (tier == null || !i.tier || i.tier === tier));
+}
+
+// The FIXTURE allowance for a PC tier: the shared PC lines (pcTier null) + that
+// tier's fixtures. When pcTier is null (not PC-tiered) → all allowance lines.
+export function pcAllowanceItems(items: QuoteItem[], pcTier: TierKey | null): QuoteItem[] {
+  const allowance = items.filter((i) => i.allowance);
+  if (!pcTier) return allowance;
+  return allowance.filter((i) => !i.pcTier || i.pcTier === pcTier);
+}
+
+// Everything that counts toward the price for a (construction tier, PC tier)
+// pair: the build for the construction tier PLUS the allowance for the PC tier.
+export function priceableItems(items: QuoteItem[], tier: TierKey | null, pcTier: TierKey | null): QuoteItem[] {
+  return [...buildItemsForTier(items, tier), ...pcAllowanceItems(items, pcTier)];
+}
+
+// Construction-tier prices — BUILD ONLY (the PC allowance is its own parallel
+// choice, priced separately).
 export function tierTotals(items: QuoteItem[], gstRegistered: boolean, gstInclusive: boolean): Record<TierKey, Totals> {
   const out = {} as Record<TierKey, Totals>;
-  for (const { key } of TIERS) out[key] = computeTotals(itemsForTier(items, key), gstRegistered, gstInclusive);
+  for (const { key } of TIERS) out[key] = computeTotals(buildItemsForTier(items, key), gstRegistered, gstInclusive);
   return out;
 }
 
-// The total that drives the stored headline + the deposit: the accepted tier if
-// chosen, otherwise the middle ("better") option as the representative figure.
+// PC-tier prices — the fixture/tile allowance for each PC level.
+export function pcTierTotals(items: QuoteItem[], gstRegistered: boolean, gstInclusive: boolean): Record<TierKey, Totals> {
+  const out = {} as Record<TierKey, Totals>;
+  for (const { key } of TIERS) out[key] = computeTotals(pcAllowanceItems(items, key), gstRegistered, gstInclusive);
+  return out;
+}
+
+// The representative tier for the stored headline/deposit: the accepted choice,
+// else the middle ("better") option.
 export function representativeTier(acceptedTier: TierKey | null): TierKey {
   return acceptedTier ?? "better";
 }
@@ -190,7 +246,11 @@ export function emptyQuote(id: string): Quote {
     tiered: false,
     acceptedTier: null,
     tierNames: { ...DEFAULT_TIER_NAMES },
+    pcTiered: false,
+    acceptedPcTier: null,
+    pcTierNames: { ...DEFAULT_PC_TIER_NAMES },
     allowanceNote: "",
+    journey: [],
     sections: [],
     items: [],
     stages: [],
