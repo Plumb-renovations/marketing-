@@ -38,3 +38,15 @@ export async function saveBrandSettings(supabase: SupabaseClient, brand: BrandSe
   }
   if (error) throw error;
 }
+
+// Targeted save for just the default PC markup % — a column-scoped upsert so it
+// never disturbs the rest of the brand/profile row (the price-list panel owns
+// this field, separate from the main brand form). Tolerates 0041 being absent.
+export async function savePcMarkupDefault(supabase: SupabaseClient, pct: number): Promise<void> {
+  const orgId = await getOrgId(supabase);
+  const row = { org_id: orgId, default_pc_markup_pct: Math.max(0, Number(pct) || 0) };
+  const { error } = await supabase.from("business_profiles").upsert(row, { onConflict: "org_id" });
+  if (error && !(error.code === "42703" || /column .* does not exist|could not find/i.test(error.message || ""))) {
+    throw error;
+  }
+}
