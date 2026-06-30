@@ -5,7 +5,7 @@ import type { PriceItem } from "@/lib/data/priceList";
 // rate is a placeholder the user edits to their own numbers; nothing here is
 // authoritative pricing. Units mirror how the trade actually charges (per m²,
 // per point, fixed package, per hour).
-export const STARTER_PRICE_LIST: Omit<PriceItem, "id" | "sortOrder" | "kind">[] = [
+export const STARTER_PRICE_LIST: Omit<PriceItem, "id" | "sortOrder" | "kind" | "costPrice" | "markupPct">[] = [
   { category: "Linings", name: "Villaboard lining", unit: "m²", unitPrice: 55, notes: "Supply + fix to walls/ceiling", trade: "Wall lining" },
   { category: "Linings", name: "Plasterboard", unit: "m²", unitPrice: 45, notes: "Supply + fix, set ready to paint", trade: "Wall lining" },
   { category: "Waterproofing", name: "Waterproofing (wet area)", unit: "m²", unitPrice: 75, notes: "AS 3740 compliant membrane", trade: "Waterproofing" },
@@ -24,7 +24,7 @@ export const STARTER_PRICE_LIST: Omit<PriceItem, "id" | "sortOrder" | "kind">[] 
 // A starter set of PC ITEMS & TILES (fixtures supplied as a PC sum) — the
 // allowance palette pulls from these. Placeholder allowances the user edits to
 // their own supplier pricing. Tiles are per m²; fixtures are per item.
-export const STARTER_PC_LIST: Omit<PriceItem, "id" | "sortOrder" | "kind">[] = [
+export const STARTER_PC_LIST: Omit<PriceItem, "id" | "sortOrder" | "kind" | "costPrice" | "markupPct">[] = [
   { category: "Tiles", name: "Floor tile (supply)", unit: "m²", unitPrice: 65, notes: "Tile supply allowance — floor", trade: "Tiling" },
   { category: "Tiles", name: "Wall tile (supply)", unit: "m²", unitPrice: 55, notes: "Tile supply allowance — wall", trade: "Tiling" },
   { category: "Tapware", name: "Shower mixer", unit: "ea", unitPrice: 320, notes: "Supply allowance", trade: "Plumbing" },

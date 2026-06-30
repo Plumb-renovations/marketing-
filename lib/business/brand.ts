@@ -34,6 +34,7 @@ export interface BrandSettings {
   defaultAllowanceNote: string; // saved framing text for the Tile & Fixture Allowance section
   defaultConfiguratorIntro: string; // saved intro framing for the client configurator
   defaultComfortQuestion: string; // saved reassurance shown under the combined total
+  defaultPcMarkupPct: number; // default markup % applied to PC items (cost→sell)
 }
 
 export const DEFAULT_BRAND: BrandSettings = {
@@ -63,6 +64,7 @@ export const DEFAULT_BRAND: BrandSettings = {
   defaultAllowanceNote: "",
   defaultConfiguratorIntro: "",
   defaultComfortQuestion: "",
+  defaultPcMarkupPct: 0,
 };
 
 export function rowToBrand(row: any): BrandSettings {
@@ -94,6 +96,7 @@ export function rowToBrand(row: any): BrandSettings {
     defaultAllowanceNote: row.default_allowance_note ?? "",
     defaultConfiguratorIntro: row.default_configurator_intro ?? "",
     defaultComfortQuestion: row.default_comfort_question ?? "",
+    defaultPcMarkupPct: row.default_pc_markup_pct != null ? Number(row.default_pc_markup_pct) : 0,
   };
 }
 

@@ -53,6 +53,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   const [savingAllowanceDefault, setSavingAllowanceDefault] = useState(false);
   const [savingIntroDefault, setSavingIntroDefault] = useState(false);
   const [savingComfortDefault, setSavingComfortDefault] = useState(false);
+  const [pcCat, setPcCat] = useState<string>(""); // selected PC category in the palette ("" = all)
   const [leads, setLeads] = useState<{ id: string; name: string; email?: string; phone?: string; suburb?: string; project?: string }[]>([]);
   const [tab, setTab] = useState<"details" | "preview">("details");
   const [showInternal, setShowInternal] = useState(false);
@@ -152,7 +153,9 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   const insertPriceItem = (p: PriceItem) => {
     const trade = (p.trade || "").trim() || null;
     const description = (p.notes || "").trim() || p.name;
-    addItem({ description, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice, trade, tradeType: trade ? inferTradeType(trade) : null });
+    // Carry the SELL price to the client-facing unit price + the internal cost to
+    // unitCost (margin stays internal, never on the client doc).
+    addItem({ description, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice, unitCost: p.costPrice ?? null, trade, tradeType: trade ? inferTradeType(trade) : null });
   };
   // Set/clear a line's trade; when a trade is set and no in-house/sub flag exists
   // yet, default it from the known in-house trades (still user-overridable).
@@ -172,7 +175,8 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
     if (existing) { upd({ items: q.items.filter((it) => it.id !== existing.id) }); return; }
     const trade = (p.trade || "").trim() || null;
     const description = (p.notes || "").trim() || p.name;
-    addItem({ description, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice, trade, tradeType: trade ? inferTradeType(trade) : null, tier: null, allowance: true, sourcePriceItemId: p.id });
+    // Sell price → client-facing unitPrice; supplier cost → internal unitCost.
+    addItem({ description, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice, unitCost: p.costPrice ?? null, trade, tradeType: trade ? inferTradeType(trade) : null, tier: null, allowance: true, sourcePriceItemId: p.id });
   };
   const allowanceItems = allowanceItemsOf(q.items);
   const allowanceSubtotal = computeTotals(allowanceItems, brand.gstRegistered, q.gstInclusive).total;
@@ -790,23 +794,32 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
             </div>
 
             {pcGroups.length > 0 ? (
-              <div className="mt-3 space-y-3">
-                <p className="text-[11px] text-slate-500">Tick the PC items &amp; tiles for this bathroom — each adds a priced allowance line; untick to remove. Where there are multiple versions, pick the one to include.</p>
-                {pcGroups.map(([cat, list]) => (
-                  <div key={cat}>
-                    <p className="mb-1 text-[11px] uppercase tracking-wider text-slate-500 font-display">{cat}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {list.map((p) => {
-                        const on = !!allowanceLineFor(p.id);
-                        return (
-                          <button key={p.id} type="button" onClick={() => togglePriceItemAllowance(p)} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition ${on ? "border-amber-500/50 bg-amber-500/10 text-amber-200" : "border-slate-700 text-slate-300 hover:bg-slate-800"}`}>
-                            {on ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />} {p.name} <span className="text-slate-500">· {money(p.unitPrice, brand.currency)}/{p.unit}</span>
-                          </button>
-                        );
-                      })}
+              <div className="mt-3 space-y-2">
+                <p className="text-[11px] text-slate-500">Pick a category, then tick the PC items &amp; tiles for this bathroom — each adds a priced allowance line (the client sees the sell price); untick to remove.</p>
+                {/* Category-driven: choose a category and see only those items. */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button type="button" onClick={() => setPcCat("")} className={`rounded-lg border px-2.5 py-1.5 text-xs transition ${pcCat === "" ? "border-amber-500/50 bg-amber-500/10 text-amber-200" : "border-slate-700 text-slate-400 hover:bg-slate-800"}`}>All</button>
+                  {pcGroups.map(([cat, list]) => (
+                    <button key={cat} type="button" onClick={() => setPcCat(cat)} className={`rounded-lg border px-2.5 py-1.5 text-xs transition ${pcCat === cat ? "border-amber-500/50 bg-amber-500/10 text-amber-200" : "border-slate-700 text-slate-400 hover:bg-slate-800"}`}>{cat} <span className="text-slate-500">{list.length}</span></button>
+                  ))}
+                </div>
+                <div className="space-y-3 pt-1">
+                  {pcGroups.filter(([cat]) => pcCat === "" || cat === pcCat).map(([cat, list]) => (
+                    <div key={cat}>
+                      <p className="mb-1 text-[11px] uppercase tracking-wider text-slate-500 font-display">{cat}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {list.map((p) => {
+                          const on = !!allowanceLineFor(p.id);
+                          return (
+                            <button key={p.id} type="button" onClick={() => togglePriceItemAllowance(p)} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition ${on ? "border-amber-500/50 bg-amber-500/10 text-amber-200" : "border-slate-700 text-slate-300 hover:bg-slate-800"}`}>
+                              {on ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />} {p.name} <span className="text-slate-500">· {money(p.unitPrice, brand.currency)}/{p.unit}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             ) : (
               <p className="mt-3 text-xs text-slate-500">Add PC items &amp; tiles in Branding &amp; Quotes &rarr; Price list (the &ldquo;PC items &amp; tiles&rdquo; section) to tick them on here. You can also flag any line in the table above as &ldquo;Allowance&rdquo;.</p>
