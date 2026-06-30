@@ -126,6 +126,7 @@ export default function PremiumQuoteTemplate({
       >
         {/* ===================== MASTHEAD ===================== */}
         <div
+          className="quote-masthead"
           style={{
             position: "relative",
             display: "flex",
@@ -191,7 +192,7 @@ export default function PremiumQuoteTemplate({
         </div>
 
         {/* ===================== PARTIES ===================== */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 30, marginTop: 28 }}>
+        <div className="quote-parties" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 30, marginTop: 28 }}>
           <div>
             <div style={partyH(copper)}>Prepared for</div>
             <div style={{ fontSize: 13.5, color: ink, lineHeight: 1.7 }}>
@@ -243,7 +244,7 @@ export default function PremiumQuoteTemplate({
                 <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Choose your option</span>
                 <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>each includes the base build above</span>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginTop: 16 }}>
+              <div className="quote-tier-grid" style={{ marginTop: 16 }}>
                 {tierBlocks.map((t) => (
                   <div key={t.key} style={{ border: `1px solid ${t.accepted ? copper : hairStrong}`, borderRadius: 6, padding: "16px 16px 18px", background: t.accepted ? bandBg : "transparent", display: "flex", flexDirection: "column" }}>
                     <div style={{ fontFamily: DISP, fontWeight: 700, fontSize: 18, color: ink }}>{t.label}</div>
@@ -387,7 +388,7 @@ export default function PremiumQuoteTemplate({
         {/* ===================== NOTES + ACCEPT ===================== */}
         {/* On the interactive client view the accept block is print-only, so the
             notes take the full width on screen (no empty right column). */}
-        <div style={{ display: "grid", gridTemplateColumns: acceptBlockPrintOnly ? "1fr" : "1.1fr .9fr", gap: 34, marginTop: 38 }}>
+        <div className="quote-notes-grid" style={{ display: "grid", gridTemplateColumns: acceptBlockPrintOnly ? "1fr" : "1.1fr .9fr", gap: 34, marginTop: 38 }}>
           <div>
             {notes.length > 0 && (
               <>
