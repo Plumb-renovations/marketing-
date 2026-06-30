@@ -67,7 +67,18 @@ input[type="number"]::-webkit-inner-spin-button {
    The "Save as PDF" action switches to the Preview tab and calls window.print().
    We hide all app chrome and show only the .quote-print-root subtree, so the
    browser's print-to-PDF outputs the document exactly as previewed. */
+/* The branded quote document carries a decorative "accept & sign" block for the
+   printed PDF. On the interactive client view that block is suppressed on screen
+   (the real, wired Accept action lives below the document) but kept for print —
+   so there's never a dead duplicate accept box on screen. */
+.quote-accept-print-only {
+  display: none;
+}
+
 @media print {
+  .quote-accept-print-only {
+    display: block !important;
+  }
   body {
     background: #fff !important;
   }

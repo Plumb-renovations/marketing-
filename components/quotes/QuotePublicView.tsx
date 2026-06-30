@@ -116,7 +116,9 @@ export default function QuotePublicView({
       </div>
 
       <div className="quote-print-root" style={{ padding: "24px 0 24px" }}>
-        <QuoteDocument quote={quote} brand={brand} businessName={businessName} />
+        {/* acceptBlockPrintOnly: hide the document's decorative accept block on
+            screen (the wired Accept action is below) but keep it on the PDF. */}
+        <QuoteDocument quote={quote} brand={brand} businessName={businessName} acceptBlockPrintOnly />
       </div>
 
       {/* Functional accept (hidden when printing). The template's accept block is

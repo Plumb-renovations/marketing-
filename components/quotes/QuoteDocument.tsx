@@ -11,14 +11,19 @@ export default function QuoteDocument({
   quote,
   brand,
   businessName,
+  acceptBlockPrintOnly = false,
 }: {
   quote: Quote;
   brand: BrandSettings;
   businessName: string;
+  // Forwarded to the template: on the interactive client view the decorative
+  // accept/sign block becomes print-only (the wired Accept action lives outside
+  // the document), so there's no dead duplicate on screen.
+  acceptBlockPrintOnly?: boolean;
 }) {
   switch (brand.quoteTemplate) {
     case "premium":
     default:
-      return <PremiumQuoteTemplate quote={quote} brand={brand} businessName={businessName} />;
+      return <PremiumQuoteTemplate quote={quote} brand={brand} businessName={businessName} acceptBlockPrintOnly={acceptBlockPrintOnly} />;
   }
 }
