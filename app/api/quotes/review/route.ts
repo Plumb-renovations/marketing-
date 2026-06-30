@@ -22,7 +22,21 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+// Always return BEFORE the serverless function timeout. The deterministic
+// pricing + scope checks are instant; the AI wording is given whatever time is
+// left under this budget and aborted past it — so a big tiered/allowance quote
+// returns the pricing/scope review (partial) instead of a 504. Sits under the
+// ~10s limit on the current plan with headroom for the pre-AI reads + response.
+const REVIEW_BUDGET_MS = 8500;
+
+// Collapse a (possibly multi-line, bulleted) description to one trimmed line and
+// cap its length — keeps the wording review meaningful while bounding tokens.
+const oneLine = (s?: string) => (s || "").replace(/\s*\r?\n+\s*/g, " · ").replace(/\s+/g, " ").trim();
+const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
+const MAX_AI_ITEMS = 60;
+
 export async function POST(req: Request) {
+  const started = Date.now();
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -58,10 +72,22 @@ export async function POST(req: Request) {
     const pricing = analysePricing(items, priceList);
     const keywords = detectScopeFlags(quote);
 
-    // ---- AI wording-to-close ----
-    const itemsText = items
-      .map((it, i) => `  [${i + 1}] ${it.description || "(unnamed)"} · ${Number(it.qty) || 0} ${it.unit || "ea"} · ${money(Number(it.unitPrice) || 0)}${it.unitCost != null ? ` · [cost ${money(Number(it.unitCost))}, margin ${Number(it.unitPrice) > 0 ? Math.round(((Number(it.unitPrice) - Number(it.unitCost)) / Number(it.unitPrice)) * 100) : 0}%]` : ""}`)
-      .join("\n");
+    // ---- AI wording-to-close (lean payload) ----
+    // Send each line ONCE with its description collapsed/trimmed, tagged with its
+    // tier / allowance status (not three duplicated copies for a tiered quote),
+    // and cap the number of lines — so a large tiered + allowance quote with long
+    // dot-point descriptions doesn't blow out the token count / AI latency.
+    const shown = items.slice(0, MAX_AI_ITEMS);
+    const itemsText = shown
+      .map((it, i) => {
+        const desc = trunc(oneLine(it.description) || "(unnamed)", 140);
+        const margin = it.unitCost != null && Number(it.unitPrice) > 0
+          ? ` [margin ${Math.round(((Number(it.unitPrice) - Number(it.unitCost)) / Number(it.unitPrice)) * 100)}%]`
+          : "";
+        const tag = (it as any).allowance ? " {allowance}" : it.tier ? ` {${it.tier}}` : "";
+        return `  [${i + 1}] ${desc}${tag} · ${Number(it.qty) || 0} ${it.unit || "ea"} · ${money(Number(it.unitPrice) || 0)}${margin}`;
+      })
+      .join("\n") + (items.length > MAX_AI_ITEMS ? `\n  …(+${items.length - MAX_AI_ITEMS} more lines)` : "");
     const briefingText = [
       qual?.motivation ? `motivation: ${qual.motivation}` : "",
       qual?.vision ? `vision: ${qual.vision}` : "",
@@ -76,23 +102,34 @@ export async function POST(req: Request) {
       : "";
     const keywordText = keywords.length ? keywords.map((k) => `${k.label} ("${k.phrase}"): ${k.note}`).join(" | ") : "";
 
+    // Give the AI whatever time is left under the budget, then abort it so the
+    // route returns the (already-computed) deterministic review instead of
+    // running into the function timeout / a 504.
+    const aiBudget = Math.max(1500, REVIEW_BUDGET_MS - (Date.now() - started));
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), aiBudget);
     let ai: any = null;
+    let aiTimedOut = false;
     try {
       ai = await runGenerator("quote-review", {
         quoteReview: {
           project: quote.projectName || quote.reference || "",
-          scope: quote.scopeDescription || "",
+          scope: trunc(oneLine(quote.scopeDescription), 600),
           itemsText,
-          inclusions: quote.inclusions || "",
-          exclusions: quote.exclusions || "",
+          inclusions: trunc(oneLine(quote.inclusions), 400),
+          exclusions: trunc(oneLine(quote.exclusions), 400),
           total: typeof body?.total === "number" ? money(body.total) : "",
           briefingText,
           pricingText,
           keywordText,
         },
-      }, profile);
+      }, profile, controller.signal);
     } catch (e) {
-      console.error("[quote-review] AI wording failed:", (e as Error).message);
+      aiTimedOut = controller.signal.aborted;
+      if (aiTimedOut) console.warn(`[quote-review] AI wording aborted after ~${aiBudget}ms — returning deterministic review only`);
+      else console.error("[quote-review] AI wording failed:", (e as Error).message);
+    } finally {
+      clearTimeout(timer);
     }
 
     // Map each AI wording suggestion to the exact line it targets so the client
@@ -124,6 +161,7 @@ export async function POST(req: Request) {
       pricing,
       keywords,
       aiAvailable: !!ai,
+      note: aiTimedOut ? "Pricing & scope checks are ready. Hazel's wording suggestions took too long on this large quote — run the review again, or tighten the line descriptions, to get them." : undefined,
     });
   } catch (e: any) {
     console.error("[quote-review] failed:", e?.message || e);

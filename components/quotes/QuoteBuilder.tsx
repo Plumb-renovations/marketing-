@@ -235,7 +235,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
         exclusions: q.exclusions,
         terms: q.terms,
         introNote: q.introNote,
-        items: q.items.map((it) => ({ id: it.id, description: it.description, detail: it.detail, qty: it.qty, unit: it.unit, unitPrice: it.unitPrice, unitCost: it.unitCost })),
+        items: q.items.map((it) => ({ id: it.id, description: it.description, detail: it.detail, qty: it.qty, unit: it.unit, unitPrice: it.unitPrice, unitCost: it.unitCost, tier: it.tier, allowance: it.allowance })),
       }, totals.total);
       setReview(r);
       setAppliedWording(new Set()); // fresh review → nothing applied yet
@@ -387,6 +387,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
               <div>
                 <h3 className="font-display text-sm font-semibold text-slate-100">Hazel&apos;s review</h3>
                 <p className="mt-0.5 text-sm text-fuchsia-100/90">{review.headline}</p>
+                {review.note && <p className="mt-1 text-[11px] text-amber-300">{review.note}</p>}
               </div>
             </div>
             <button onClick={() => setReview(null)} title="Dismiss" className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition hover:bg-slate-800"><X className="h-3.5 w-3.5" /></button>
