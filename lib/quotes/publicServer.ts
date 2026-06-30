@@ -14,25 +14,28 @@ export interface PublicQuoteBundle {
   businessName: string;
 }
 
-// Doc/section/stage columns are fixed; the line-item column list is built so we
-// can drop `trade` (0032) when that column isn't present yet. Internal unit_cost
+// The select is built with an `extra` flag so we can drop the newer columns
+// (trade/tier from 0032/0033) when they aren't present yet. Internal unit_cost
 // is never selected, so it can never leak to the client document.
-const DOC_COLS =
-  "id, org_id, quote_number, reference, status, client_name, client_email, client_phone, client_address, project_name, site_address, quote_date, valid_until, scope_description, intro_note, terms, inclusions, exclusions, gst_inclusive, subtotal, gst_amount, total, public_token, sent_at, viewed_at, view_count, accepted_at, " +
-  "quote_doc_sections(id, name, sort_order), ";
-const STAGE_COLS = ", quote_doc_stages(id, label, milestone_note, percent, fixed_amount, amount, status, sort_order)";
-const itemCols = (withTrade: boolean) =>
-  `quote_doc_items(id, section_id, description, detail, qty, unit, unit_price, amount, sort_order${withTrade ? ", trade" : ""})`;
+const DOC_SCALARS =
+  "id, org_id, quote_number, reference, status, client_name, client_email, client_phone, client_address, project_name, site_address, quote_date, valid_until, scope_description, intro_note, terms, inclusions, exclusions, gst_inclusive, subtotal, gst_amount, total, public_token, sent_at, viewed_at, view_count, accepted_at";
+const SECTIONS = "quote_doc_sections(id, name, sort_order)";
+const STAGES = "quote_doc_stages(id, label, milestone_note, percent, fixed_amount, amount, status, sort_order)";
+const itemCols = (extra: boolean) =>
+  `quote_doc_items(id, section_id, description, detail, qty, unit, unit_price, amount, sort_order${extra ? ", trade, tier" : ""})`;
+const buildSelect = (extra: boolean) =>
+  [DOC_SCALARS, extra ? "tiered, accepted_tier" : null, SECTIONS, itemCols(extra), STAGES].filter(Boolean).join(", ");
 
 export async function fetchPublicQuote(token: string): Promise<PublicQuoteBundle | null> {
   if (!token) return null;
   const admin = createAdminClient();
 
-  // Prefer selecting `trade` (for the client's by-trade consolidation); if 0032
-  // isn't applied the column is missing, so fall back to the legacy select.
-  let { data: row, error } = await admin.from("quote_docs").select(DOC_COLS + itemCols(true) + STAGE_COLS).eq("public_token", token).maybeSingle();
+  // Prefer the full select (trade grouping + Good/Better/Best tiers); if 0032/
+  // 0033 aren't applied those columns are missing, so fall back to the legacy
+  // select rather than 500-ing the public page.
+  let { data: row, error } = await admin.from("quote_docs").select(buildSelect(true)).eq("public_token", token).maybeSingle();
   if (error && (error.code === "42703" || /column .* does not exist/i.test(error.message || ""))) {
-    ({ data: row, error } = await admin.from("quote_docs").select(DOC_COLS + itemCols(false) + STAGE_COLS).eq("public_token", token).maybeSingle());
+    ({ data: row, error } = await admin.from("quote_docs").select(buildSelect(false)).eq("public_token", token).maybeSingle());
   }
   if (error || !row) return null;
 
@@ -90,6 +93,7 @@ function mapPublicQuote(row: any): Quote {
       sortOrder: it.sort_order ?? 0,
       trade: it.trade ?? null,
       tradeType: null, // internal flag — never exposed publicly
+      tier: it.tier ?? null,
     }));
   const stages = computeStageAmounts(
     (row.quote_doc_stages || [])
@@ -135,6 +139,8 @@ function mapPublicQuote(row: any): Quote {
     viewCount: row.view_count ?? 0,
     acceptedAt: row.accepted_at ?? null,
     publicToken: row.public_token ?? null,
+    tiered: row.tiered ?? false,
+    acceptedTier: row.accepted_tier ?? null,
     sections,
     items,
     stages,

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Printer, Loader2, CheckCircle2 } from "lucide-react";
 import QuoteDocument from "@/components/quotes/QuoteDocument";
-import { money, type Quote } from "@/lib/quotes/model";
+import { money, tierTotals, TIERS, type Quote, type TierKey } from "@/lib/quotes/model";
 import type { BrandSettings } from "@/lib/business/brand";
 
 // The public, mobile-friendly view of a sent quote. Renders the branded
@@ -49,28 +49,33 @@ export default function QuotePublicView({
 
   const [accepted, setAccepted] = useState(quote.status === "accepted");
   const [name, setName] = useState(quote.clientName || "");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<TierKey | "single" | null>(null);
   const [error, setError] = useState("");
+  const [chosenTier, setChosenTier] = useState<TierKey | null>(quote.acceptedTier);
 
-  const accept = async () => {
-    setBusy(true);
+  // Per-tier prices for the option cards (shared base + that tier's finishes).
+  const tiers = tierTotals(quote.items, brand.gstRegistered, quote.gstInclusive);
+
+  const accept = async (tier?: TierKey) => {
+    setBusy(tier || "single");
     setError("");
     try {
       const res = await fetch("/api/quotes/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, name }),
+        body: JSON.stringify({ token, name, tier }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j?.ok) {
         setError("Sorry — we couldn't record your acceptance. Please try again or contact us.");
         return;
       }
+      if (tier) setChosenTier(tier);
       setAccepted(true);
     } catch {
       setError("Sorry — we couldn't record your acceptance. Please try again or contact us.");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -127,10 +132,48 @@ export default function QuotePublicView({
         {accepted ? (
           <div style={{ borderRadius: 12, padding: "22px 24px", background: "#fff", border: `1px solid ${accent}55`, textAlign: "center" }}>
             <CheckCircle2 style={{ width: 30, height: 30, color: "#3aa757", margin: "0 auto 8px" }} />
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#242220" }}>Quote accepted — thank you!</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#242220" }}>
+              {chosenTier ? `${TIERS.find((t) => t.key === chosenTier)?.label} option accepted — thank you!` : "Quote accepted — thank you!"}
+            </div>
             <p style={{ fontSize: 14, color: "#6b6358", marginTop: 6, lineHeight: 1.6 }}>
               {businessName || "We"} will be in touch to confirm your start date. A deposit invoice
-              {brand.depositPercent ? ` (${brand.depositPercent}% of ${money(quote.total, ccy)})` : ""} is on its way to your email to lock it in.
+              {brand.depositPercent ? ` (${brand.depositPercent}% of ${money(chosenTier ? tiers[chosenTier].total : quote.total, ccy)})` : ""} is on its way to your email to lock it in.
+            </p>
+          </div>
+        ) : quote.tiered ? (
+          <div style={{ borderRadius: 12, padding: "22px 24px", background: "#fff", border: "1px solid #DBD2C4" }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#242220" }}>Choose your option</div>
+            <p style={{ fontSize: 14, color: "#6b6358", margin: "6px 0 14px", lineHeight: 1.6 }}>
+              Pick the option that suits you. We&apos;ll email a {brand.depositPercent || 5}% deposit invoice for your chosen option to lock in your start date.
+            </p>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+              style={{ width: "100%", boxSizing: "border-box", border: "1px solid #DBD2C4", borderRadius: 8, padding: "11px 12px", fontSize: 14, color: "#242220", background: "#FCFAF5", marginBottom: 12 }}
+            />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+              {TIERS.map((t) => (
+                <div key={t.key} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, border: `1px solid ${t.key === "better" ? accent : "#DBD2C4"}`, borderRadius: 10, padding: "12px 14px" }}>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#242220" }}>
+                      {t.label}{t.key === "better" ? <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: accent }}>Most popular</span> : null}
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: accent, marginTop: 2 }}>{money(tiers[t.key].total, ccy)} <span style={{ fontSize: 11, fontWeight: 500, color: "#9e978b" }}>{brand.gstRegistered ? "inc GST" : ""}</span></div>
+                  </div>
+                  <button
+                    onClick={() => accept(t.key)}
+                    disabled={busy !== null}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 8, background: accent, color: "#fff", border: 0, borderRadius: 8, padding: "11px 18px", fontSize: 14, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy && busy !== t.key ? 0.5 : 1 }}
+                  >
+                    {busy === t.key ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : null} Accept {t.label}
+                  </button>
+                </div>
+              ))}
+            </div>
+            {error && <p style={{ marginTop: 10, fontSize: 13, color: "#c0392b" }}>{error}</p>}
+            <p style={{ marginTop: 12, fontSize: 11.5, color: "#9e978b" }}>
+              Accepting confirms agreement to the scope, pricing and payment schedule for your chosen option.
             </p>
           </div>
         ) : (
@@ -147,11 +190,11 @@ export default function QuotePublicView({
                 style={{ flex: "1 1 200px", minWidth: 0, border: "1px solid #DBD2C4", borderRadius: 8, padding: "11px 12px", fontSize: 14, color: "#242220", background: "#FCFAF5" }}
               />
               <button
-                onClick={accept}
-                disabled={busy}
+                onClick={() => accept()}
+                disabled={busy !== null}
                 style={{ display: "inline-flex", alignItems: "center", gap: 8, background: accent, color: "#fff", border: 0, borderRadius: 8, padding: "12px 22px", fontSize: 15, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}
               >
-                {busy ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : null} Accept &amp; secure my date
+                {busy === "single" ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : null} Accept &amp; secure my date
               </button>
             </div>
             {error && <p style={{ marginTop: 10, fontSize: 13, color: "#c0392b" }}>{error}</p>}

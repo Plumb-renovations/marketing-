@@ -3,6 +3,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { rowToBrand } from "@/lib/business/brand";
 import { emailConfigured, sendEmail } from "@/lib/email/send";
 import { computeDeposit, missingInvoiceDetails, buildDepositInvoiceEmail } from "@/lib/quotes/invoice";
+import { computeTotals } from "@/lib/quotes/model";
+
+const isUndefinedColumn = (e: any) =>
+  e?.code === "42703" || /column .* does not exist|could not find/i.test(e?.message || "");
 
 // PUBLIC accept endpoint for the tracked quote page. The visitor is anonymous,
 // so EVERY write here (accept + lead-won + deposit invoice) uses the service-role
@@ -29,28 +33,66 @@ export async function POST(req: Request) {
   const admin = createAdminClient();
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
 
-  const { data: q, error } = await admin
+  // Select with the tier columns; fall back if 0033 isn't applied (so accept
+  // never breaks for normal quotes pre-migration).
+  let { data: q, error } = await admin
     .from("quote_docs")
-    .select("id, org_id, lead_id, status, total, quote_number, client_name, client_email, gst_inclusive")
+    .select("id, org_id, lead_id, status, subtotal, gst_amount, total, quote_number, client_name, client_email, gst_inclusive, tiered, accepted_tier")
     .eq("public_token", token)
     .maybeSingle();
+  if (error && isUndefinedColumn(error)) {
+    ({ data: q, error } = await admin
+      .from("quote_docs")
+      .select("id, org_id, lead_id, status, subtotal, gst_amount, total, quote_number, client_name, client_email, gst_inclusive")
+      .eq("public_token", token)
+      .maybeSingle());
+  }
   if (error || !q) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   console.log(`[quotes] accept request quote=${q.id} number=${q.quote_number} status=${q.status} total=${q.total}`);
 
+  // Tiered quote → resolve the accepted tier and switch the totals to it, so the
+  // accept record, the lead's job value and the deposit invoice all reflect the
+  // option the client actually chose. (On a re-accept we keep the stored tier.)
+  let acceptedTier: string | null = (q as any).accepted_tier || null;
+  if ((q as any).tiered) {
+    const reqTier = ["good", "better", "best"].includes(String(body?.tier)) ? String(body.tier) : null;
+    const tier = acceptedTier || reqTier;
+    if (!tier) return NextResponse.json({ error: "missing_tier", message: "Please choose an option to accept." }, { status: 400 });
+    acceptedTier = tier;
+    const { data: prof } = await admin.from("business_profiles").select("gst_registered").eq("org_id", q.org_id).maybeSingle();
+    const gstRegistered = (prof as any)?.gst_registered ?? true;
+    const { data: items } = await admin.from("quote_doc_items").select("qty, unit_price, tier").eq("quote_id", q.id);
+    const tierItems = (items || [])
+      .filter((it: any) => !it.tier || it.tier === tier)
+      .map((it: any) => ({ qty: Number(it.qty) || 0, unitPrice: Number(it.unit_price) || 0 }));
+    const t = computeTotals(tierItems, gstRegistered, (q as any).gst_inclusive);
+    q.subtotal = t.subtotal; q.gst_amount = t.gstAmount; q.total = t.total;
+    console.log(`[quotes] tiered accept quote=${q.id} tier=${tier} total=${q.total}`);
+  }
+
   // 1) Record acceptance (only if not already accepted) + flip the lead to won.
   const alreadyAccepted = q.status === "accepted";
   if (!alreadyAccepted) {
-    const { error: upErr } = await admin
-      .from("quote_docs")
-      .update({
-        status: "accepted",
-        accepted_at: new Date().toISOString(),
-        accepted_by_name: acceptedByName || q.client_name || null,
-        accept_method: "online",
-        accept_ip: ip,
-      })
-      .eq("id", q.id);
+    const update: Record<string, any> = {
+      status: "accepted",
+      accepted_at: new Date().toISOString(),
+      accepted_by_name: acceptedByName || q.client_name || null,
+      accept_method: "online",
+      accept_ip: ip,
+    };
+    // Lock in the chosen tier + its totals as the agreed quote.
+    if ((q as any).tiered) {
+      update.accepted_tier = acceptedTier;
+      update.subtotal = q.subtotal;
+      update.gst_amount = q.gst_amount;
+      update.total = q.total;
+    }
+    let { error: upErr } = await admin.from("quote_docs").update(update).eq("id", q.id);
+    if (upErr && isUndefinedColumn(upErr)) {
+      const { accepted_tier, ...legacy } = update;
+      ({ error: upErr } = await admin.from("quote_docs").update(legacy).eq("id", q.id));
+    }
     if (upErr) return NextResponse.json({ error: "update_failed", message: upErr.message }, { status: 502 });
 
     if (q.lead_id) {
