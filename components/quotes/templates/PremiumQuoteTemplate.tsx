@@ -1,6 +1,6 @@
 "use client";
 
-import { money, consolidateByTrade, computeTotals, itemsForTier, TIERS, type Quote } from "@/lib/quotes/model";
+import { money, consolidateByTrade, computeTotals, itemsForTier, TIERS, tierName, type Quote } from "@/lib/quotes/model";
 import type { BrandSettings } from "@/lib/business/brand";
 
 // The PREMIUM client-facing quote — a faithful reproduction of the "Cream &
@@ -91,7 +91,7 @@ export default function PremiumQuoteTemplate({
   const sharedLines = consolidateByTrade(quote.items.filter((i) => !i.tier));
   const tierBlocks = TIERS.map((t) => ({
     key: t.key,
-    label: t.label,
+    label: tierName(quote.tierNames, t.key),
     lines: consolidateByTrade(quote.items.filter((i) => i.tier === t.key)),
     total: computeTotals(itemsForTier(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).total,
     accepted: quote.acceptedTier === t.key,
