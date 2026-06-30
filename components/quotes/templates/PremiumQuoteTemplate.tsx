@@ -1,6 +1,6 @@
 "use client";
 
-import { money, consolidateByTrade, type Quote } from "@/lib/quotes/model";
+import { money, consolidateByTrade, computeTotals, itemsForTier, TIERS, type Quote } from "@/lib/quotes/model";
 import type { BrandSettings } from "@/lib/business/brand";
 
 // The PREMIUM client-facing quote — a faithful reproduction of the "Cream &
@@ -84,6 +84,18 @@ export default function PremiumQuoteTemplate({
   // Quotes with no trades fall back to the existing section view, unchanged.
   const tradeLines = consolidateByTrade(quote.items);
   const hasTrades = quote.items.some((i) => (i.trade || "").trim());
+
+  // Good/Better/Best: the shared base build (scope shown once) + a priced option
+  // per tier (each tier's finishes + its combined total = base + finishes).
+  const tiered = !!quote.tiered;
+  const sharedLines = consolidateByTrade(quote.items.filter((i) => !i.tier));
+  const tierBlocks = TIERS.map((t) => ({
+    key: t.key,
+    label: t.label,
+    lines: consolidateByTrade(quote.items.filter((i) => i.tier === t.key)),
+    total: computeTotals(itemsForTier(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).total,
+    accepted: quote.acceptedTier === t.key,
+  }));
 
   // Wordmark fallback (no uploaded logo): business name → first word in script,
   // the remaining words as a spaced sub-label (matches the reference lockup).
@@ -202,8 +214,61 @@ export default function PremiumQuoteTemplate({
           <p style={{ margin: "30px 0 4px", fontSize: 14, color: muted, maxWidth: "62ch" }}>{quote.introNote}</p>
         )}
 
-        {/* ===================== SCOPE — BY TRADE ===================== */}
-        {hasTrades ? (
+        {/* ===================== SCOPE ===================== */}
+        {tiered ? (
+          <>
+            {/* Shared base build — shown once, included in every option */}
+            {sharedLines.length > 0 && (
+              <div style={{ marginTop: 30 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
+                  <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Included in every option</span>
+                  <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>the base build</span>
+                </div>
+                {sharedLines.map((t) => (
+                  <div key={t.key} style={{ padding: "14px 0", borderBottom: `1px solid ${hair}` }}>
+                    <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 16, color: ink }}>{t.label}</span>
+                    {t.bullets.length > 0 && (
+                      <ul style={{ margin: "8px 0 0", paddingLeft: 18, listStyle: "disc", color: muted }}>
+                        {t.bullets.map((b, bi) => <li key={bi} style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 3, whiteSpace: "pre-wrap" }}>{b}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Choose your option — three priced tiers (base + that tier's finishes) */}
+            <div style={{ marginTop: 34 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
+                <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Choose your option</span>
+                <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>each includes the base build above</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginTop: 16 }}>
+                {tierBlocks.map((t) => (
+                  <div key={t.key} style={{ border: `1px solid ${t.accepted ? copper : hairStrong}`, borderRadius: 6, padding: "16px 16px 18px", background: t.accepted ? bandBg : "transparent", display: "flex", flexDirection: "column" }}>
+                    <div style={{ fontFamily: DISP, fontWeight: 700, fontSize: 18, color: ink }}>{t.label}</div>
+                    <div style={{ fontFamily: DISP, fontWeight: 600, fontSize: 24, color: copper, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>{money(t.total, ccy)}</div>
+                    <div style={{ fontSize: 10.5, color: faint, marginBottom: 10 }}>{brand.gstRegistered ? "inc GST" : ccy}{t.accepted ? " · accepted" : ""}</div>
+                    {t.lines.length > 0 ? (
+                      t.lines.map((g) => (
+                        <div key={g.key} style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: ink }}>{g.label}</div>
+                          {g.bullets.length > 0 && (
+                            <ul style={{ margin: "3px 0 0", paddingLeft: 15, listStyle: "disc", color: muted }}>
+                              {g.bullets.map((b, bi) => <li key={bi} style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 2, whiteSpace: "pre-wrap" }}>{b}</li>)}
+                            </ul>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ fontSize: 12, color: faint }}>Base build as above.</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : hasTrades ? (
           <div style={{ marginTop: 30 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
               <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Scope of works</span>
@@ -263,20 +328,22 @@ export default function PremiumQuoteTemplate({
           );
         })}
 
-        {/* ===================== TOTALS ===================== */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 26 }}>
-          <div style={{ width: 322 }}>
-            <div style={totalRow(muted)}><span>Subtotal{brand.gstRegistered ? " (ex GST)" : ""}</span><b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{money(quote.subtotal, ccy)}</b></div>
-            {brand.gstRegistered && (
-              <div style={totalRow(muted)}><span>GST 10%{quote.gstInclusive ? " (incl.)" : ""}</span><b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{money(quote.gstAmount, ccy)}</b></div>
-            )}
-            <div style={{ borderTop: `2px solid ${ink}`, marginTop: 6, paddingTop: 14, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 19 }}>Total{brand.gstRegistered ? " (inc GST)" : ""}</span>
-              <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 30, fontVariantNumeric: "tabular-nums", color: ink }}>{money(quote.total, ccy)}</span>
+        {/* ===================== TOTALS (single-price quotes only) ============= */}
+        {!tiered && (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 26 }}>
+            <div style={{ width: 322 }}>
+              <div style={totalRow(muted)}><span>Subtotal{brand.gstRegistered ? " (ex GST)" : ""}</span><b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{money(quote.subtotal, ccy)}</b></div>
+              {brand.gstRegistered && (
+                <div style={totalRow(muted)}><span>GST 10%{quote.gstInclusive ? " (incl.)" : ""}</span><b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{money(quote.gstAmount, ccy)}</b></div>
+              )}
+              <div style={{ borderTop: `2px solid ${ink}`, marginTop: 6, paddingTop: 14, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 19 }}>Total{brand.gstRegistered ? " (inc GST)" : ""}</span>
+                <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 30, fontVariantNumeric: "tabular-nums", color: ink }}>{money(quote.total, ccy)}</span>
+              </div>
+              <div style={{ textAlign: "right", fontSize: 11.5, color: faint, marginTop: 4 }}>{gstNote}</div>
             </div>
-            <div style={{ textAlign: "right", fontSize: 11.5, color: faint, marginTop: 4 }}>{gstNote}</div>
           </div>
-        </div>
+        )}
 
         {/* ===================== PAYMENT SCHEDULE ===================== */}
         {quote.stages.length > 0 && (
@@ -284,7 +351,7 @@ export default function PremiumQuoteTemplate({
             <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: `linear-gradient(${copper}, ${copperSoft})` }} />
             <h3 style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, margin: "0 0 4px" }}>Payment schedule</h3>
             <p style={{ fontSize: 12.5, color: muted, margin: "0 0 16px" }}>
-              Progress claims drawn against the quoted total. Each stage is invoiced on completion.
+              Progress claims drawn against the quoted total. Each stage is invoiced on completion.{tiered ? " Stage amounts apply to the option you choose." : ""}
             </p>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>

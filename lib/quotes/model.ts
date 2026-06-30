@@ -3,6 +3,13 @@
 
 export type QuoteStatus = "draft" | "sent" | "viewed" | "accepted" | "declined" | "expired";
 export type TradeType = "in_house" | "sub_trade";
+export type TierKey = "good" | "better" | "best";
+
+export const TIERS: { key: TierKey; label: string }[] = [
+  { key: "good", label: "Good" },
+  { key: "better", label: "Better" },
+  { key: "best", label: "Best" },
+];
 
 export interface QuoteItem {
   id: string;
@@ -19,6 +26,9 @@ export interface QuoteItem {
   // (a flag for the later back-costing feature). Both optional/null when unset.
   trade?: string | null;
   tradeType?: TradeType | null;
+  // Good/Better/Best: null = SHARED across all tiers (the base build); else this
+  // component belongs only to that tier's finishes. Ignored unless quote.tiered.
+  tier?: TierKey | null;
 }
 
 export interface QuoteSection {
@@ -66,6 +76,8 @@ export interface Quote {
   viewCount: number;
   acceptedAt: string | null;
   publicToken: string | null;
+  tiered: boolean; // Good/Better/Best mode (off = normal single-price quote)
+  acceptedTier: TierKey | null; // which tier the client accepted
   sections: QuoteSection[];
   items: QuoteItem[];
   stages: QuoteStage[];
@@ -87,6 +99,28 @@ export function computeTotals(items: { qty: number; unitPrice: number }[], gstRe
   }
   const gstAmount = round2(lineSum * GST_RATE);
   return { subtotal: lineSum, gstAmount, total: round2(lineSum + gstAmount) };
+}
+
+// ---- Good/Better/Best tiers -----------------------------------------------
+// The items that make up a tier: every SHARED line (tier == null) PLUS the lines
+// tagged for that tier. So each tier = the shared base build + its own finishes.
+export function itemsForTier(items: QuoteItem[], tier: TierKey): QuoteItem[] {
+  return items.filter((it) => !it.tier || it.tier === tier);
+}
+
+export interface Totals { subtotal: number; gstAmount: number; total: number }
+
+// Totals for each tier (shared base + that tier's finishes), GST-correct.
+export function tierTotals(items: QuoteItem[], gstRegistered: boolean, gstInclusive: boolean): Record<TierKey, Totals> {
+  const out = {} as Record<TierKey, Totals>;
+  for (const { key } of TIERS) out[key] = computeTotals(itemsForTier(items, key), gstRegistered, gstInclusive);
+  return out;
+}
+
+// The total that drives the stored headline + the deposit: the accepted tier if
+// chosen, otherwise the middle ("better") option as the representative figure.
+export function representativeTier(acceptedTier: TierKey | null): TierKey {
+  return acceptedTier ?? "better";
 }
 
 // Resolve each payment stage's $ from percent (of total) or a fixed amount.
@@ -131,6 +165,8 @@ export function emptyQuote(id: string): Quote {
     viewCount: 0,
     acceptedAt: null,
     publicToken: null,
+    tiered: false,
+    acceptedTier: null,
     sections: [],
     items: [],
     stages: [],

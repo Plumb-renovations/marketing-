@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOrgId } from "@/lib/data/org";
-import { computeTotals, computeStageAmounts, type Quote, type QuoteStatus } from "@/lib/quotes/model";
+import { computeTotals, computeStageAmounts, tierTotals, representativeTier, type Quote, type QuoteStatus } from "@/lib/quotes/model";
 
 // True when a Postgres/PostgREST error is "column does not exist" — i.e. a not-
 // yet-applied migration. Lets writes that use a new column degrade gracefully
@@ -28,6 +28,7 @@ function mapQuote(row: any): Quote {
       sortOrder: it.sort_order ?? 0,
       trade: it.trade ?? null,
       tradeType: it.trade_type ?? null,
+      tier: it.tier ?? null,
     }));
   const stages = (row.quote_doc_stages || [])
     .slice()
@@ -70,6 +71,8 @@ function mapQuote(row: any): Quote {
     viewCount: row.view_count ?? 0,
     acceptedAt: row.accepted_at ?? null,
     publicToken: row.public_token ?? null,
+    tiered: row.tiered ?? false,
+    acceptedTier: row.accepted_tier ?? null,
     sections,
     items,
     stages,
@@ -97,10 +100,15 @@ export async function fetchQuote(supabase: SupabaseClient, id: string): Promise<
 // with the org's GST registration). Returns the recomputed totals.
 export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegistered: boolean) {
   const orgId = await getOrgId(supabase);
-  const totals = computeTotals(quote.items, gstRegistered, quote.gstInclusive);
+  // For a tiered quote the stored headline total is the representative tier
+  // (accepted, else "better") — a single all-items total would be meaningless
+  // (it'd add all three tiers' finishes). A normal quote totals all its items.
+  const totals = quote.tiered
+    ? tierTotals(quote.items, gstRegistered, quote.gstInclusive)[representativeTier(quote.acceptedTier)]
+    : computeTotals(quote.items, gstRegistered, quote.gstInclusive);
   const stages = computeStageAmounts(quote.stages, totals.total);
 
-  const { error: qErr } = await supabase.from("quote_docs").upsert({
+  const docRow: Record<string, any> = {
     id: quote.id,
     org_id: orgId,
     lead_id: quote.leadId,
@@ -124,7 +132,15 @@ export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegis
     subtotal: totals.subtotal,
     gst_amount: totals.gstAmount,
     total: totals.total,
-  });
+    tiered: quote.tiered,
+    accepted_tier: quote.acceptedTier ?? null,
+  };
+  let { error: qErr } = await supabase.from("quote_docs").upsert(docRow);
+  // Retry without the tier columns if 0033 isn't applied yet.
+  if (qErr && isUndefinedColumn(qErr)) {
+    const { tiered, accepted_tier, ...legacy } = docRow;
+    ({ error: qErr } = await supabase.from("quote_docs").upsert(legacy));
+  }
   if (qErr) throw qErr;
 
   // Replace children.
@@ -154,12 +170,13 @@ export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegis
       sort_order: i,
       trade: it.trade ?? null,
       trade_type: it.tradeType ?? null,
+      tier: it.tier ?? null,
     }));
     let { error } = await supabase.from("quote_doc_items").insert(rows);
-    // If 0032 isn't applied yet, retry without the trade columns so saving still
-    // works (the quote just isn't trade-tagged until the migration runs).
+    // If 0032/0033 aren't applied yet, retry without the trade/tier columns so
+    // saving still works (the quote just isn't trade/tier-tagged until they run).
     if (error && isUndefinedColumn(error)) {
-      const legacy = rows.map(({ trade, trade_type, ...rest }) => rest);
+      const legacy = rows.map(({ trade, trade_type, tier, ...rest }) => rest);
       ({ error } = await supabase.from("quote_doc_items").insert(legacy));
     }
     if (error) throw error;

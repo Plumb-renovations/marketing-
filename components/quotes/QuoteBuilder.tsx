@@ -15,8 +15,8 @@ import { fetchQuoteTemplates, saveQuoteTemplate, deleteQuoteTemplate, type Quote
 import { fetchLeads } from "@/lib/data/leads";
 import { DEFAULT_BRAND, type BrandSettings } from "@/lib/business/brand";
 import {
-  emptyQuote, computeTotals, computeStageAmounts, stagePercentSum, money,
-  type Quote, type QuoteItem, type QuoteStage,
+  emptyQuote, computeTotals, computeStageAmounts, stagePercentSum, money, tierTotals, TIERS,
+  type Quote, type QuoteItem, type QuoteStage, type TierKey,
 } from "@/lib/quotes/model";
 import { DEFAULT_TRADES, inferTradeType, TRADE_TYPE_LABEL, type TradeType } from "@/lib/quotes/trades";
 import { reviewQuote, type QuoteReviewResult } from "@/lib/quotes/reviewClient";
@@ -108,7 +108,10 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
     return <div className="flex items-center gap-2 py-16 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading quote…</div>;
   }
 
-  const totals = computeTotals(q.items, brand.gstRegistered, q.gstInclusive);
+  // Tiered: each option = shared base + that tier's finishes. The headline total
+  // (used for the stages + stored figure) is the middle "better" option.
+  const tiers = tierTotals(q.items, brand.gstRegistered, q.gstInclusive);
+  const totals = q.tiered ? tiers.better : computeTotals(q.items, brand.gstRegistered, q.gstInclusive);
   const stages = computeStageAmounts(q.stages, totals.total);
   const pctSum = stagePercentSum(q.stages);
   const preview: Quote = { ...q, ...totals, stages };
@@ -116,7 +119,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   const upd = (patch: Partial<Quote>) => setQ((p) => (p ? { ...p, ...patch } : p));
   const updItem = (i: number, patch: Partial<QuoteItem>) => upd({ items: q.items.map((it, j) => (j === i ? { ...it, ...patch } : it)) });
   const addItem = (seed?: Partial<QuoteItem>) =>
-    upd({ items: [...q.items, { id: uid(), sectionId: null, description: "", detail: "", qty: 1, unit: "ea", unitPrice: 0, unitCost: null, sortOrder: q.items.length, trade: null, tradeType: null, ...seed }] });
+    upd({ items: [...q.items, { id: uid(), sectionId: null, description: "", detail: "", qty: 1, unit: "ea", unitPrice: 0, unitCost: null, sortOrder: q.items.length, trade: null, tradeType: null, tier: null, ...seed }] });
   const insertSaved = (s: SavedItem) =>
     addItem({ description: s.description, detail: s.detail, qty: s.defaultQty, unit: s.unit, unitPrice: s.unitPrice });
   // Smart line item: pull the rate + unit from the price list, qty stays 1 for
@@ -483,6 +486,14 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                   ))}
                 </div>
               </label>
+              <label className="block">
+                <span className={lbl}>Pricing options</span>
+                <div className="mt-1 flex items-center gap-1 rounded-lg border border-slate-700 p-0.5">
+                  {([["false", "Single price"], ["true", "Good / Better / Best"]] as const).map(([v, l]) => (
+                    <button key={v} onClick={() => upd({ tiered: v === "true" })} className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${q.tiered === (v === "true") ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}>{l}</button>
+                  ))}
+                </div>
+              </label>
             </div>
             <label className="mt-3 block"><span className={lbl}>Scope description</span><textarea value={q.scopeDescription} onChange={(e) => upd({ scopeDescription: e.target.value })} rows={3} placeholder="Overall scope of works…" className={"mt-1 " + inp} /></label>
           </div>
@@ -581,6 +592,15 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                               </div>
                             )}
                           </div>
+                          {/* Good/Better/Best: Shared (base build) or this tier's finishes. */}
+                          {q.tiered && (
+                            <div className="mt-1 flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5" style={{ width: "fit-content" }}>
+                              <button type="button" onClick={() => updItem(i, { tier: null })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${!it.tier ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`} title="Shared across all options">Shared</button>
+                              {TIERS.map((t) => (
+                                <button key={t.key} type="button" onClick={() => updItem(i, { tier: t.key })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${it.tier === t.key ? "bg-cyan-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}>{t.label}</button>
+                              ))}
+                            </div>
+                          )}
                         </td>
                         <td className="px-2 py-1.5"><input type="number" value={it.qty} onChange={(e) => updItem(i, { qty: Number(e.target.value) })} className={"text-right font-data " + inp} /></td>
                         <td className="px-2 py-1.5"><input value={it.unit} onChange={(e) => updItem(i, { unit: e.target.value })} className={"font-data " + inp} /></td>
@@ -600,13 +620,31 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
             <p className="mt-2 text-[11px] text-slate-500">Tag each line with a trade — the client sees one consolidated line per trade (e.g. all carpentry items become a single &ldquo;Carpentry&rdquo; line). In-house / sub-trade is saved for back-costing later.</p>
 
             {/* Totals */}
-            <div className="mt-4 flex justify-end">
-              <div className="w-64 space-y-1 text-sm">
-                <Row label="Subtotal" value={money(totals.subtotal, brand.currency)} />
-                {brand.gstRegistered && <Row label={`GST (10%)${q.gstInclusive ? " incl." : ""}`} value={money(totals.gstAmount, brand.currency)} />}
-                <div className="flex items-center justify-between border-t border-slate-700 pt-1.5 text-base font-semibold text-slate-100"><span>Total</span><span className="font-data text-cyan-300">{money(totals.total, brand.currency)}</span></div>
+            {q.tiered ? (
+              <div className="mt-4">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {TIERS.map((t) => (
+                    <div key={t.key} className={`rounded-xl border p-3 ${t.key === "better" ? "border-cyan-500/40 bg-cyan-500/5" : "border-slate-800 bg-slate-950/40"}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-display text-sm font-semibold text-slate-200">{t.label}</span>
+                        {t.key === "better" && <span className="rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">Most pick this</span>}
+                      </div>
+                      <div className="mt-1 font-data text-lg font-semibold text-cyan-300">{money(tiers[t.key].total, brand.currency)}</div>
+                      <div className="text-[11px] text-slate-500">{brand.gstRegistered ? "inc GST" : ""} · base + {t.label.toLowerCase()} finishes</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500">Each option = the shared base build + that tier&apos;s finishes. Mark fixtures/tiles/coverage lines with a tier above; leave the base build as &ldquo;Shared&rdquo;.</p>
               </div>
-            </div>
+            ) : (
+              <div className="mt-4 flex justify-end">
+                <div className="w-64 space-y-1 text-sm">
+                  <Row label="Subtotal" value={money(totals.subtotal, brand.currency)} />
+                  {brand.gstRegistered && <Row label={`GST (10%)${q.gstInclusive ? " incl." : ""}`} value={money(totals.gstAmount, brand.currency)} />}
+                  <div className="flex items-center justify-between border-t border-slate-700 pt-1.5 text-base font-semibold text-slate-100"><span>Total</span><span className="font-data text-cyan-300">{money(totals.total, brand.currency)}</span></div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Payment schedule */}
