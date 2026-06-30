@@ -36,6 +36,14 @@ export function pcTierName(names: Partial<Record<TierKey, string>> | null | unde
   return (names?.[key] || "").trim() || DEFAULT_PC_TIER_NAMES[key];
 }
 
+// The intro framing message shown at the top of the client-facing quote
+// configurator — frames the quote as something the client TAILORS (picks their
+// construction level + fixtures level and watches the live total) rather than a
+// fixed price to compare. Editable per quote; the org saves its own default.
+export const DEFAULT_CONFIGURATOR_INTRO =
+  "Your quote, your way.\n" +
+  "We've built this quote with options so you can tailor your renovation to exactly what you want — and what suits your budget. Choose your construction level and your fixtures and tiles below, and watch your price update as you go. There's no one-size-fits-all here; this is your bathroom, designed around you.";
+
 // The visible journey/process roadmap shown on the client quote.
 export interface JourneyStage { label: string; note?: string }
 export const DEFAULT_JOURNEY: JourneyStage[] = [
@@ -132,6 +140,7 @@ export interface Quote {
   acceptedPcTier: TierKey | null; // which PC tier the client accepted
   pcTierNames: Record<TierKey, string>; // editable PC-tier labels
   allowanceNote: string; // framing text atop the Tile & Fixture Allowance section
+  configuratorIntro: string; // framing message atop the client configurator
   journey: JourneyStage[]; // the process roadmap shown on the quote
   sections: QuoteSection[];
   items: QuoteItem[];
@@ -250,6 +259,7 @@ export function emptyQuote(id: string): Quote {
     acceptedPcTier: null,
     pcTierNames: { ...DEFAULT_PC_TIER_NAMES },
     allowanceNote: "",
+    configuratorIntro: "",
     journey: [],
     sections: [],
     items: [],

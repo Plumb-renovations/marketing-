@@ -8,6 +8,7 @@ import { fetchBrandSettings, saveBrandSettings } from "@/lib/data/brand";
 import { DEFAULT_BRAND, scheduleSum, type BrandSettings } from "@/lib/business/brand";
 import { fetchSavedItems, upsertSavedItem, deleteSavedItem, type SavedItem } from "@/lib/data/savedItems";
 import { QUOTE_TEMPLATES } from "@/lib/quotes/templates";
+import { DEFAULT_CONFIGURATOR_INTRO } from "@/lib/quotes/model";
 import PriceListPanel from "@/components/settings/PriceListPanel";
 
 const uid = () => crypto.randomUUID();
@@ -215,6 +216,8 @@ export default function BrandingSettingsScreen() {
         </div>
 
         <Area label="Default terms (prefilled on new quotes)" value={b.defaultTerms} onChange={(v) => set("defaultTerms", v)} rows={3} />
+
+        <Area label="Default configurator intro (prefilled on new quotes)" value={b.defaultConfiguratorIntro} onChange={(v) => set("defaultConfiguratorIntro", v)} rows={5} placeholder={DEFAULT_CONFIGURATOR_INTRO} />
 
         {/* Default payment schedule */}
         <div>

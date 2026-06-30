@@ -16,7 +16,7 @@ import { fetchLeads } from "@/lib/data/leads";
 import { DEFAULT_BRAND, type BrandSettings } from "@/lib/business/brand";
 import {
   emptyQuote, computeTotals, computeStageAmounts, stagePercentSum, money, tierTotals, pcTierTotals, TIERS, tierName, pcTierName,
-  priceableItems, DEFAULT_ALLOWANCE_NOTE, DEFAULT_JOURNEY, allowanceItemsOf,
+  priceableItems, DEFAULT_ALLOWANCE_NOTE, DEFAULT_CONFIGURATOR_INTRO, DEFAULT_JOURNEY, allowanceItemsOf,
   type Quote, type QuoteItem, type QuoteStage, type TierKey,
 } from "@/lib/quotes/model";
 import { DEFAULT_TRADES, inferTradeType, TRADE_TYPE_LABEL, type TradeType } from "@/lib/quotes/trades";
@@ -51,6 +51,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   const [appliedWording, setAppliedWording] = useState<Set<number>>(new Set());
   const [dismissedFlags, setDismissedFlags] = useState<Set<string>>(new Set());
   const [savingAllowanceDefault, setSavingAllowanceDefault] = useState(false);
+  const [savingIntroDefault, setSavingIntroDefault] = useState(false);
   const [leads, setLeads] = useState<{ id: string; name: string; email?: string; phone?: string; suburb?: string; project?: string }[]>([]);
   const [tab, setTab] = useState<"details" | "preview">("details");
   const [showInternal, setShowInternal] = useState(false);
@@ -80,6 +81,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
         const nq = emptyQuote(uid());
         nq.terms = b.defaultTerms || "";
         nq.allowanceNote = b.defaultAllowanceNote || DEFAULT_ALLOWANCE_NOTE;
+        nq.configuratorIntro = b.defaultConfiguratorIntro || DEFAULT_CONFIGURATOR_INTRO;
         nq.journey = DEFAULT_JOURNEY.map((s) => ({ ...s }));
         nq.stages = (b.defaultPaymentSchedule || []).map((s, i) => ({
           id: uid(), label: s.label, milestoneNote: "", percent: Number(s.percent) || 0, fixedAmount: null, amount: 0, status: "pending", sortOrder: i,
@@ -97,6 +99,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
         const qq = loaded || emptyQuote(id);
         // Auto-fill the allowance framing text + journey if not set yet.
         if (!qq.allowanceNote) qq.allowanceNote = b.defaultAllowanceNote || DEFAULT_ALLOWANCE_NOTE;
+        if (!qq.configuratorIntro) qq.configuratorIntro = b.defaultConfiguratorIntro || DEFAULT_CONFIGURATOR_INTRO;
         if (!qq.journey?.length) qq.journey = DEFAULT_JOURNEY.map((s) => ({ ...s }));
         setQ(qq);
       }
@@ -181,6 +184,19 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
       setError(e?.message || "Couldn't save the default.");
     } finally {
       setSavingAllowanceDefault(false);
+    }
+  };
+  const saveConfiguratorIntroDefault = async () => {
+    setSavingIntroDefault(true); setError("");
+    try {
+      const next = { ...brand, defaultConfiguratorIntro: q.configuratorIntro };
+      await saveBrandSettings(supabase, next);
+      setBrand(next);
+      setNote("Saved as your default configurator intro");
+    } catch (e: any) {
+      setError(e?.message || "Couldn't save the default.");
+    } finally {
+      setSavingIntroDefault(false);
     }
   };
 
@@ -549,6 +565,20 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
               </label>
             </div>
             <label className="mt-3 block"><span className={lbl}>Scope description</span><textarea value={q.scopeDescription} onChange={(e) => upd({ scopeDescription: e.target.value })} rows={3} placeholder="Overall scope of works…" className={"mt-1 " + inp} /></label>
+          </div>
+
+          {/* Configurator intro — the framing message atop the client's live
+              configurator (the interactive tier + PC picker with running total) */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <h3 className="font-display text-sm font-semibold text-slate-200">Configurator intro</h3>
+              <span className="text-[11px] text-slate-500">framing message shown above the client&apos;s live tier + fixtures picker</span>
+            </div>
+            <textarea value={q.configuratorIntro} onChange={(e) => upd({ configuratorIntro: e.target.value })} rows={5} placeholder={DEFAULT_CONFIGURATOR_INTRO} className={inp} />
+            <p className="mt-1 text-[11px] text-slate-500">First line shows as a heading. Leave blank to hide. This frames the quote as something the client tailors — they pick their construction level and fixtures and watch the price update live.</p>
+            <div className="mt-1.5">
+              <button onClick={saveConfiguratorIntroDefault} disabled={savingIntroDefault} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800 disabled:opacity-50">{savingIntroDefault ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save as my default</button>
+            </div>
           </div>
 
           {/* Quote templates — load a reusable set of line items, or save this one */}
