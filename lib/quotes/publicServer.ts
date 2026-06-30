@@ -31,7 +31,7 @@ const DOC_SCALARS =
 const SECTIONS = "quote_doc_sections(id, name, sort_order)";
 const STAGES = "quote_doc_stages(id, label, milestone_note, percent, fixed_amount, amount, status, sort_order)";
 const itemCols = (extra: boolean, allow: boolean) =>
-  `quote_doc_items(id, section_id, description, detail, qty, unit, unit_price, amount, sort_order${extra ? ", trade, tier" : ""}${allow ? ", allowance" : ""})`;
+  `quote_doc_items(id, section_id, description, detail, qty, unit, unit_price, amount, sort_order${extra ? ", trade, tier" : ""}${allow ? ", allowance, allowance_group, allowance_selected" : ""})`;
 const docExtraCols = (extra: boolean, names: boolean, allow: boolean) =>
   [extra ? "tiered, accepted_tier" : null, names ? "tier_names" : null, allow ? "allowance_note" : null].filter(Boolean).join(", ");
 const buildSelect = (extra: boolean, names: boolean, allow: boolean) =>
@@ -111,6 +111,8 @@ function mapPublicQuote(row: any): Quote {
       tier: it.tier ?? null,
       allowance: it.allowance ?? false,
       sourcePriceItemId: null, // internal — not needed/exposed publicly
+      allowanceGroup: it.allowance_group ?? null,
+      allowanceSelected: it.allowance_selected ?? false,
     }));
   const stages = computeStageAmounts(
     (row.quote_doc_stages || [])

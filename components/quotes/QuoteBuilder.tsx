@@ -16,7 +16,7 @@ import { fetchLeads } from "@/lib/data/leads";
 import { DEFAULT_BRAND, type BrandSettings } from "@/lib/business/brand";
 import {
   emptyQuote, computeTotals, computeStageAmounts, stagePercentSum, money, tierTotals, TIERS, tierName,
-  DEFAULT_ALLOWANCE_NOTE, allowanceItemsOf,
+  DEFAULT_ALLOWANCE_NOTE, allowanceItemsOf, priceableItems, selectedAllowanceItems, allowanceGroups,
   type Quote, type QuoteItem, type QuoteStage, type TierKey,
 } from "@/lib/quotes/model";
 import { DEFAULT_TRADES, inferTradeType, TRADE_TYPE_LABEL, type TradeType } from "@/lib/quotes/trades";
@@ -117,7 +117,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   // Tiered: each option = shared base + that tier's finishes. The headline total
   // (used for the stages + stored figure) is the middle "better" option.
   const tiers = tierTotals(q.items, brand.gstRegistered, q.gstInclusive);
-  const totals = q.tiered ? tiers.better : computeTotals(q.items, brand.gstRegistered, q.gstInclusive);
+  const totals = q.tiered ? tiers.better : computeTotals(priceableItems(q.items, null), brand.gstRegistered, q.gstInclusive);
   const stages = computeStageAmounts(q.stages, totals.total);
   const pctSum = stagePercentSum(q.stages);
   const preview: Quote = { ...q, ...totals, stages };
@@ -151,16 +151,29 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   // ---- Tile & Fixture Allowance (PC items / tiles — decoupled from build) ----
   const allowanceLineFor = (priceId: string) => q.items.find((it) => it.allowance && it.sourcePriceItemId === priceId);
   // Toggle a price-list item into/out of the allowance. On → add a priced line
-  // flagged allowance (and tier-decoupled); off → remove that line.
+  // flagged allowance (tier-decoupled), GROUPED by the price-list item's category
+  // so variants of the same item become one group; the first option in a group is
+  // the default selection. Off → remove that line.
   const togglePriceItemAllowance = (p: PriceItem) => {
     const existing = allowanceLineFor(p.id);
     if (existing) { upd({ items: q.items.filter((it) => it.id !== existing.id) }); return; }
     const trade = (p.trade || "").trim() || null;
     const description = (p.notes || "").trim() || p.name;
-    addItem({ description, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice, trade, tradeType: trade ? inferTradeType(trade) : null, tier: null, allowance: true, sourcePriceItemId: p.id });
+    const group = (p.category || "").trim() || p.name;
+    const firstInGroup = !q.items.some((it) => it.allowance && (it.allowanceGroup || "").trim().toLowerCase() === group.toLowerCase());
+    addItem({ description, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice, trade, tradeType: trade ? inferTradeType(trade) : null, tier: null, allowance: true, sourcePriceItemId: p.id, allowanceGroup: group, allowanceSelected: firstInGroup });
+  };
+  // Set/clear a line's allowance group (and ensure exactly one default per group).
+  const setItemGroup = (i: number, group: string) => updItem(i, { allowanceGroup: group.trim() || null });
+  // Make this allowance line the selected option for its group (clears siblings).
+  const setItemSelected = (i: number) => {
+    const cur = q.items[i];
+    const g = (cur.allowanceGroup || "").trim().toLowerCase();
+    upd({ items: q.items.map((it, j) => (it.allowance && (it.allowanceGroup || "").trim().toLowerCase() === g ? { ...it, allowanceSelected: j === i } : it)) });
   };
   const allowanceItems = allowanceItemsOf(q.items);
-  const allowanceSubtotal = computeTotals(allowanceItems, brand.gstRegistered, q.gstInclusive).total;
+  const fixtureGroups = allowanceGroups(q.items);
+  const allowanceSubtotal = computeTotals(selectedAllowanceItems(q.items), brand.gstRegistered, q.gstInclusive).total;
   const saveAllowanceDefault = async () => {
     setSavingAllowanceDefault(true); setError("");
     try {
@@ -641,6 +654,13 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                                 ))}
                               </div>
                             )}
+                            {/* Allowance grouping: items sharing a group are options; one is the default selection. */}
+                            {it.allowance && (
+                              <>
+                                <input list="allowance-groups" value={it.allowanceGroup ?? ""} onChange={(e) => setItemGroup(i, e.target.value)} placeholder="Group (e.g. Tapware)" className={"text-xs " + inp} style={{ maxWidth: 150 }} />
+                                <button type="button" onClick={() => setItemSelected(i)} className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${it.allowanceSelected ? "border-amber-500/50 bg-amber-500/10 text-amber-200" : "border-slate-700 text-slate-400 hover:text-slate-200"}`} title="Default selected option for this group">{it.allowanceSelected ? "★ Default" : "Set default"}</button>
+                              </>
+                            )}
                           </div>
                         </td>
                         <td className="px-2 py-1.5"><input type="number" value={it.qty} onChange={(e) => updItem(i, { qty: Number(e.target.value) })} className={"text-right font-data " + inp} /></td>
@@ -731,10 +751,24 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
               <p className="mt-3 text-xs text-slate-500">Add PC items / tiles (with a category) to your price list in Branding &amp; Quotes to tick them on here. You can also flag any line in the table above as &ldquo;Allowance&rdquo;.</p>
             )}
 
-            {allowanceItems.length > 0 && (
-              <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-3 text-sm">
-                <span className="text-slate-400">{allowanceItems.length} allowance item{allowanceItems.length === 1 ? "" : "s"} — edit price/qty/description in the table above</span>
-                <span className="font-data font-semibold text-amber-300">{money(allowanceSubtotal, brand.currency)} <span className="text-[11px] font-normal text-slate-500">{brand.gstRegistered ? "inc GST" : ""} allowance</span></span>
+            <datalist id="allowance-groups">{Array.from(new Set(allowanceItems.map((it) => (it.allowanceGroup || "").trim()).filter(Boolean))).map((g) => <option key={g} value={g} />)}</datalist>
+
+            {fixtureGroups.length > 0 && (
+              <div className="mt-3 space-y-1.5 border-t border-slate-800 pt-3">
+                <p className="text-[11px] text-slate-500">The client picks one option per group — only the selected option counts toward the total. Set the default (★) and group each line in the table above.</p>
+                {fixtureGroups.map((g) => {
+                  const sel = g.options.find((o) => o.id === g.selectedId) || g.options[0];
+                  return (
+                    <div key={g.key} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate text-slate-300"><span className="text-slate-400">{g.name}</span>{g.options.length > 1 ? <span className="text-slate-500"> · {g.options.length} options → {(sel.description || "").split(/\r?\n/)[0]}</span> : ""}</span>
+                      <span className="shrink-0 font-data text-amber-300">{money((Number(sel.qty) || 0) * (Number(sel.unitPrice) || 0), brand.currency)}</span>
+                    </div>
+                  );
+                })}
+                <div className="flex items-center justify-between border-t border-slate-800 pt-2 text-sm">
+                  <span className="text-slate-400">Allowance total (one option per group)</span>
+                  <span className="font-data font-semibold text-amber-300">{money(allowanceSubtotal, brand.currency)} <span className="text-[11px] font-normal text-slate-500">{brand.gstRegistered ? "inc GST" : ""}</span></span>
+                </div>
               </div>
             )}
           </div>

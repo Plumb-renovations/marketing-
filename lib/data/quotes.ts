@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOrgId } from "@/lib/data/org";
-import { computeTotals, computeStageAmounts, tierTotals, representativeTier, DEFAULT_TIER_NAMES, type Quote, type QuoteStatus, type TierKey } from "@/lib/quotes/model";
+import { computeTotals, computeStageAmounts, tierTotals, representativeTier, priceableItems, DEFAULT_TIER_NAMES, type Quote, type QuoteStatus, type TierKey } from "@/lib/quotes/model";
 
 // Merge stored tier names over the defaults so all three keys are always present.
 function mapTierNames(raw: any): Record<TierKey, string> {
@@ -41,6 +41,8 @@ function mapQuote(row: any): Quote {
       tier: it.tier ?? null,
       allowance: it.allowance ?? false,
       sourcePriceItemId: it.source_price_item_id ?? null,
+      allowanceGroup: it.allowance_group ?? null,
+      allowanceSelected: it.allowance_selected ?? false,
     }));
   const stages = (row.quote_doc_stages || [])
     .slice()
@@ -117,9 +119,11 @@ export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegis
   // For a tiered quote the stored headline total is the representative tier
   // (accepted, else "better") — a single all-items total would be meaningless
   // (it'd add all three tiers' finishes). A normal quote totals all its items.
+  // The stored total counts the build scope + only the SELECTED allowance option
+  // per group (never the sum of fixture alternatives).
   const totals = quote.tiered
     ? tierTotals(quote.items, gstRegistered, quote.gstInclusive)[representativeTier(quote.acceptedTier)]
-    : computeTotals(quote.items, gstRegistered, quote.gstInclusive);
+    : computeTotals(priceableItems(quote.items, null), gstRegistered, quote.gstInclusive);
   const stages = computeStageAmounts(quote.stages, totals.total);
 
   const docRow: Record<string, any> = {
@@ -199,17 +203,23 @@ export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegis
       tier: it.tier ?? null,
       allowance: it.allowance ?? false,
       source_price_item_id: it.sourcePriceItemId ?? null,
+      allowance_group: it.allowanceGroup ?? null,
+      allowance_selected: it.allowanceSelected ?? false,
     }));
     let { error } = await supabase.from("quote_doc_items").insert(rows);
-    // If 0032/0033/0035 aren't applied yet, retry without the optional columns so
-    // saving still works (the quote just isn't trade/tier/allowance-tagged until
-    // they run). Drop the newest (allowance, 0035) first, then trade/tier.
+    // Retry without the optional columns (newest migration first) so saving still
+    // works before each migration runs: drop fixture-group (0036), then allowance
+    // (0035), then trade/tier (0032/0033).
     if (error && isUndefinedColumn(error)) {
-      const noAllowance = rows.map(({ allowance, source_price_item_id, ...rest }) => rest);
-      ({ error } = await supabase.from("quote_doc_items").insert(noAllowance));
+      const noGroups = rows.map(({ allowance_group, allowance_selected, ...rest }) => rest);
+      ({ error } = await supabase.from("quote_doc_items").insert(noGroups));
       if (error && isUndefinedColumn(error)) {
-        const legacy = noAllowance.map(({ trade, trade_type, tier, ...rest }) => rest);
-        ({ error } = await supabase.from("quote_doc_items").insert(legacy));
+        const noAllowance = noGroups.map(({ allowance, source_price_item_id, ...rest }) => rest);
+        ({ error } = await supabase.from("quote_doc_items").insert(noAllowance));
+        if (error && isUndefinedColumn(error)) {
+          const legacy = noAllowance.map(({ trade, trade_type, tier, ...rest }) => rest);
+          ({ error } = await supabase.from("quote_doc_items").insert(legacy));
+        }
       }
     }
     if (error) throw error;

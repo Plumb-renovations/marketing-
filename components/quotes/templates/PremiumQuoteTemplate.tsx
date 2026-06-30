@@ -1,6 +1,6 @@
 "use client";
 
-import { money, consolidateByTrade, computeTotals, itemsForTier, TIERS, tierName, type Quote } from "@/lib/quotes/model";
+import { money, consolidateByTrade, computeTotals, priceableItems, selectedAllowanceItems, allowanceGroups, TIERS, tierName, type Quote } from "@/lib/quotes/model";
 import type { BrandSettings } from "@/lib/business/brand";
 
 // The PREMIUM client-facing quote — a faithful reproduction of the "Cream &
@@ -68,10 +68,11 @@ export default function PremiumQuoteTemplate({
   const amount = (it: Quote["items"][number]) => (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
 
   // Fixtures/tiles are a SEPARATE allowance layer — keep them out of the build
-  // scope and show them in their own section. The build scope = non-allowance.
+  // scope and show them in their own section, grouped, with ONE selected option
+  // per group counting toward the total (never the sum of the alternatives).
   const buildItems = quote.items.filter((i) => !i.allowance);
-  const allowanceItems = quote.items.filter((i) => i.allowance);
-  const allowanceTotal = computeTotals(allowanceItems, brand.gstRegistered, quote.gstInclusive).total;
+  const fixtureGroups = allowanceGroups(quote.items);
+  const allowanceTotal = computeTotals(selectedAllowanceItems(quote.items), brand.gstRegistered, quote.gstInclusive).total;
 
   // Group BUILD line items into the staged scope sections (numbered), with an
   // unnamed leading group for any items not assigned to a section.
@@ -100,7 +101,7 @@ export default function PremiumQuoteTemplate({
     key: t.key,
     label: tierName(quote.tierNames, t.key),
     lines: consolidateByTrade(buildItems.filter((i) => i.tier === t.key)),
-    total: computeTotals(itemsForTier(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).total,
+    total: computeTotals(priceableItems(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).total,
     accepted: quote.acceptedTier === t.key,
   }));
 
@@ -337,7 +338,9 @@ export default function PremiumQuoteTemplate({
         })}
 
         {/* ===================== TILE & FIXTURE ALLOWANCE ===================== */}
-        {allowanceItems.length > 0 && (
+        {/* Grouped: a multi-option group shows its choices with the selected one
+            marked; the total counts ONLY the selected option per group. */}
+        {fixtureGroups.length > 0 && (
           <div style={{ marginTop: 34 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
               <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Tile &amp; fixture allowance</span>
@@ -346,21 +349,37 @@ export default function PremiumQuoteTemplate({
             {quote.allowanceNote && (
               <p style={{ margin: "12px 0 4px", fontSize: 13, color: muted, lineHeight: 1.6, maxWidth: "64ch" }}>{quote.allowanceNote}</p>
             )}
-            <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 6 }}>
-              <tbody>
-                {allowanceItems.map((it, ii) => (
-                  <tr key={it.id}>
-                    <td style={{ padding: "11px 0", fontSize: 13.5, verticalAlign: "top", borderBottom: ii === allowanceItems.length - 1 ? "0" : `1px solid ${hair}`, color: ink, whiteSpace: "pre-wrap" }}>
-                      {it.description}
-                      {it.detail && <small style={{ display: "block", color: faint, fontSize: 12, marginTop: 2 }}>{it.detail}</small>}
-                    </td>
-                    <td style={{ padding: "11px 0", fontSize: 13.5, verticalAlign: "top", borderBottom: ii === allowanceItems.length - 1 ? "0" : `1px solid ${hair}`, textAlign: "right", fontWeight: 600, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", width: 120 }}>
-                      {money(amount(it), ccy)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div style={{ marginTop: 6 }}>
+              {fixtureGroups.map((g) => {
+                const multi = g.options.length > 1;
+                const sel = g.options.find((o) => o.id === g.selectedId) || g.options[0];
+                return (
+                  <div key={g.key} style={{ padding: "12px 0", borderBottom: `1px solid ${hair}` }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16 }}>
+                      <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 15, color: ink }}>{g.name}{multi ? <span style={{ fontFamily: BODY, fontWeight: 400, fontSize: 11.5, color: faint }}> — choose one</span> : null}</span>
+                      <span style={{ fontWeight: 600, fontSize: 13.5, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", color: ink }}>{money(amount(sel), ccy)}</span>
+                    </div>
+                    {multi ? (
+                      <div style={{ marginTop: 6 }}>
+                        {g.options.map((o) => {
+                          const isSel = o.id === g.selectedId;
+                          return (
+                            <div key={o.id} style={{ display: "flex", justifyContent: "space-between", gap: 16, fontSize: 13, lineHeight: 1.6, color: isSel ? ink : faint }}>
+                              <span style={{ whiteSpace: "pre-wrap" }}>{isSel ? "●" : "○"} {(o.description || "").split(/\r?\n/)[0] || "Option"}{isSel ? "  (selected)" : ""}</span>
+                              <span style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{money(amount(o), ccy)}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      sel.description && sel.description.split(/\r?\n/).length > 1 && (
+                        <div style={{ marginTop: 4, fontSize: 12.5, color: muted, whiteSpace: "pre-wrap" }}>{sel.description.split(/\r?\n/).slice(1).join("\n")}</div>
+                      )
+                    )}
+                  </div>
+                );
+              })}
+            </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: `1px solid ${hairStrong}`, fontSize: 13.5 }}>
               <span style={{ fontWeight: 600 }}>Allowance total{tiered ? " (included in each option)" : brand.gstRegistered ? " (inc GST)" : ""}</span>
               <b style={{ fontVariantNumeric: "tabular-nums" }}>{money(allowanceTotal, ccy)}</b>

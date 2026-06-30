@@ -49,6 +49,12 @@ export interface QuoteItem {
   // item it was toggled on from (so the PC selector knows what's included).
   allowance?: boolean;
   sourcePriceItemId?: string | null;
+  // Grouped fixtures: options sharing an allowanceGroup are alternatives (e.g.
+  // three tapware sets); the client picks ONE. allowanceSelected marks the chosen
+  // option for its group (build-time default + the client's pick on accept) — and
+  // ONLY the selected option counts toward the allowance total.
+  allowanceGroup?: string | null;
+  allowanceSelected?: boolean;
 }
 
 export interface QuoteSection {
@@ -132,10 +138,57 @@ export function itemsForTier(items: QuoteItem[], tier: TierKey): QuoteItem[] {
 
 export interface Totals { subtotal: number; gstAmount: number; total: number }
 
-// Totals for each tier (shared base + that tier's finishes), GST-correct.
+// ---- Grouped fixture allowance --------------------------------------------
+// One counted allowance option per group: ungrouped items are included as-is;
+// each group counts ONLY its selected option (the flagged one, else the first) —
+// never the sum of the alternatives. This is what fixes the wrong-total bug.
+export function selectedAllowanceItems(items: QuoteItem[]): QuoteItem[] {
+  const out: QuoteItem[] = [];
+  const byGroup = new Map<string, QuoteItem[]>();
+  for (const it of items) {
+    if (!it.allowance) continue;
+    const g = (it.allowanceGroup || "").trim();
+    if (!g) { out.push(it); continue; }
+    (byGroup.get(g.toLowerCase()) ?? byGroup.set(g.toLowerCase(), []).get(g.toLowerCase())!).push(it);
+  }
+  for (const opts of byGroup.values()) out.push(opts.find((o) => o.allowanceSelected) || opts[0]);
+  return out;
+}
+
+// The items that actually count toward the price for a tier (or the whole quote
+// when tier is null): the build scope (shared + that tier's finishes) PLUS the
+// SELECTED allowance option per group. Non-selected alternatives never count.
+export function priceableItems(items: QuoteItem[], tier: TierKey | null): QuoteItem[] {
+  const build = items.filter((i) => !i.allowance);
+  const buildPart = tier ? build.filter((i) => !i.tier || i.tier === tier) : build;
+  return [...buildPart, ...selectedAllowanceItems(items)];
+}
+
+// Grouped view of the allowance for rendering (builder + client). Ungrouped
+// items become their own one-option group.
+export interface AllowanceGroup { key: string; name: string; options: QuoteItem[]; selectedId: string }
+export function allowanceGroups(items: QuoteItem[]): AllowanceGroup[] {
+  const order: string[] = [];
+  const map = new Map<string, QuoteItem[]>();
+  for (const it of items) {
+    if (!it.allowance) continue;
+    const g = (it.allowanceGroup || "").trim();
+    const key = g ? "g:" + g.toLowerCase() : "i:" + it.id;
+    if (!map.has(key)) { map.set(key, []); order.push(key); }
+    map.get(key)!.push(it);
+  }
+  return order.map((key) => {
+    const options = map.get(key)!;
+    const name = (options[0].allowanceGroup || "").trim() || (options[0].description || "").split(/\r?\n/)[0].trim() || "Item";
+    const sel = options.find((o) => o.allowanceSelected) || options[0];
+    return { key, name, options, selectedId: sel.id };
+  });
+}
+
+// Totals for each tier (build for that tier + the selected allowance), GST-correct.
 export function tierTotals(items: QuoteItem[], gstRegistered: boolean, gstInclusive: boolean): Record<TierKey, Totals> {
   const out = {} as Record<TierKey, Totals>;
-  for (const { key } of TIERS) out[key] = computeTotals(itemsForTier(items, key), gstRegistered, gstInclusive);
+  for (const { key } of TIERS) out[key] = computeTotals(priceableItems(items, key), gstRegistered, gstInclusive);
   return out;
 }
 

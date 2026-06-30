@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { rowToBrand } from "@/lib/business/brand";
 import { emailConfigured, sendEmail } from "@/lib/email/send";
 import { computeDeposit, missingInvoiceDetails, buildDepositInvoiceEmail } from "@/lib/quotes/invoice";
-import { computeTotals } from "@/lib/quotes/model";
+import { computeTotals, priceableItems } from "@/lib/quotes/model";
 
 const isUndefinedColumn = (e: any) =>
   e?.code === "42703" || /column .* does not exist|could not find/i.test(e?.message || "");
@@ -51,24 +51,51 @@ export async function POST(req: Request) {
 
   console.log(`[quotes] accept request quote=${q.id} number=${q.quote_number} status=${q.status} total=${q.total}`);
 
-  // Tiered quote → resolve the accepted tier and switch the totals to it, so the
-  // accept record, the lead's job value and the deposit invoice all reflect the
-  // option the client actually chose. (On a re-accept we keep the stored tier.)
+  // Resolve the accepted tier (tiered quotes) and the client's chosen fixtures,
+  // then recompute the total so the accept record, the lead's job value and the
+  // deposit invoice reflect the option + fixtures the client actually chose.
+  // The total counts the build scope for the tier PLUS only the SELECTED
+  // allowance option per group (never the sum of fixture alternatives).
   let acceptedTier: string | null = (q as any).accepted_tier || null;
+  const chosenFixtures: string[] | null = Array.isArray(body?.fixtures) ? body.fixtures.map((x: any) => String(x)) : null;
+
   if ((q as any).tiered) {
     const reqTier = ["good", "better", "best"].includes(String(body?.tier)) ? String(body.tier) : null;
     const tier = acceptedTier || reqTier;
     if (!tier) return NextResponse.json({ error: "missing_tier", message: "Please choose an option to accept." }, { status: 400 });
     acceptedTier = tier;
+  }
+
+  if ((q as any).tiered || chosenFixtures) {
     const { data: prof } = await admin.from("business_profiles").select("gst_registered").eq("org_id", q.org_id).maybeSingle();
     const gstRegistered = (prof as any)?.gst_registered ?? true;
-    const { data: items } = await admin.from("quote_doc_items").select("qty, unit_price, tier").eq("quote_id", q.id);
-    const tierItems = (items || [])
-      .filter((it: any) => !it.tier || it.tier === tier)
-      .map((it: any) => ({ qty: Number(it.qty) || 0, unitPrice: Number(it.unit_price) || 0 }));
-    const t = computeTotals(tierItems, gstRegistered, (q as any).gst_inclusive);
+
+    // Fetch items with allowance fields; fall back if 0035/0036 aren't applied.
+    let itemRows: any[] | null = null;
+    {
+      let res: any = await admin.from("quote_doc_items").select("id, qty, unit_price, tier, allowance, allowance_group, allowance_selected").eq("quote_id", q.id);
+      if (res.error && isUndefinedColumn(res.error)) res = await admin.from("quote_doc_items").select("id, qty, unit_price, tier").eq("quote_id", q.id);
+      itemRows = res.data || [];
+    }
+    const items = (itemRows || []).map((r: any) => ({
+      id: r.id, qty: Number(r.qty) || 0, unitPrice: Number(r.unit_price) || 0, tier: r.tier ?? null,
+      allowance: r.allowance ?? false, allowanceGroup: r.allowance_group ?? null,
+      // Apply the client's selection when provided, else the stored default.
+      allowanceSelected: chosenFixtures ? chosenFixtures.includes(r.id) : (r.allowance_selected ?? false),
+    }));
+    const t = computeTotals(priceableItems(items as any, (q as any).tiered ? (acceptedTier as any) : null), gstRegistered, (q as any).gst_inclusive);
     q.subtotal = t.subtotal; q.gst_amount = t.gstAmount; q.total = t.total;
-    console.log(`[quotes] tiered accept quote=${q.id} tier=${tier} total=${q.total}`);
+    console.log(`[quotes] accept recompute quote=${q.id} tier=${acceptedTier || "—"} fixtures=${chosenFixtures ? chosenFixtures.length : "default"} total=${q.total}`);
+
+    // Capture the client's fixture selections on the line items (best-effort).
+    if (chosenFixtures) {
+      try {
+        await admin.from("quote_doc_items").update({ allowance_selected: false }).eq("quote_id", q.id).eq("allowance", true);
+        if (chosenFixtures.length) await admin.from("quote_doc_items").update({ allowance_selected: true }).in("id", chosenFixtures);
+      } catch (e) {
+        console.warn(`[quotes] could not capture fixture selections quote=${q.id}: ${(e as Error).message}`);
+      }
+    }
   }
 
   // 1) Record acceptance (only if not already accepted) + flip the lead to won.
