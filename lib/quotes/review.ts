@@ -24,6 +24,7 @@ export interface ReviewQuote {
   scopeDescription?: string;
   inclusions?: string;
   exclusions?: string;
+  terms?: string; // used only to detect whether unforeseen-conditions are already covered
   introNote?: string;
   items: ReviewLine[];
 }
@@ -154,39 +155,83 @@ export function analysePricing(items: ReviewLine[], priceList: PriceRef[]): Pric
   return out;
 }
 
-// ---- Keyword / scope detection --------------------------------------------
-export interface Trigger { id: string; phrases: string[]; label: string; note: string; severity: "high" | "medium" | "low" }
+// ---- Scope-risk detection (high signal, low noise) ------------------------
+// We only flag SPECIFIC, actionable risks — never generic situations true of
+// nearly every job. Two principles fixed the "too trigger-happy" behaviour:
+//   1. Scan only the WORK scope (scope text + line items + intro), NOT the
+//      exclusions/terms clauses. Scanning the terms made the quote's own
+//      "unforeseen conditions (rot, asbestos, water damage…)" clause trigger the
+//      very risks it already covers.
+//   2. Require a real signal — e.g. a slab AND plumbing being moved, or a
+//      subfloor mentioned with NO subfloor line item — not just one stray word
+//      like "slab" in standard demolition language.
 
-// Built-in trade trigger phrases that usually change the price or imply a
-// missing line. Sensible default set — kept as an exported constant so it can be
-// extended (or moved to a per-org table) later without touching the engine.
-export const DEFAULT_TRIGGERS: Trigger[] = [
-  { id: "slab", phrases: ["concrete slab", "slab", "slab floor", "on slab"], label: "Concrete slab", note: "Moving plumbing through a concrete slab usually costs more (cutting/coring + make-good). Is that allowed for?", severity: "high" },
-  { id: "subfloor", phrases: ["subfloor", "sub-floor", "sub floor", "replace subfloor"], label: "Subfloor", note: "If the subfloor needs replacing or repairing, make sure there's a line item for it — it's commonly missed.", severity: "high" },
-  { id: "structural", phrases: ["remove wall", "removing a wall", "structural", "load bearing", "load-bearing", "lintel", "beam"], label: "Structural / wall removal", note: "Removing a wall can need an engineer + lintel/beam. Structural work is often under-quoted — confirm it's priced.", severity: "high" },
-  { id: "upstairs", phrases: ["second storey", "second story", "upstairs", "second floor", "first floor", "level 2"], label: "Upstairs / second storey", note: "Upstairs work usually means harder access, extra waterproofing and more labour — check it's reflected in the price.", severity: "medium" },
-  { id: "asbestos", phrases: ["asbestos", "fibro", "asbestos sheet"], label: "Asbestos", note: "Asbestos needs licensed removal + disposal — it must be a separate, properly-priced line, not absorbed into demo.", severity: "high" },
-  { id: "relocate", phrases: ["relocate", "move the toilet", "move toilet", "move plumbing", "move the vanity", "reposition"], label: "Relocating fixtures", note: "Relocating fixtures means new plumbing/waste points — confirm each move is quoted, not just the fixture.", severity: "medium" },
-  { id: "waterdamage", phrases: ["water damage", "rot", "rotten", "leak", "mould", "mold", "termite", "white ant"], label: "Hidden damage", note: "Water damage / rot / termites can blow out scope once you open up. Consider a provisional sum or a clear exclusion.", severity: "medium" },
-  { id: "oldhome", phrases: ["old home", "old house", "heritage", "pre-1985", "queenslander", "character home"], label: "Older / heritage home", note: "Older homes often hide non-standard framing, lead paint or asbestos — pad your provisional allowances.", severity: "low" },
-  { id: "tileovertile", phrases: ["tile over tile", "over existing tiles", "leave existing tiles"], label: "Tiling over existing", note: "Tiling over existing tiles affects waterproofing warranty and floor heights — make sure the method is spelled out.", severity: "low" },
-  { id: "pcsum", phrases: ["pc sum", "provisional sum", "supply by others", "by owner", "client to supply"], label: "PC / provisional sum", note: "PC/provisional items: state the allowance clearly so a fixture upgrade doesn't become an awkward variation later.", severity: "low" },
-];
-
-// Assemble all the quote's own text + notes for scanning.
-export function buildReviewText(q: ReviewQuote): string {
-  const lines = (q.items || []).map((it) => `${it.description || ""} ${it.detail || ""}`).join(" \n ");
-  return [q.projectName, q.reference, q.scopeDescription, q.inclusions, q.exclusions, q.introNote, lines].filter(Boolean).join(" \n ");
+// The work actually described — excludes exclusions/terms on purpose.
+function scopeText(q: ReviewQuote): string {
+  const lines = (q.items || []).map((it) => `${it.description || ""} ${it.detail || ""}`).join("\n");
+  return norm([q.projectName, q.reference, q.scopeDescription, q.introNote, lines].filter(Boolean).join("\n"));
+}
+function itemsText(q: ReviewQuote): string {
+  return norm((q.items || []).map((it) => `${it.description || ""} ${it.detail || ""}`).join("\n"));
 }
 
-export function detectKeywords(text: string, triggers: Trigger[] = DEFAULT_TRIGGERS): KeywordFlag[] {
-  const hay = norm(text);
-  if (!hay) return [];
+// Do the terms/exclusions already cover unforeseen / concealed conditions? If so
+// we don't nag about adding an exclusion for hidden damage — it's handled.
+function coversUnforeseen(q: ReviewQuote): boolean {
+  const t = norm([q.terms, q.exclusions].filter(Boolean).join("\n"));
+  if (!t) return false;
+  return /unfor[e]?seen|concealed|conceal|latent|hidden|unknown condition|not visible|behind the wall|once (we )?open|provisional sum|subject to (further )?inspection/.test(t);
+}
+
+export function detectScopeFlags(q: ReviewQuote): KeywordFlag[] {
+  const scope = scopeText(q);
+  if (!scope) return [];
+  const items = itemsText(q);
+  const has = (arr: string[]) => arr.some((p) => scope.includes(norm(p)));
+  const itemsHave = (arr: string[]) => arr.some((p) => items.includes(norm(p)));
+  const covered = coversUnforeseen(q);
   const out: KeywordFlag[] = [];
-  for (const t of triggers) {
-    const hit = t.phrases.find((ph) => hay.includes(norm(ph)));
-    if (hit) out.push({ id: t.id, phrase: hit, label: t.label, note: t.note, severity: t.severity });
-  }
+
+  // 1) Concrete slab AND plumbing being moved → genuine added cost. A slab on
+  //    its own (e.g. "grind slab" in standard demo) is NOT flagged.
+  const slab = has(["concrete slab", "on a slab", "on slab", "slab-on-ground", "slab on ground"]);
+  const movingPlumbing = has(["relocate", "move the toilet", "move toilet", "moving the toilet", "move plumbing", "moving plumbing", "new plumbing point", "add a plumbing point", "reposition", "move the vanity", "move the basin", "move the shower", "move the floor waste", "relocate floor waste", "shift the"]);
+  if (slab && movingPlumbing)
+    out.push({ id: "slab_plumbing", phrase: "concrete slab + moved plumbing", label: "Slab + moved plumbing", note: "Moving plumbing through a concrete slab usually adds real cost (cutting/coring + make-good). Make sure that's allowed for.", severity: "high" });
+
+  // 2) Subfloor mentioned in the scope but NO subfloor line item → likely a
+  //    genuine omission.
+  const subfloorMentioned = has(["subfloor", "sub-floor", "sub floor", "replace subfloor", "floor structure", "bearers and joists"]);
+  const subfloorLined = itemsHave(["subfloor", "sub-floor", "sub floor", "floor structure", "bearer", "joist"]);
+  if (subfloorMentioned && !subfloorLined)
+    out.push({ id: "subfloor", phrase: "subfloor", label: "Subfloor — is it quoted?", note: "The scope mentions the subfloor but there's no subfloor line item. If it needs replacing/repairing, add a line so it isn't absorbed.", severity: "high" });
+
+  // 3) Structural / wall removal → a real risk. Unambiguous structural words
+  //    always flag; a generic "remove … wall" only flags when it ISN'T about
+  //    removing wall LINING/tiles/sheets/cladding (standard demo, not structural).
+  const structuralWords = has(["structural", "load bearing", "load-bearing", "lintel", "rsj", "steel beam", "remove a wall", "removing a wall", "remove dividing wall", "knock out wall", "knock down wall"]);
+  const wallRemoval = /\b(remove|removing|knock out|knock down|take out|demolish)\b[^.]{0,20}\bwall\b/.test(scope);
+  const wallLiningContext = /\bwall\b[^.]{0,14}\b(lining|linings|tile|tiles|sheet|sheets|cladding|render|paper|paint)\b/.test(scope);
+  if (structuralWords || (wallRemoval && !wallLiningContext))
+    out.push({ id: "structural", phrase: "wall removal / structural", label: "Structural / wall removal", note: "Removing a wall can need an engineer + lintel/beam. Confirm structural work is scoped and priced.", severity: "high" });
+
+  // 4) Asbestos named in the WORK scope (not just a terms clause) and not a
+  //    priced line → needs its own licensed removal line.
+  if (has(["asbestos", "fibro sheet", "fibro lining"]) && !itemsHave(["asbestos"]))
+    out.push({ id: "asbestos", phrase: "asbestos", label: "Asbestos", note: "Asbestos needs licensed removal + disposal as its own priced line — don't fold it into general demo.", severity: "high" });
+
+  // 5) EXISTING damage explicitly noted in the scope AND the terms don't cover
+  //    unforeseen conditions → suggest a provisional sum / clause. (Standard demo
+  //    with no damage words won't fire; if the terms already cover it, we stay
+  //    quiet — it's handled.)
+  const damageNoted = has(["rotten", "water damage", "water-damaged", "water damaged", "active leak", "existing leak", "termite damage", "white ant damage", "previous water"]);
+  if (damageNoted && !covered)
+    out.push({ id: "unforeseen", phrase: "existing damage noted", label: "Existing damage noted", note: "The scope notes existing damage, but your terms don't appear to cover unforeseen/concealed conditions. Add a provisional sum or an unforeseen-conditions clause so extra work isn't on you.", severity: "medium" });
+
+  // 6) Second storey / upstairs → access + extra labour worth a check.
+  if (has(["second storey", "second story", "second floor", "upstairs", "level 2"]))
+    out.push({ id: "upstairs", phrase: "upstairs / second storey", label: "Upstairs / second storey", note: "Upstairs work usually means harder access + more labour/waterproofing — check it's reflected in the price.", severity: "medium" });
+
   return out;
 }
 

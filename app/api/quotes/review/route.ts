@@ -7,7 +7,7 @@ import { runGenerator } from "@/lib/ai/server";
 import { fetchPriceList } from "@/lib/data/priceList";
 import { money } from "@/lib/quotes/model";
 import {
-  analysePricing, detectKeywords, buildReviewText, fallbackHeadline,
+  analysePricing, detectScopeFlags, fallbackHeadline,
   type ReviewLine, type ReviewQuote, type PriceRef,
 } from "@/lib/quotes/review";
 
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
     // ---- Deterministic checks ----
     const pricing = analysePricing(items, priceList);
-    const keywords = detectKeywords(buildReviewText(quote));
+    const keywords = detectScopeFlags(quote);
 
     // ---- AI wording-to-close ----
     const itemsText = items
