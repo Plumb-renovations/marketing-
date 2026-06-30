@@ -31,6 +31,7 @@ export interface BrandSettings {
   depositPercent: number; // lock-in deposit % invoiced automatically on accept
   defaultTerms: string;
   defaultPaymentSchedule: PaymentStagePreset[];
+  defaultAllowanceNote: string; // saved framing text for the Tile & Fixture Allowance section
 }
 
 export const DEFAULT_BRAND: BrandSettings = {
@@ -57,6 +58,7 @@ export const DEFAULT_BRAND: BrandSettings = {
   depositPercent: 5,
   defaultTerms: "",
   defaultPaymentSchedule: [],
+  defaultAllowanceNote: "",
 };
 
 export function rowToBrand(row: any): BrandSettings {
@@ -85,6 +87,7 @@ export function rowToBrand(row: any): BrandSettings {
     depositPercent: row.deposit_percent != null ? Number(row.deposit_percent) : 5,
     defaultTerms: row.default_terms ?? "",
     defaultPaymentSchedule: Array.isArray(row.default_payment_schedule) ? row.default_payment_schedule : [],
+    defaultAllowanceNote: row.default_allowance_note ?? "",
   };
 }
 
@@ -115,6 +118,7 @@ export function brandToRow(orgId: string, b: BrandSettings): Record<string, any>
     deposit_percent: Math.max(0, Math.min(100, Number(b.depositPercent) || 0)),
     default_terms: b.defaultTerms,
     default_payment_schedule: (b.defaultPaymentSchedule || []).map((s) => ({ label: s.label, percent: Number(s.percent) || 0 })),
+    default_allowance_note: b.defaultAllowanceNote?.trim() || null,
   };
 }
 

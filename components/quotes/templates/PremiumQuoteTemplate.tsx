@@ -67,13 +67,19 @@ export default function PremiumQuoteTemplate({
     it.unit && it.unit !== "ea" ? `${it.qty} ${it.unit}` : `${it.qty}`;
   const amount = (it: Quote["items"][number]) => (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
 
-  // Group line items into the staged scope sections (numbered), with an unnamed
-  // leading group for any items not assigned to a section.
+  // Fixtures/tiles are a SEPARATE allowance layer — keep them out of the build
+  // scope and show them in their own section. The build scope = non-allowance.
+  const buildItems = quote.items.filter((i) => !i.allowance);
+  const allowanceItems = quote.items.filter((i) => i.allowance);
+  const allowanceTotal = computeTotals(allowanceItems, brand.gstRegistered, quote.gstInclusive).total;
+
+  // Group BUILD line items into the staged scope sections (numbered), with an
+  // unnamed leading group for any items not assigned to a section.
   const groups: { name: string | null; items: Quote["items"] }[] = [];
-  const loose = quote.items.filter((i) => !i.sectionId);
+  const loose = buildItems.filter((i) => !i.sectionId);
   if (loose.length) groups.push({ name: null, items: loose });
   for (const s of quote.sections) {
-    const items = quote.items.filter((i) => i.sectionId === s.id);
+    const items = buildItems.filter((i) => i.sectionId === s.id);
     if (items.length) groups.push({ name: s.name || "Section", items });
   }
   let stageNo = 0;
@@ -82,17 +88,18 @@ export default function PremiumQuoteTemplate({
   // consolidated line per trade (name + optional combined description + combined
   // total) — never the individual components, quantities or per-unit rates.
   // Quotes with no trades fall back to the existing section view, unchanged.
-  const tradeLines = consolidateByTrade(quote.items);
-  const hasTrades = quote.items.some((i) => (i.trade || "").trim());
+  const tradeLines = consolidateByTrade(buildItems);
+  const hasTrades = buildItems.some((i) => (i.trade || "").trim());
 
   // Good/Better/Best: the shared base build (scope shown once) + a priced option
   // per tier (each tier's finishes + its combined total = base + finishes).
+  // Tier totals include the (shared) allowance; the finish LINES are build-only.
   const tiered = !!quote.tiered;
-  const sharedLines = consolidateByTrade(quote.items.filter((i) => !i.tier));
+  const sharedLines = consolidateByTrade(buildItems.filter((i) => !i.tier));
   const tierBlocks = TIERS.map((t) => ({
     key: t.key,
     label: tierName(quote.tierNames, t.key),
-    lines: consolidateByTrade(quote.items.filter((i) => i.tier === t.key)),
+    lines: consolidateByTrade(buildItems.filter((i) => i.tier === t.key)),
     total: computeTotals(itemsForTier(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).total,
     accepted: quote.acceptedTier === t.key,
   }));
@@ -328,6 +335,38 @@ export default function PremiumQuoteTemplate({
             </div>
           );
         })}
+
+        {/* ===================== TILE & FIXTURE ALLOWANCE ===================== */}
+        {allowanceItems.length > 0 && (
+          <div style={{ marginTop: 34 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
+              <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Tile &amp; fixture allowance</span>
+              <span style={{ marginLeft: "auto", fontSize: 13, color: muted, fontVariantNumeric: "tabular-nums" }}>{money(allowanceTotal, ccy)}</span>
+            </div>
+            {quote.allowanceNote && (
+              <p style={{ margin: "12px 0 4px", fontSize: 13, color: muted, lineHeight: 1.6, maxWidth: "64ch" }}>{quote.allowanceNote}</p>
+            )}
+            <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 6 }}>
+              <tbody>
+                {allowanceItems.map((it, ii) => (
+                  <tr key={it.id}>
+                    <td style={{ padding: "11px 0", fontSize: 13.5, verticalAlign: "top", borderBottom: ii === allowanceItems.length - 1 ? "0" : `1px solid ${hair}`, color: ink, whiteSpace: "pre-wrap" }}>
+                      {it.description}
+                      {it.detail && <small style={{ display: "block", color: faint, fontSize: 12, marginTop: 2 }}>{it.detail}</small>}
+                    </td>
+                    <td style={{ padding: "11px 0", fontSize: 13.5, verticalAlign: "top", borderBottom: ii === allowanceItems.length - 1 ? "0" : `1px solid ${hair}`, textAlign: "right", fontWeight: 600, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", width: 120 }}>
+                      {money(amount(it), ccy)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: `1px solid ${hairStrong}`, fontSize: 13.5 }}>
+              <span style={{ fontWeight: 600 }}>Allowance total{tiered ? " (included in each option)" : brand.gstRegistered ? " (inc GST)" : ""}</span>
+              <b style={{ fontVariantNumeric: "tabular-nums" }}>{money(allowanceTotal, ccy)}</b>
+            </div>
+          </div>
+        )}
 
         {/* ===================== TOTALS (single-price quotes only) ============= */}
         {!tiered && (

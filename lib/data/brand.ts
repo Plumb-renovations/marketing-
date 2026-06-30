@@ -18,6 +18,12 @@ export async function fetchBrandSettings(supabase: SupabaseClient): Promise<Bran
 export async function saveBrandSettings(supabase: SupabaseClient, brand: BrandSettings): Promise<void> {
   const orgId = await getOrgId(supabase);
   // Column-scoped upsert: leaves the AI/targeting profile columns untouched.
-  const { error } = await supabase.from("business_profiles").upsert(brandToRow(orgId, brand), { onConflict: "org_id" });
+  const row = brandToRow(orgId, brand);
+  let { error } = await supabase.from("business_profiles").upsert(row, { onConflict: "org_id" });
+  // Retry without default_allowance_note if 0035 isn't applied yet.
+  if (error && (error.code === "42703" || /column .* does not exist|could not find/i.test(error.message || ""))) {
+    const { default_allowance_note, ...legacy } = row;
+    ({ error } = await supabase.from("business_profiles").upsert(legacy, { onConflict: "org_id" }));
+  }
   if (error) throw error;
 }

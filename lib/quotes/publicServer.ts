@@ -30,23 +30,28 @@ const DOC_SCALARS =
   "id, org_id, quote_number, reference, status, client_name, client_email, client_phone, client_address, project_name, site_address, quote_date, valid_until, scope_description, intro_note, terms, inclusions, exclusions, gst_inclusive, subtotal, gst_amount, total, public_token, sent_at, viewed_at, view_count, accepted_at";
 const SECTIONS = "quote_doc_sections(id, name, sort_order)";
 const STAGES = "quote_doc_stages(id, label, milestone_note, percent, fixed_amount, amount, status, sort_order)";
-const itemCols = (extra: boolean) =>
-  `quote_doc_items(id, section_id, description, detail, qty, unit, unit_price, amount, sort_order${extra ? ", trade, tier" : ""})`;
-const tierDocCols = (names: boolean) => (names ? "tiered, accepted_tier, tier_names" : "tiered, accepted_tier");
-const buildSelect = (extra: boolean, names: boolean) =>
-  [DOC_SCALARS, extra ? tierDocCols(names) : null, SECTIONS, itemCols(extra), STAGES].filter(Boolean).join(", ");
+const itemCols = (extra: boolean, allow: boolean) =>
+  `quote_doc_items(id, section_id, description, detail, qty, unit, unit_price, amount, sort_order${extra ? ", trade, tier" : ""}${allow ? ", allowance" : ""})`;
+const docExtraCols = (extra: boolean, names: boolean, allow: boolean) =>
+  [extra ? "tiered, accepted_tier" : null, names ? "tier_names" : null, allow ? "allowance_note" : null].filter(Boolean).join(", ");
+const buildSelect = (extra: boolean, names: boolean, allow: boolean) =>
+  [DOC_SCALARS, docExtraCols(extra, names, allow) || null, SECTIONS, itemCols(extra, allow), STAGES].filter(Boolean).join(", ");
 
 export async function fetchPublicQuote(token: string): Promise<PublicQuoteBundle | null> {
   if (!token) return null;
   const admin = createAdminClient();
   const undef = (e: any) => e && (e.code === "42703" || /column .* does not exist/i.test(e.message || ""));
 
-  // Prefer the full select (trade grouping + tiers + tier names). Fall back
-  // step-by-step if 0034 / 0033 / 0032 aren't applied yet, rather than 500-ing
-  // the public page: drop tier_names first, then all the tier/trade columns.
-  let { data: row, error } = await admin.from("quote_docs").select(buildSelect(true, true)).eq("public_token", token).maybeSingle();
-  if (undef(error)) ({ data: row, error } = await admin.from("quote_docs").select(buildSelect(true, false)).eq("public_token", token).maybeSingle());
-  if (undef(error)) ({ data: row, error } = await admin.from("quote_docs").select(buildSelect(false, false)).eq("public_token", token).maybeSingle());
+  // Prefer the full select (trade + tiers + tier names + allowance). Fall back
+  // step-by-step (newest migration first) if 0035 / 0034 / 0033 / 0032 aren't
+  // applied yet, rather than 500-ing the public page.
+  const attempts: [boolean, boolean, boolean][] = [[true, true, true], [true, true, false], [true, false, false], [false, false, false]];
+  let row: any = null;
+  let error: any = null;
+  for (const [extra, names, allow] of attempts) {
+    ({ data: row, error } = await admin.from("quote_docs").select(buildSelect(extra, names, allow)).eq("public_token", token).maybeSingle());
+    if (!undef(error)) break;
+  }
   if (error || !row) return null;
 
   const { data: prof } = await admin.from("business_profiles").select("*").eq("org_id", (row as any).org_id).maybeSingle();
@@ -104,6 +109,8 @@ function mapPublicQuote(row: any): Quote {
       trade: it.trade ?? null,
       tradeType: null, // internal flag — never exposed publicly
       tier: it.tier ?? null,
+      allowance: it.allowance ?? false,
+      sourcePriceItemId: null, // internal — not needed/exposed publicly
     }));
   const stages = computeStageAmounts(
     (row.quote_doc_stages || [])
@@ -152,6 +159,7 @@ function mapPublicQuote(row: any): Quote {
     tiered: row.tiered ?? false,
     acceptedTier: row.accepted_tier ?? null,
     tierNames: mapTierNames(row.tier_names),
+    allowanceNote: row.allowance_note ?? "",
     sections,
     items,
     stages,

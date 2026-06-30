@@ -39,6 +39,8 @@ function mapQuote(row: any): Quote {
       trade: it.trade ?? null,
       tradeType: it.trade_type ?? null,
       tier: it.tier ?? null,
+      allowance: it.allowance ?? false,
+      sourcePriceItemId: it.source_price_item_id ?? null,
     }));
   const stages = (row.quote_doc_stages || [])
     .slice()
@@ -84,6 +86,7 @@ function mapQuote(row: any): Quote {
     tiered: row.tiered ?? false,
     acceptedTier: row.accepted_tier ?? null,
     tierNames: mapTierNames(row.tier_names),
+    allowanceNote: row.allowance_note ?? "",
     sections,
     items,
     stages,
@@ -146,17 +149,22 @@ export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegis
     tiered: quote.tiered,
     accepted_tier: quote.acceptedTier ?? null,
     tier_names: quote.tierNames ?? null,
+    allowance_note: quote.allowanceNote || null,
   };
   let { error: qErr } = await supabase.from("quote_docs").upsert(docRow);
-  // Granular fallback: drop tier_names (0034) first, then tiered/accepted_tier
-  // (0033) — so a quote still saves if 0034 isn't applied yet WITHOUT also
-  // losing the tiered flag when only 0033 is present.
+  // Granular fallback (newest migration first): drop allowance_note (0035), then
+  // tier_names (0034), then tiered/accepted_tier (0033) — so a quote still saves
+  // when a later migration isn't applied without losing earlier columns.
   if (qErr && isUndefinedColumn(qErr)) {
-    const { tier_names, ...noNames } = docRow;
-    ({ error: qErr } = await supabase.from("quote_docs").upsert(noNames));
+    const { allowance_note, ...noAllowance } = docRow;
+    ({ error: qErr } = await supabase.from("quote_docs").upsert(noAllowance));
     if (qErr && isUndefinedColumn(qErr)) {
-      const { tiered, accepted_tier, ...legacy } = noNames;
-      ({ error: qErr } = await supabase.from("quote_docs").upsert(legacy));
+      const { tier_names, ...noNames } = noAllowance;
+      ({ error: qErr } = await supabase.from("quote_docs").upsert(noNames));
+      if (qErr && isUndefinedColumn(qErr)) {
+        const { tiered, accepted_tier, ...legacy } = noNames;
+        ({ error: qErr } = await supabase.from("quote_docs").upsert(legacy));
+      }
     }
   }
   if (qErr) throw qErr;
@@ -189,13 +197,20 @@ export async function saveQuote(supabase: SupabaseClient, quote: Quote, gstRegis
       trade: it.trade ?? null,
       trade_type: it.tradeType ?? null,
       tier: it.tier ?? null,
+      allowance: it.allowance ?? false,
+      source_price_item_id: it.sourcePriceItemId ?? null,
     }));
     let { error } = await supabase.from("quote_doc_items").insert(rows);
-    // If 0032/0033 aren't applied yet, retry without the trade/tier columns so
-    // saving still works (the quote just isn't trade/tier-tagged until they run).
+    // If 0032/0033/0035 aren't applied yet, retry without the optional columns so
+    // saving still works (the quote just isn't trade/tier/allowance-tagged until
+    // they run). Drop the newest (allowance, 0035) first, then trade/tier.
     if (error && isUndefinedColumn(error)) {
-      const legacy = rows.map(({ trade, trade_type, tier, ...rest }) => rest);
-      ({ error } = await supabase.from("quote_doc_items").insert(legacy));
+      const noAllowance = rows.map(({ allowance, source_price_item_id, ...rest }) => rest);
+      ({ error } = await supabase.from("quote_doc_items").insert(noAllowance));
+      if (error && isUndefinedColumn(error)) {
+        const legacy = noAllowance.map(({ trade, trade_type, tier, ...rest }) => rest);
+        ({ error } = await supabase.from("quote_doc_items").insert(legacy));
+      }
     }
     if (error) throw error;
   }
