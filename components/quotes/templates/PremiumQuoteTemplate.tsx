@@ -77,18 +77,17 @@ export default function PremiumQuoteTemplate({
   const constructionSingleTotal = computeTotals(buildItems, brand.gstRegistered, quote.gstInclusive).total;
   const allowanceFlatTotal = computeTotals(allowanceItems, brand.gstRegistered, quote.gstInclusive).total;
 
-  // PC-items tiers (parallel to construction): each shows the COVERED items +
-  // ONE combined allowance total; per-item prices are hidden.
-  const pcBlocks = TIERS.map((t) => {
-    const its = pcAllowanceItems(quote.items, t.key); // shared PC lines + this tier
-    return {
-      key: t.key,
-      label: pcTierName(quote.pcTierNames, t.key),
-      covered: its.map((it) => (it.description || "").split(/\r?\n/)[0].trim()).filter(Boolean),
-      total: computeTotals(its, brand.gstRegistered, quote.gstInclusive).total,
-      accepted: quote.acceptedPcTier === t.key,
-    };
-  });
+  // PC-items tiers — an EXACT replica of the construction tier mechanism: one
+  // SELF-CONTAINED option card per PC level, each showing that level's complete
+  // covered fixtures/tiles (shared PC base + that level's items) trade-grouped,
+  // per-item prices hidden, and ONE combined allowance total. Pick one.
+  const pcTierBlocks = TIERS.map((t) => ({
+    key: t.key,
+    label: pcTierName(quote.pcTierNames, t.key),
+    lines: consolidateByTrade(pcAllowanceItems(quote.items, t.key)),
+    total: computeTotals(pcAllowanceItems(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).total,
+    accepted: quote.acceptedPcTier === t.key,
+  }));
 
   // Group BUILD line items into the staged scope sections (numbered), with an
   // unnamed leading group for any items not assigned to a section.
@@ -111,13 +110,14 @@ export default function PremiumQuoteTemplate({
   // Good/Better/Best: the shared base build (scope shown once) + a priced option
   // per tier (each tier's finishes + its combined total = base + finishes).
   // Tier totals include the (shared) allowance; the finish LINES are build-only.
+  // Construction option cards are SELF-CONTAINED: each shows that option's
+  // COMPLETE build scope (shared base + that tier's lines), trade-grouped, with
+  // ONE build-only total. Three clearly-separated options, pick one.
   const tiered = !!quote.tiered;
-  const sharedLines = consolidateByTrade(buildItems.filter((i) => !i.tier));
   const tierBlocks = TIERS.map((t) => ({
     key: t.key,
     label: tierName(quote.tierNames, t.key),
-    lines: consolidateByTrade(buildItems.filter((i) => i.tier === t.key)),
-    // Construction option price is BUILD ONLY — the PC allowance is its own choice.
+    lines: consolidateByTrade(buildItemsForTier(quote.items, t.key)),
     total: computeTotals(buildItemsForTier(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).total,
     accepted: quote.acceptedTier === t.key,
   }));
@@ -243,31 +243,13 @@ export default function PremiumQuoteTemplate({
         {/* ===================== SCOPE ===================== */}
         {tiered ? (
           <>
-            {/* Shared base build — shown once, included in every option */}
-            {sharedLines.length > 0 && (
-              <div style={{ marginTop: 30 }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
-                  <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Included in every option</span>
-                  <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>the base build</span>
-                </div>
-                {sharedLines.map((t) => (
-                  <div key={t.key} style={{ padding: "14px 0", borderBottom: `1px solid ${hair}` }}>
-                    <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 16, color: ink }}>{t.label}</span>
-                    {t.bullets.length > 0 && (
-                      <ul style={{ margin: "8px 0 0", paddingLeft: 18, listStyle: "disc", color: muted }}>
-                        {t.bullets.map((b, bi) => <li key={bi} style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 3, whiteSpace: "pre-wrap" }}>{b}</li>)}
-                      </ul>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Choose your option — three priced tiers (base + that tier's finishes) */}
+            {/* Choose your construction option — three SELF-CONTAINED tiers, each
+                showing that option's complete build scope (trade-grouped) + ONE
+                build-only total. Pick one. */}
             <div style={{ marginTop: 34 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
-                <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Choose your option</span>
-                <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>each includes the base build above</span>
+                <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Choose your construction option</span>
+                <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>three options — pick one</span>
               </div>
               <div className="quote-tier-grid" style={{ marginTop: 16 }}>
                 {tierBlocks.map((t) => (
@@ -287,7 +269,7 @@ export default function PremiumQuoteTemplate({
                         </div>
                       ))
                     ) : (
-                      <div style={{ fontSize: 12, color: faint }}>Base build as above.</div>
+                      <div style={{ fontSize: 12, color: faint }}>Full build scope included.</div>
                     )}
                   </div>
                 ))}
@@ -354,33 +336,45 @@ export default function PremiumQuoteTemplate({
           );
         })}
 
-        {/* ============== PC ITEMS & TILES — parallel tier choice ============== */}
+        {/* ============== PC ITEMS & TILES — parallel tier choice ==============
+            Mirrors the construction tiers exactly: one SELF-CONTAINED option card
+            per PC level (that level's complete covered items trade-grouped + ONE
+            combined allowance total; per-item prices hidden). Pick one. */}
         {pcTiered ? (
-          <div style={{ marginTop: 34 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
-              <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Choose your PC items &amp; tiles</span>
-              <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>fixture &amp; tile allowance — pick a level</span>
+          <>
+            <div style={{ marginTop: 34 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
+                <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Choose your PC items &amp; tiles</span>
+                <span style={{ marginLeft: "auto", fontSize: 11.5, color: faint }}>fixtures &amp; tiles — pick a level</span>
+              </div>
+              {quote.allowanceNote && (
+                <p style={{ margin: "12px 0 4px", fontSize: 13, color: muted, lineHeight: 1.6, maxWidth: "64ch" }}>{quote.allowanceNote}</p>
+              )}
+              <div className="quote-tier-grid" style={{ marginTop: 16 }}>
+                {pcTierBlocks.map((t) => (
+                  <div key={t.key} style={{ border: `1px solid ${t.accepted ? copper : hairStrong}`, borderRadius: 6, padding: "16px 16px 18px", background: t.accepted ? bandBg : "transparent", display: "flex", flexDirection: "column" }}>
+                    <div style={{ fontFamily: DISP, fontWeight: 700, fontSize: 18, color: ink }}>{t.label}</div>
+                    <div style={{ fontFamily: DISP, fontWeight: 600, fontSize: 24, color: copper, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>{money(t.total, ccy)}</div>
+                    <div style={{ fontSize: 10.5, color: faint, marginBottom: 10 }}>{brand.gstRegistered ? "inc GST" : ccy} allowance{t.accepted ? " · accepted" : ""}</div>
+                    {t.lines.length > 0 ? (
+                      t.lines.map((g) => (
+                        <div key={g.key} style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: ink }}>{g.label}</div>
+                          {g.bullets.length > 0 && (
+                            <ul style={{ margin: "3px 0 0", paddingLeft: 15, listStyle: "disc", color: muted }}>
+                              {g.bullets.map((b, bi) => <li key={bi} style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 2, whiteSpace: "pre-wrap" }}>{b}</li>)}
+                            </ul>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ fontSize: 12, color: faint }}>Fixtures &amp; tiles as listed.</div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-            {quote.allowanceNote && (
-              <p style={{ margin: "12px 0 4px", fontSize: 13, color: muted, lineHeight: 1.6, maxWidth: "64ch" }}>{quote.allowanceNote}</p>
-            )}
-            <div className="quote-tier-grid" style={{ marginTop: 16 }}>
-              {pcBlocks.map((t) => (
-                <div key={t.key} style={{ border: `1px solid ${t.accepted ? copper : hairStrong}`, borderRadius: 6, padding: "16px 16px 18px", background: t.accepted ? bandBg : "transparent", display: "flex", flexDirection: "column" }}>
-                  <div style={{ fontFamily: DISP, fontWeight: 700, fontSize: 18, color: ink }}>{t.label}</div>
-                  <div style={{ fontFamily: DISP, fontWeight: 600, fontSize: 24, color: copper, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>{money(t.total, ccy)}</div>
-                  <div style={{ fontSize: 10.5, color: faint, marginBottom: 10 }}>{brand.gstRegistered ? "inc GST" : ccy} allowance{t.accepted ? " · accepted" : ""}</div>
-                  {t.covered.length > 0 ? (
-                    <ul style={{ margin: 0, paddingLeft: 15, listStyle: "disc", color: muted }}>
-                      {t.covered.map((c, ci) => <li key={ci} style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 2 }}>{c}</li>)}
-                    </ul>
-                  ) : (
-                    <div style={{ fontSize: 12, color: faint }}>No items at this level.</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          </>
         ) : hasAllowance ? (
           <div style={{ marginTop: 34 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
