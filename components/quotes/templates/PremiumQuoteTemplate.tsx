@@ -36,10 +36,15 @@ export default function PremiumQuoteTemplate({
   quote,
   brand,
   businessName,
+  acceptBlockPrintOnly = false,
 }: {
   quote: Quote;
   brand: BrandSettings;
   businessName: string;
+  // When true (the interactive client view), the decorative accept/sign block is
+  // hidden on screen and kept only for the printed PDF — the real, wired Accept
+  // action is rendered separately, so the client never sees a dead duplicate.
+  acceptBlockPrintOnly?: boolean;
 }) {
   // Brand-driven palette
   const copper = brand.brandColor || "#A86A45";
@@ -313,7 +318,9 @@ export default function PremiumQuoteTemplate({
         )}
 
         {/* ===================== NOTES + ACCEPT ===================== */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.1fr .9fr", gap: 34, marginTop: 38 }}>
+        {/* On the interactive client view the accept block is print-only, so the
+            notes take the full width on screen (no empty right column). */}
+        <div style={{ display: "grid", gridTemplateColumns: acceptBlockPrintOnly ? "1fr" : "1.1fr .9fr", gap: 34, marginTop: 38 }}>
           <div>
             {notes.length > 0 && (
               <>
@@ -330,7 +337,7 @@ export default function PremiumQuoteTemplate({
             )}
           </div>
 
-          <div style={{ background: ink, color: "#F4EFE6", borderRadius: 4, padding: "24px 26px" }}>
+          <div className={acceptBlockPrintOnly ? "quote-accept-print-only" : undefined} style={{ background: ink, color: "#F4EFE6", borderRadius: 4, padding: "24px 26px" }}>
             <p style={{ fontFamily: DISP, fontWeight: 600, fontSize: 21, margin: "0 0 6px", color: "#fff" }}>Ready to go ahead?</p>
             <p style={{ fontSize: 12.5, color: "#CFC6B8", margin: "0 0 18px" }}>
               Accept online and we&apos;ll secure your preferred start date — a deposit locks it in and we&apos;ll send the
