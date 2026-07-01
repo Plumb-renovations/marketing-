@@ -90,10 +90,12 @@ export default function PremiumQuoteTemplate({
   const allowanceItems = quote.items.filter((i) => i.allowance);
   const hasAllowance = allowanceItems.length > 0;
   const pcTiered = !!quote.pcTiered && hasAllowance;
-  // Single-price construction total (build only) + the flat fixtures total (used
-  // when the relevant axis isn't tiered).
-  const constructionSingleTotal = computeTotals(buildItems, brand.gstRegistered, quote.gstInclusive).total;
-  const allowanceFlatTotal = computeTotals(allowanceItems, brand.gstRegistered, quote.gstInclusive).total;
+  // All amounts are entered EX-GST; GST (10%) is added ONCE on the subtotal.
+  // Per-axis EX-GST subtotals for the non-tiered price summary, plus the whole-
+  // quote breakdown (subtotal ex / GST / total payable inc).
+  const constructionSub = computeTotals(buildItems, brand.gstRegistered, quote.gstInclusive).subtotal;
+  const allowanceSub = computeTotals(allowanceItems, brand.gstRegistered, quote.gstInclusive).subtotal;
+  const wholeTotals = computeTotals(quote.items, brand.gstRegistered, quote.gstInclusive);
 
   // PC-items tiers — an EXACT replica of the construction tier mechanism: the
   // SHARED PC base (pcTier null) shown ONCE, then one card per PC level showing
@@ -104,7 +106,9 @@ export default function PremiumQuoteTemplate({
     key: t.key,
     label: pcTierName(quote.pcTierNames, t.key),
     lines: consolidateByTrade(allowanceItems.filter((i) => i.pcTier === t.key)),
-    total: computeTotals(pcAllowanceItems(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).total,
+    // Card shows the option's EX-GST amount; GST is added once on the combined
+    // total (standard AU format).
+    sub: computeTotals(pcAllowanceItems(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).subtotal,
     accepted: quote.acceptedPcTier === t.key,
   }));
 
@@ -136,7 +140,8 @@ export default function PremiumQuoteTemplate({
     key: t.key,
     label: tierName(quote.tierNames, t.key),
     lines: consolidateByTrade(buildItems.filter((i) => i.tier === t.key)),
-    total: computeTotals(buildItemsForTier(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).total,
+    // EX-GST option amount; GST is added once on the combined total.
+    sub: computeTotals(buildItemsForTier(quote.items, t.key), brand.gstRegistered, quote.gstInclusive).subtotal,
     accepted: quote.acceptedTier === t.key,
   }));
 
@@ -160,7 +165,7 @@ export default function PremiumQuoteTemplate({
   const notes = [...incl, ...excl];
 
   const gstNote = brand.gstRegistered
-    ? `All amounts in ${ccy}, inclusive of GST`
+    ? `Line items in ${ccy}, ex GST. GST (10%) is added once at the total below.`
     : `All amounts in ${ccy}`;
 
   return (
@@ -314,8 +319,8 @@ export default function PremiumQuoteTemplate({
                       <div style={{ fontFamily: DISP, fontWeight: 700, fontSize: 18, color: ink }}>{t.label}</div>
                       {tierClickable && <span style={{ fontSize: 11, fontWeight: 700, color: sel ? copper : faint, whiteSpace: "nowrap" }}>{sel ? "✓ Selected" : "Select"}</span>}
                     </div>
-                    <div style={{ fontFamily: DISP, fontWeight: 600, fontSize: 24, color: copper, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>{money(t.total, ccy)}</div>
-                    <div style={{ fontSize: 10.5, color: faint, marginBottom: 10 }}>{brand.gstRegistered ? "inc GST" : ccy}{!config && t.accepted ? " · accepted" : ""}</div>
+                    <div style={{ fontFamily: DISP, fontWeight: 600, fontSize: 24, color: copper, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>{money(t.sub, ccy)}</div>
+                    <div style={{ fontSize: 10.5, color: faint, marginBottom: 10 }}>{brand.gstRegistered ? "ex GST" : ccy}{!config && t.accepted ? " · accepted" : ""}</div>
                     {t.lines.length > 0 ? (
                       t.lines.map((g) => (
                         <div key={g.key} style={{ marginBottom: 8 }}>
@@ -445,8 +450,8 @@ export default function PremiumQuoteTemplate({
                       <div style={{ fontFamily: DISP, fontWeight: 700, fontSize: 18, color: ink }}>{t.label}</div>
                       {pcClickable && <span style={{ fontSize: 11, fontWeight: 700, color: sel ? copper : faint, whiteSpace: "nowrap" }}>{sel ? "✓ Selected" : "Select"}</span>}
                     </div>
-                    <div style={{ fontFamily: DISP, fontWeight: 600, fontSize: 24, color: copper, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>{money(t.total, ccy)}</div>
-                    <div style={{ fontSize: 10.5, color: faint, marginBottom: 10 }}>{brand.gstRegistered ? "inc GST" : ccy} allowance{!config && t.accepted ? " · accepted" : ""}</div>
+                    <div style={{ fontFamily: DISP, fontWeight: 600, fontSize: 24, color: copper, fontVariantNumeric: "tabular-nums", marginTop: 2 }}>{money(t.sub, ccy)}</div>
+                    <div style={{ fontSize: 10.5, color: faint, marginBottom: 10 }}>{brand.gstRegistered ? "ex GST" : ccy} allowance{!config && t.accepted ? " · accepted" : ""}</div>
                     {t.lines.length > 0 ? (
                       t.lines.map((g) => (
                         <div key={g.key} style={{ marginBottom: 8 }}>
@@ -471,7 +476,7 @@ export default function PremiumQuoteTemplate({
           <div style={{ marginTop: 34 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 14, paddingBottom: 9, borderBottom: `1px solid ${hair}` }}>
               <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 20, letterSpacing: ".005em" }}>Tile &amp; fixture allowance</span>
-              <span style={{ marginLeft: "auto", fontSize: 13, color: muted, fontVariantNumeric: "tabular-nums" }}>{money(allowanceFlatTotal, ccy)}</span>
+              <span style={{ marginLeft: "auto", fontSize: 13, color: muted, fontVariantNumeric: "tabular-nums" }}>{money(allowanceSub, ccy)}{brand.gstRegistered ? " ex GST" : ""}</span>
             </div>
             {quote.allowanceNote && (
               <p style={{ margin: "12px 0 8px", fontSize: 13, color: muted, lineHeight: 1.6, maxWidth: "64ch" }}>{quote.allowanceNote}</p>
@@ -480,8 +485,8 @@ export default function PremiumQuoteTemplate({
               {allowanceItems.map((it) => <li key={it.id} style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 3 }}>{(it.description || "").split(/\r?\n/)[0]}</li>)}
             </ul>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: `1px solid ${hairStrong}`, fontSize: 13.5 }}>
-              <span style={{ fontWeight: 600 }}>Allowance total{brand.gstRegistered ? " (inc GST)" : ""}</span>
-              <b style={{ fontVariantNumeric: "tabular-nums" }}>{money(allowanceFlatTotal, ccy)}</b>
+              <span style={{ fontWeight: 600 }}>Allowance total{brand.gstRegistered ? " (ex GST)" : ""}</span>
+              <b style={{ fontVariantNumeric: "tabular-nums" }}>{money(allowanceSub, ccy)}</b>
             </div>
           </div>
         ) : null}
@@ -495,26 +500,44 @@ export default function PremiumQuoteTemplate({
         ) : (
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 28 }}>
             <div style={{ width: 360 }}>
+              {/* Per-axis EX-GST lines */}
               <div style={totalRow(muted)}>
-                <span>Construction{brand.gstRegistered ? " (inc GST)" : ""}</span>
-                <b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{tiered ? "choose an option" : money(constructionSingleTotal, ccy)}</b>
+                <span>Construction{brand.gstRegistered ? " (ex GST)" : ""}</span>
+                <b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{tiered ? "choose an option" : money(constructionSub, ccy)}</b>
               </div>
               {(pcTiered || hasAllowance) && (
                 <div style={totalRow(muted)}>
-                  <span>PC items &amp; tiles{brand.gstRegistered ? " (inc GST)" : ""}</span>
-                  <b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{pcTiered ? "choose a level" : money(allowanceFlatTotal, ccy)}</b>
+                  <span>PC items &amp; tiles{brand.gstRegistered ? " (ex GST)" : ""}</span>
+                  <b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{pcTiered ? "choose a level" : money(allowanceSub, ccy)}</b>
                 </div>
               )}
-              <div style={{ borderTop: `2px solid ${ink}`, marginTop: 6, paddingTop: 14, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 19 }}>Total{brand.gstRegistered ? " (inc GST)" : ""}</span>
-                {tiered || pcTiered ? (
-                  <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 15, color: muted, textAlign: "right", maxWidth: 220 }}>your chosen construction + fixtures</span>
-                ) : (
-                  <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 30, fontVariantNumeric: "tabular-nums", color: ink }}>{money(quote.total, ccy)}</span>
-                )}
-              </div>
+              {tiered || pcTiered ? (
+                // Tiered: the priced breakdown appears once the client selects.
+                <div style={{ borderTop: `2px solid ${ink}`, marginTop: 6, paddingTop: 14, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 19 }}>Total payable</span>
+                  <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 15, color: muted, textAlign: "right", maxWidth: 220 }}>subtotal + 10% GST on your chosen options</span>
+                </div>
+              ) : (
+                // Single-price: full Subtotal (ex) → GST (10%) → Total payable (inc).
+                <>
+                  <div style={{ ...totalRow(muted), borderTop: `1px solid ${hairStrong}`, marginTop: 6, paddingTop: 12 }}>
+                    <span>Subtotal (ex GST)</span>
+                    <b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{money(wholeTotals.subtotal, ccy)}</b>
+                  </div>
+                  {brand.gstRegistered && (
+                    <div style={totalRow(muted)}>
+                      <span>GST (10%)</span>
+                      <b style={{ color: ink, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{money(wholeTotals.gstAmount, ccy)}</b>
+                    </div>
+                  )}
+                  <div style={{ borderTop: `2px solid ${ink}`, marginTop: 6, paddingTop: 14, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 19 }}>Total payable{brand.gstRegistered ? " (inc GST)" : ""}</span>
+                    <span style={{ fontFamily: DISP, fontWeight: 600, fontSize: 30, fontVariantNumeric: "tabular-nums", color: ink }}>{money(wholeTotals.total, ccy)}</span>
+                  </div>
+                </>
+              )}
               <div style={{ textAlign: "right", fontSize: 11.5, color: faint, marginTop: 6 }}>{gstNote}</div>
-              <div style={{ textAlign: "right", fontSize: 11.5, color: muted, marginTop: 4 }}>A {brand.depositPercent || 5}% deposit (on the construction total) secures your booking.</div>
+              <div style={{ textAlign: "right", fontSize: 11.5, color: muted, marginTop: 4 }}>A {brand.depositPercent || 5}% deposit (on the inc-GST construction total) secures your booking.</div>
             </div>
           </div>
         )}

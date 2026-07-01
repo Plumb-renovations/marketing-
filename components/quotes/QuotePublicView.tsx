@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Printer, Loader2, CheckCircle2 } from "lucide-react";
 import QuoteDocument from "@/components/quotes/QuoteDocument";
-import { money, computeTotals, buildItemsForTier, tierTotals, pcTierTotals, pcAllowanceItems, tierName, pcTierName, type Quote, type TierKey } from "@/lib/quotes/model";
+import { money, computeTotals, buildItemsForTier, tierTotals, pcTierTotals, pcAllowanceItems, tierName, pcTierName, GST_RATE, type Quote, type TierKey } from "@/lib/quotes/model";
 import type { QuoteConfiguratorConfig } from "@/components/quotes/templates/PremiumQuoteTemplate";
 import type { BrandSettings } from "@/lib/business/brand";
 
@@ -76,19 +76,25 @@ export default function QuotePublicView({
   const pcChosen = !pcTiered || pcChoice !== null;
   const bothChosen = cChosen && pcChosen;
 
-  // Live amounts. Construction (build-only) drives the deposit; PC is the
-  // fixtures/tiles allowance. Flat (non-tiered) axes use their fixed total.
-  const constructionFlat = computeTotals(buildItemsForTier(quote.items, null), brand.gstRegistered, quote.gstInclusive).total;
-  const allowanceFlat = computeTotals(pcAllowanceItems(quote.items, null), brand.gstRegistered, quote.gstInclusive).total;
-  const cTotal = tiered ? (cTier ? tiers[cTier].total : 0) : constructionFlat;
-  const pTotal = pcTiered ? (pcChoice ? pcTiers[pcChoice].total : 0) : allowanceFlat;
-  const grandTotal = cTotal + pTotal;
+  // Live amounts — everything entered EX-GST; GST (10%) added ONCE on the
+  // combined subtotal. Construction (build-only, inc-GST) drives the deposit.
+  const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+  const cAll = computeTotals(buildItemsForTier(quote.items, null), brand.gstRegistered, quote.gstInclusive);
+  const pAll = computeTotals(pcAllowanceItems(quote.items, null), brand.gstRegistered, quote.gstInclusive);
+  // EX-GST subtotals for the chosen options.
+  const cSub = tiered ? (cTier ? tiers[cTier].subtotal : 0) : cAll.subtotal;
+  const pSub = pcTiered ? (pcChoice ? pcTiers[pcChoice].subtotal : 0) : (hasAllowance ? pAll.subtotal : 0);
+  // Construction inc-GST (drives the deposit).
+  const cInc = tiered ? (cTier ? tiers[cTier].total : 0) : cAll.total;
+  const combinedSub = round2(cSub + pSub);
+  const gst = brand.gstRegistered ? round2(combinedSub * GST_RATE) : 0;
+  const totalPayable = round2(combinedSub + gst);
   const depositPct = brand.depositPercent || 5;
-  const deposit = Math.round((cTotal * depositPct) / 100 * 100) / 100;
+  const deposit = round2((cInc * depositPct) / 100);
   const cLabel = tiered ? (cTier ? tierName(quote.tierNames, cTier) : "—") : "Construction";
   const pcLabel = pcTiered ? (pcChoice ? pcTierName(quote.pcTierNames, pcChoice) : "—") : hasAllowance ? "Fixtures & tiles" : "";
   const showFixturesLine = pcTiered || hasAllowance;
-  const gstNote = brand.gstRegistered ? `All amounts in ${ccy}, inclusive of GST` : `All amounts in ${ccy}`;
+  const gstNote = brand.gstRegistered ? `Line items ex GST; GST (10%) added at the total.` : `All amounts in ${ccy}`;
 
   const accept = async () => {
     if (!bothChosen) { setError("Please choose your options above first."); return; }
@@ -143,7 +149,7 @@ export default function QuotePublicView({
           <p style={{ fontSize: 14, color: "#6b6358", marginTop: 6, lineHeight: 1.6 }}>
             {businessName || "We"} will be in touch to confirm your start date. A {depositPct}% deposit invoice ({money(deposit, ccy)} of your construction total) is on its way to your email to lock it in.
           </p>
-          <div style={{ marginTop: 12, fontSize: 16, fontWeight: 700, color: "#242220" }}>Your total: {money(grandTotal, ccy)}{brand.gstRegistered ? " inc GST" : ""}</div>
+          <div style={{ marginTop: 12, fontSize: 16, fontWeight: 700, color: "#242220" }}>Total payable: {money(totalPayable, ccy)}{brand.gstRegistered ? " inc GST" : ""}</div>
         </div>
       ) : !bothChosen ? (
         // Calm prompt — NO price until both are chosen, so nothing chases them.
@@ -164,14 +170,16 @@ export default function QuotePublicView({
             <div style={{ fontSize: 11, color: "#9e978b", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>Your selection</div>
             <div style={{ fontFamily: DISP, fontSize: 22, fontWeight: 700, color: "#242220", marginTop: 2 }}>{cLabel}{showFixturesLine ? ` + ${pcLabel}` : ""}</div>
             <div style={{ marginTop: 12, borderTop: "1px solid #EFE9DF" }}>
-              <div style={rowStyle}><span>Construction{brand.gstRegistered ? " (inc GST)" : ""}</span><b style={{ color: "#242220", fontVariantNumeric: "tabular-nums" }}>{money(cTotal, ccy)}</b></div>
-              {showFixturesLine && <div style={rowStyle}><span>Fixtures &amp; tiles{brand.gstRegistered ? " (inc GST)" : ""}</span><b style={{ color: "#242220", fontVariantNumeric: "tabular-nums" }}>{money(pTotal, ccy)}</b></div>}
+              <div style={rowStyle}><span>Construction{brand.gstRegistered ? " (ex GST)" : ""}</span><b style={{ color: "#242220", fontVariantNumeric: "tabular-nums" }}>{money(cSub, ccy)}</b></div>
+              {showFixturesLine && <div style={rowStyle}><span>Fixtures &amp; tiles{brand.gstRegistered ? " (ex GST)" : ""}</span><b style={{ color: "#242220", fontVariantNumeric: "tabular-nums" }}>{money(pSub, ccy)}</b></div>}
+              <div style={{ ...rowStyle, borderTop: "1px solid #EFE9DF" }}><span style={{ fontWeight: 600, color: "#242220" }}>Subtotal (ex GST)</span><b style={{ color: "#242220", fontVariantNumeric: "tabular-nums" }}>{money(combinedSub, ccy)}</b></div>
+              {brand.gstRegistered && <div style={rowStyle}><span>GST (10%)</span><b style={{ color: "#242220", fontVariantNumeric: "tabular-nums" }}>{money(gst, ccy)}</b></div>}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 6, paddingTop: 12, borderTop: "2px solid #242220" }}>
-                <span style={{ fontFamily: DISP, fontWeight: 700, fontSize: 19, color: "#242220" }}>Total{brand.gstRegistered ? " (inc GST)" : ""}</span>
-                <span style={{ fontFamily: DISP, fontWeight: 800, fontSize: 30, color: accent, fontVariantNumeric: "tabular-nums" }}>{money(grandTotal, ccy)}</span>
+                <span style={{ fontFamily: DISP, fontWeight: 700, fontSize: 19, color: "#242220" }}>Total payable{brand.gstRegistered ? " (inc GST)" : ""}</span>
+                <span style={{ fontFamily: DISP, fontWeight: 800, fontSize: 30, color: accent, fontVariantNumeric: "tabular-nums" }}>{money(totalPayable, ccy)}</span>
               </div>
             </div>
-            <div style={{ fontSize: 11.5, color: "#9e978b", marginTop: 8 }}>{gstNote} · a {depositPct}% deposit ({money(deposit, ccy)}, on the construction total) secures your booking.</div>
+            <div style={{ fontSize: 11.5, color: "#9e978b", marginTop: 8 }}>{gstNote} · a {depositPct}% deposit ({money(deposit, ccy)}, on the inc-GST construction total) secures your booking.</div>
           </div>
 
           {/* The comfort question — gentle permission to adjust to budget. */}

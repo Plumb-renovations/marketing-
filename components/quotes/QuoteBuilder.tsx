@@ -216,7 +216,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
     setCustomPc(emptyCustomPc); setCustomPcOpen(false);
   };
   const allowanceItems = allowanceItemsOf(q.items);
-  const allowanceSubtotal = computeTotals(allowanceItems, brand.gstRegistered, q.gstInclusive).total;
+  const allowanceSubtotal = computeTotals(allowanceItems, brand.gstRegistered, q.gstInclusive).subtotal;
   const saveAllowanceDefault = async () => {
     setSavingAllowanceDefault(true); setError("");
     try {
@@ -797,8 +797,8 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                         />
                         {t.key === "better" && <span className="shrink-0 rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">Most pick this</span>}
                       </div>
-                      <div className="mt-1 font-data text-lg font-semibold text-cyan-300">{money(tiers[t.key].total, brand.currency)}</div>
-                      <div className="text-[11px] text-slate-500">{brand.gstRegistered ? "inc GST" : ""} · base + {tierName(q.tierNames, t.key).toLowerCase()} finishes</div>
+                      <div className="mt-1 font-data text-lg font-semibold text-cyan-300">{money(tiers[t.key].subtotal, brand.currency)}</div>
+                      <div className="text-[11px] text-slate-500">{brand.gstRegistered ? "ex GST" : ""} · base + {tierName(q.tierNames, t.key).toLowerCase()} finishes</div>
                     </div>
                   ))}
                 </div>
@@ -807,9 +807,9 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
             ) : (
               <div className="mt-4 flex justify-end">
                 <div className="w-64 space-y-1 text-sm">
-                  <Row label="Subtotal" value={money(totals.subtotal, brand.currency)} />
+                  <Row label={`Subtotal${brand.gstRegistered ? " (ex GST)" : ""}`} value={money(totals.subtotal, brand.currency)} />
                   {brand.gstRegistered && <Row label={`GST (10%)${q.gstInclusive ? " incl." : ""}`} value={money(totals.gstAmount, brand.currency)} />}
-                  <div className="flex items-center justify-between border-t border-slate-700 pt-1.5 text-base font-semibold text-slate-100"><span>Total</span><span className="font-data text-cyan-300">{money(totals.total, brand.currency)}</span></div>
+                  <div className="flex items-center justify-between border-t border-slate-700 pt-1.5 text-base font-semibold text-slate-100"><span>Total payable{brand.gstRegistered ? " (inc GST)" : ""}</span><span className="font-data text-cyan-300">{money(totals.total, brand.currency)}</span></div>
                 </div>
               </div>
             )}
@@ -914,8 +914,8 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                       {TIERS.map((t) => (
                         <div key={t.key} className={`rounded-xl border p-3 ${t.key === "better" ? "border-amber-500/40 bg-amber-500/5" : "border-slate-800 bg-slate-950/40"}`}>
                           <input value={q.pcTierNames[t.key]} onChange={(e) => upd({ pcTierNames: { ...q.pcTierNames, [t.key]: e.target.value } })} placeholder={pcTierName(null, t.key)} className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 font-display text-sm font-semibold text-slate-100 focus:border-amber-500/50" />
-                          <div className="mt-1 font-data text-lg font-semibold text-amber-300">{money(pcTiers[t.key].total, brand.currency)}</div>
-                          <div className="text-[11px] text-slate-500">{brand.gstRegistered ? "inc GST" : ""} fixture allowance</div>
+                          <div className="mt-1 font-data text-lg font-semibold text-amber-300">{money(pcTiers[t.key].subtotal, brand.currency)}</div>
+                          <div className="text-[11px] text-slate-500">{brand.gstRegistered ? "ex GST" : ""} fixture allowance</div>
                         </div>
                       ))}
                     </div>
@@ -944,7 +944,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
 
                 <div className="mt-3 flex items-center justify-between text-sm">
                   <span className="text-slate-400">{allowanceItems.length} PC item{allowanceItems.length === 1 ? "" : "s"}{q.pcTiered ? "" : " — flat allowance"}</span>
-                  <span className="font-data font-semibold text-amber-300">{money(allowanceSubtotal, brand.currency)} <span className="text-[11px] font-normal text-slate-500">{brand.gstRegistered ? "inc GST" : ""} allowance</span></span>
+                  <span className="font-data font-semibold text-amber-300">{money(allowanceSubtotal, brand.currency)} <span className="text-[11px] font-normal text-slate-500">{brand.gstRegistered ? "ex GST" : ""} allowance</span></span>
                 </div>
               </div>
             )}
