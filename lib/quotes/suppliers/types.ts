@@ -55,6 +55,10 @@ export interface SupplierConfig {
   // each item's cost is stored per tier in cost_tiers. undefined → single cost.
   tierLabels?: string[]; // e.g. ["46", "49"]
   defaultTier?: string; // e.g. "46"
+  // 1-based row where product DATA begins (headers/banners above it). Suppliers
+  // whose header text is unreliable map by column POSITION and start here rather
+  // than sniffing the header row. Undefined → the config's parse() decides.
+  dataStartRow?: number;
   parse: (grid: string[][]) => ParsedProduct[];
 }
 
