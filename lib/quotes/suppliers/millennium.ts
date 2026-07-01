@@ -1,68 +1,74 @@
 import type { ParsedProduct, SupplierConfig } from "./types";
 
-// MILLENNIUM (tapware & metalwork) — the second supplier config. Much simpler
-// than Naga: clean rows, no merged cells or dual-price text.
+// MILLENNIUM (tapware & metalwork) — the second supplier config.
 //
-// Sheet shape: two title/banner rows, header on row 3, data from row 4.
-// Columns: A=CODE, B=DESCRIPTION (range + item + finish), C=RRP EX GST,
-// D=DISC (decimal, e.g. 0.46/0.49), E=NETT EX GST (the real cost), F=APN
-// (barcode), G=RRP INC GST, H=UPDATED (date, first row only).
+// REAL sheet shape (mapped by COLUMN POSITION — the header text has irregular
+// internal whitespace like "PRODUCT     CODE", so we never match on it):
+//   Rows 1-2  banner/title ("MILLENNIUM BATHROOMWARE PRICE LIST" / "MAY 2026"),
+//   Row 3     header, Row 4+ product data (~1,324 rows).
+//   A(0) CODE · B(1) DESCRIPTION · C(2) RRP EX GST · D(3) DISC. ("49.00%") ·
+//   E(4) NETT EX GST = COST · F(5) APN barcode (IGNORED — never a price) ·
+//   G(6) RRP INC GST = SELL · H(7) UPDATED · I(8) trailing empty.
 //
-// PRICING: unlike Naga, Millennium HAS a real cost column, so derivesCostFromRrp
-// is false — sell = RRP inc (G), cost = NETT ex (E) taken straight from the file.
-// The file's DISC (D) tells us which tier it is (46 or 49); both tiers are the
-// same catalogue, so importing both files (matched on code) fills cost_tiers
-// {46,49} and the active-tier toggle picks the live one. Categories come from
-// DESCRIPTION keywords.
+// PRICING: sell = RRP inc (G); cost = real NETT ex (E), taken from the file —
+// derivesCostFromRrp is false. The DISC. percent (D) only labels the cost tier
+// (46 / 49). Categories are derived from the DESCRIPTION (B) keywords.
+
+const DATA_START_ROW = 4; // 1-based (skip 2 banner rows + 1 header)
 
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
+// Numeric parse for money cells — strips $, commas, spaces, stray text.
 const num = (v: unknown): number | null => {
-  const cleaned = String(v ?? "").replace(/[^0-9.\-]/g, "");
-  const n = parseFloat(cleaned);
+  const s = String(v ?? "").replace(/[^0-9.\-]/g, "");
+  const n = parseFloat(s);
   return Number.isFinite(n) ? n : null;
 };
 
-// Normalise the brand's one-n misspelling and tidy whitespace.
+// DISC. is a percent STRING like "49.00%" → 49. Also tolerates a decimal form
+// (0.49 → 49) so either export style yields the right tier.
+const discountPct = (v: unknown): number | null => {
+  let n = num(v);
+  if (n == null) return null;
+  if (n > 0 && n <= 1) n *= 100; // "0.49" decimal → 49
+  return n;
+};
+
+// Fix the one-n brand misspelling and tidy whitespace.
 const normDesc = (s: string) => (s || "").replace(/millenn?ium/gi, "Millennium").replace(/\s+/g, " ").trim();
 
-// Category from DESCRIPTION keywords. Order matters — check the compound terms
-// (SHOWER MIXER, BATH SPOUT) before the generic ones (MIXER, SPOUT).
+// Category from the DESCRIPTION keywords. Compound/specific terms are checked
+// first (SHOWER before MIXER; BATH SPOUT before SPOUT). Millennium is all
+// metalwork, so the fallback is Tapware — never "Other".
 function millenniumCategory(desc: string): string {
-  const d = desc.toUpperCase();
-  if (/\bWASTE\b/.test(d)) return "Wastes";
-  if (/\bSHOWER\b/.test(d)) return "Showers"; // shower mixer, rail shower, shower head
-  if (/\bBATH\b.*\b(SPOUT|FILLER|OUTLET)\b|\b(SPOUT|FILLER|OUTLET)\b.*\bBATH\b/.test(d)) return "Baths";
-  if (/\bTOWEL\b|\bTOILET ROLL\b|\bROBE HOOK\b|\bSOAP\b|\bSHELF\b/.test(d)) return "Accessories";
-  if (/\bMIXER\b|\bSPOUT\b|\bDIVERTER\b|\bBASIN\b|\bTAP\b|\bWALL TOP\b/.test(d)) return "Tapware";
-  return "Tapware"; // Millennium is all tapware/metalwork — sensible default
+  const d = (desc || "").toUpperCase();
+  if (d.includes("WASTE")) return "Wastes";
+  if (d.includes("SHOWER")) return "Showers"; // shower mixer / rail shower / shower head
+  if (d.includes("BATH SPOUT") || d.includes("BATH FILLER") || d.includes("BATH OUTLET")) return "Baths";
+  if (/TOWEL RAIL|TOWEL BAR|TOILET ROLL|ROBE HOOK|SOAP|HOOK|SHELF/.test(d)) return "Accessories";
+  if (/MIXER|SPOUT|DIVERTER|BASIN|\bTAP\b|WALL TOP/.test(d)) return "Tapware";
+  return "Tapware";
 }
 
 function parse(grid: string[][]): ParsedProduct[] {
-  // Find the header row (has an RRP column + a NETT or DISC column); data follows.
-  let start = 3;
-  const hIdx = grid.findIndex((r) => r.some((c) => /rrp/i.test(c || "")) && r.some((c) => /(nett|disc)/i.test(c || "")));
-  if (hIdx >= 0) start = hIdx + 1;
-
   const out: ParsedProduct[] = [];
-  for (let i = start; i < grid.length; i++) {
+  for (let i = DATA_START_ROW - 1; i < grid.length; i++) {
     const r = grid[i] || [];
-    const code = (r[0] || "").trim();
-    const description = normDesc(r[1] || "");
-    const rrpEx = num(r[2]);
-    const disc = num(r[3]);
-    const nettEx = num(r[4]);
-    const rrpIncCol = num(r[6]);
+    // Strip any stray BOM from the first cell + trim; ignore the trailing col I.
+    const code = (r[0] ?? "").toString().replace(/^﻿/, "").trim();
+    const description = normDesc((r[1] ?? "").toString());
+    const rrpEx = num(r[2]); // C
+    const discPct = discountPct(r[3]); // D "49.00%" → 49
+    const cost = num(r[4]); // E  NETT ex-GST = COST
+    // r[5] = F = APN barcode — deliberately NOT read (it is not a price).
+    const sell = num(r[6]); // G  RRP inc-GST = SELL
 
-    if (!code && !description) continue; // blank line
-    if (!code) continue; // need a code to import
+    if (!code) continue; // need a code
+    if (sell == null && rrpEx == null && cost == null) continue; // skip a stray header/blank row
 
-    // Sell = RRP inc (col G); fall back to RRP ex × 1.1 if the inc column is blank.
-    const rrpInc = round2(rrpIncCol != null ? rrpIncCol : (rrpEx || 0) * 1.1);
-    // Cost = NETT ex (col E); fall back to RRP ex × (1 − disc) if NETT is blank.
-    const costEx = round2(nettEx != null ? nettEx : (rrpEx || 0) * (1 - (disc ?? 0)));
-    // Tier label from the file's DISC (0.46 → "46").
-    const tier = disc != null ? String(Math.round(disc * 100)) : null;
+    const rrpInc = round2(sell != null ? sell : (rrpEx || 0) * 1.1);
+    const costEx = round2(cost != null ? cost : (rrpEx || 0) * (1 - (discPct ?? 0) / 100));
+    const tier = discPct != null ? String(Math.round(discPct)) : null;
 
     out.push({
       code,
@@ -90,5 +96,6 @@ export const MILLENNIUM: SupplierConfig = {
   categories: ["Tapware", "Showers", "Baths", "Accessories", "Wastes"],
   tierLabels: ["46", "49"],
   defaultTier: "46",
+  dataStartRow: DATA_START_ROW,
   parse,
 };
