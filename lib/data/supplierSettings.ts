@@ -24,3 +24,23 @@ export async function saveSupplierDiscount(supabase: SupabaseClient, supplier: s
   const { error } = await supabase.from("supplier_settings").upsert(row, { onConflict: "org_id,supplier" });
   if (error && !missing(error)) throw error;
 }
+
+// The active COST TIER per supplier (0043), for multi-tier suppliers like
+// Millennium (46 / 49). Tolerates the column/table being absent.
+export async function fetchSupplierTiers(supabase: SupabaseClient): Promise<Record<string, string>> {
+  const { data, error } = await supabase.from("supplier_settings").select("supplier, active_tier");
+  if (error) {
+    if (!missing(error)) console.error("[supplierSettings] fetch tiers:", error.message);
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const r of data || []) if ((r as any).active_tier) out[String((r as any).supplier)] = String((r as any).active_tier);
+  return out;
+}
+
+export async function saveSupplierActiveTier(supabase: SupabaseClient, supplier: string, tier: string): Promise<void> {
+  const orgId = await getOrgId(supabase);
+  const row = { org_id: orgId, supplier, active_tier: tier };
+  const { error } = await supabase.from("supplier_settings").upsert(row, { onConflict: "org_id,supplier" });
+  if (error && !missing(error)) throw error;
+}

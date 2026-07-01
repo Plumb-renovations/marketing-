@@ -34,6 +34,9 @@ export interface PriceItem {
   widthMm: number | null;
   depthMm: number | null;
   heightMm: number | null;
+  // Multi-tier cost (0043): tier label → cost ex-GST, e.g. {"46":63.29,"49":60.77}.
+  // INTERNAL. cost_price is set from the supplier's active tier. null → single cost.
+  costTiers: Record<string, number> | null;
 }
 
 function mapItem(row: any): PriceItem {
@@ -58,6 +61,8 @@ function mapItem(row: any): PriceItem {
     widthMm: row.width_mm != null ? Number(row.width_mm) : null,
     depthMm: row.depth_mm != null ? Number(row.depth_mm) : null,
     heightMm: row.height_mm != null ? Number(row.height_mm) : null,
+    // Tolerate 0043 not being applied yet — no cost_tiers → null.
+    costTiers: row.cost_tiers && typeof row.cost_tiers === "object" ? (row.cost_tiers as Record<string, number>) : null,
   };
 }
 
@@ -82,6 +87,7 @@ function priceRow(orgId: string, item: PriceItem, sortOrder: number): Record<str
     width_mm: item.widthMm != null ? item.widthMm : null,
     depth_mm: item.depthMm != null ? item.depthMm : null,
     height_mm: item.heightMm != null ? item.heightMm : null,
+    cost_tiers: item.costTiers && Object.keys(item.costTiers).length ? item.costTiers : null,
   };
 }
 
@@ -90,10 +96,11 @@ function priceRow(orgId: string, item: PriceItem, sortOrder: number): Record<str
 // shape minus the dropped keys.
 function stripNewestColumns(row: Record<string, any>, level: number): Record<string, any> {
   const r = { ...row };
-  if (level >= 1) { delete r.supplier; delete r.code; delete r.rrp_inc; delete r.width_mm; delete r.depth_mm; delete r.height_mm; } // 0042
-  if (level >= 2) { delete r.cost_price; delete r.markup_pct; } // 0041
-  if (level >= 3) { delete r.kind; } // 0038
-  if (level >= 4) { delete r.trade; } // 0032
+  if (level >= 1) { delete r.cost_tiers; } // 0043
+  if (level >= 2) { delete r.supplier; delete r.code; delete r.rrp_inc; delete r.width_mm; delete r.depth_mm; delete r.height_mm; } // 0042
+  if (level >= 3) { delete r.cost_price; delete r.markup_pct; } // 0041
+  if (level >= 4) { delete r.kind; } // 0038
+  if (level >= 5) { delete r.trade; } // 0032
   return r;
 }
 
@@ -124,7 +131,7 @@ export async function fetchPriceList(supabase: SupabaseClient): Promise<PriceIte
 // first) if the DB doesn't have them yet. Shared by single + bulk-import saves.
 async function upsertRows(supabase: SupabaseClient, rows: Record<string, any>[]): Promise<void> {
   let { error } = await supabase.from("price_list_items").upsert(rows);
-  for (let level = 1; error && isUndefinedColumn(error) && level <= 4; level++) {
+  for (let level = 1; error && isUndefinedColumn(error) && level <= 5; level++) {
     ({ error } = await supabase.from("price_list_items").upsert(rows.map((r) => stripNewestColumns(r, level))));
   }
   if (error) throw error;
@@ -154,6 +161,19 @@ export async function recomputeSupplierCosts(supabase: SupabaseClient, supplier:
   const mine = all
     .filter((p) => (p.supplier || "") === supplier && p.rrpInc != null)
     .map((p) => ({ ...p, costPrice: round2((p.rrpInc as number) / 1.1 * (1 - disc / 100)) }));
+  if (!mine.length) return 0;
+  await importPriceItems(supabase, mine);
+  return mine.length;
+}
+
+// Flip the ACTIVE COST TIER for a multi-tier supplier: set each item's internal
+// cost_price to that tier's stored cost (from cost_tiers) — no re-import. Returns
+// the count updated. The client-facing sell price is never touched.
+export async function recomputeSupplierTier(supabase: SupabaseClient, supplier: string, tier: string): Promise<number> {
+  const all = await fetchPriceList(supabase);
+  const mine = all
+    .filter((p) => (p.supplier || "") === supplier && p.costTiers && p.costTiers[tier] != null)
+    .map((p) => ({ ...p, costPrice: round2((p.costTiers as Record<string, number>)[tier]) }));
   if (!mine.length) return 0;
   await importPriceItems(supabase, mine);
   return mine.length;

@@ -27,6 +27,7 @@ export interface ParsedProduct {
   heightMm: number | null;
   rrpInc: number; // supplier RRP, GST-INCLUSIVE — the sell basis
   costEx: number | null; // supplier-provided trade/cost (ex-GST) if the file has one; else null → derive
+  tier?: string | null; // for multi-tier suppliers: which cost tier this row's costEx belongs to (e.g. "46")
 }
 
 // A parsed product with the pricing maths resolved.
@@ -49,6 +50,11 @@ export interface SupplierConfig {
   // (e.g. a tapware supplier with RRP + cost tiers) and the discount is ignored.
   derivesCostFromRrp: boolean;
   categories: string[]; // PC categories this supplier typically fills (hint only)
+  // Multi-tier suppliers (same catalogue at more than one trade tier). When set,
+  // the UI shows an ACTIVE-TIER toggle instead of a trade-discount field, and
+  // each item's cost is stored per tier in cost_tiers. undefined → single cost.
+  tierLabels?: string[]; // e.g. ["46", "49"]
+  defaultTier?: string; // e.g. "46"
   parse: (grid: string[][]) => ParsedProduct[];
 }
 
