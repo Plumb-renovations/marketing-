@@ -83,7 +83,6 @@ export async function POST(req: Request) {
         brand,
         clientName: quote.client_name || "",
         quoteNumber: quoteNumber!,
-        total: Number(quote.total) || 0,
         link,
       });
       console.log(`[quotes] sending email org=${orgId} id=${id} to=${clientEmail}`);
