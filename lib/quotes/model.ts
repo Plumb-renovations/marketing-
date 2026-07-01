@@ -54,15 +54,16 @@ export const DEFAULT_COMFORT_QUESTION =
 // The visible journey/process roadmap shown on the client quote.
 export interface JourneyStage { label: string; note?: string }
 export const DEFAULT_JOURNEY: JourneyStage[] = [
-  { label: "Quote accepted", note: "We confirm your selections and lock in your spot." },
-  { label: "Deposit & booking", note: "Your deposit secures your start date." },
-  { label: "Design & selections", note: "Finalise fixtures, tiles and finishes together." },
-  { label: "Demolition & strip-out", note: "" },
-  { label: "Rough-in — plumbing & electrical", note: "" },
-  { label: "Waterproofing", note: "Inspected and certified to AS 3740." },
-  { label: "Tiling", note: "" },
-  { label: "Fit-off & finishing", note: "Fixtures installed, painting, detailing." },
-  { label: "Final clean & handover", note: "Walk-through and warranty." },
+  { label: "Quote accepted", note: "Your selections are confirmed and we prepare to get started." },
+  { label: "Deposit & booking", note: "A small deposit secures your scheduled start date." },
+  { label: "Contract signed", note: "We formalise the full scope, inclusions and terms in a signed agreement." },
+  { label: "Design & selections", note: "We finalise your fixtures, tiles and finishes together." },
+  { label: "Demolition & strip-out", note: "The existing bathroom is carefully removed and prepared." },
+  { label: "Rough-in — plumbing & electrical", note: "Plumbing and electrical are set out for your new layout." },
+  { label: "Waterproofing", note: "Inspected and certified to Australian Standard AS 3740." },
+  { label: "Tiling", note: "Floor and wall tiles installed to your chosen finishes." },
+  { label: "Fit-off & finishing", note: "Fixtures fitted, painting and final detailing completed." },
+  { label: "Final clean & handover", note: "A thorough clean, walk-through, and handover of all certificates, forms and warranty." },
 ];
 
 export interface QuoteItem {
@@ -280,7 +281,7 @@ export function emptyQuote(id: string): Quote {
 // save its own default (business_profiles.default_allowance_note); a new quote
 // auto-fills from that, falling back to this.
 export const DEFAULT_ALLOWANCE_NOTE =
-  "This allowance is based on higher-end selections to provide a realistic estimate of overall project cost. Selections can be adjusted to suit your budget, with any variations confirmed prior to ordering.";
+  "Choose the fixture and tile level that suits your style and budget. Each level is an allowance based on quality selections to give you a realistic project cost. Your final fixtures and tiles are chosen together at the selection stage, with any variations confirmed before ordering.";
 
 // Split a quote's items into the build scope vs the fixture/tile allowance.
 export const buildItemsOf = (items: QuoteItem[]): QuoteItem[] => items.filter((i) => !i.allowance);
