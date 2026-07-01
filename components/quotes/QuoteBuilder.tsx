@@ -10,7 +10,7 @@ import { fetchQuote, saveQuote } from "@/lib/data/quotes";
 import { fetchBrandSettings, saveBrandSettings } from "@/lib/data/brand";
 import { fetchBusinessProfile } from "@/lib/data/businessProfile";
 import { fetchSavedItems, type SavedItem } from "@/lib/data/savedItems";
-import { fetchPriceList, type PriceItem } from "@/lib/data/priceList";
+import { fetchPriceList, upsertPriceItem, type PriceItem } from "@/lib/data/priceList";
 import { fetchQuoteTemplates, saveQuoteTemplate, deleteQuoteTemplate, type QuoteTemplate, type QuoteTemplateData } from "@/lib/data/quoteTemplates";
 import { fetchLeads } from "@/lib/data/leads";
 import { DEFAULT_BRAND, type BrandSettings } from "@/lib/business/brand";
@@ -54,6 +54,10 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   const [savingIntroDefault, setSavingIntroDefault] = useState(false);
   const [savingComfortDefault, setSavingComfortDefault] = useState(false);
   const [pcCat, setPcCat] = useState<string>(""); // selected PC category in the palette ("" = all)
+  const [pcSort, setPcSort] = useState<"price-asc" | "price-desc" | "name">("price-asc"); // PC picker sort
+  const [customPcOpen, setCustomPcOpen] = useState(false);
+  const emptyCustomPc = { name: "", category: "", sell: 0, cost: "" as number | "", tier: null as null | "good" | "better" | "best", save: false };
+  const [customPc, setCustomPc] = useState(emptyCustomPc);
   const [leads, setLeads] = useState<{ id: string; name: string; email?: string; phone?: string; suburb?: string; project?: string }[]>([]);
   const [tab, setTab] = useState<"details" | "preview">("details");
   const [showInternal, setShowInternal] = useState(false);
@@ -121,6 +125,15 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   };
   const constructionGroups = useMemo(() => groupByCategory(priceList.filter((p) => p.kind !== "pc")), [priceList]);
   const pcGroups = useMemo(() => groupByCategory(priceList.filter((p) => p.kind === "pc")), [priceList]);
+  // Sort each PC category's items — default cheapest-first, so the entry-level
+  // options sit at the top (Standard tier) and the premium ones at the bottom
+  // (Luxury tier), making it fast to pick a price level per tier.
+  const pcGroupsSorted = useMemo(() => {
+    const cmp = pcSort === "price-desc" ? (a: PriceItem, b: PriceItem) => b.unitPrice - a.unitPrice
+      : pcSort === "name" ? (a: PriceItem, b: PriceItem) => a.name.localeCompare(b.name)
+      : (a: PriceItem, b: PriceItem) => a.unitPrice - b.unitPrice;
+    return pcGroups.map(([cat, list]) => [cat, [...list].sort(cmp)] as [string, PriceItem[]]);
+  }, [pcGroups, pcSort]);
 
   if (!q) {
     return <div className="flex items-center gap-2 py-16 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading quote…</div>;
@@ -177,6 +190,30 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
     const description = (p.notes || "").trim() || p.name;
     // Sell price → client-facing unitPrice; supplier cost → internal unitCost.
     addItem({ description, detail: "", qty: 1, unit: p.unit, unitPrice: p.unitPrice, unitCost: p.costPrice ?? null, trade, tradeType: trade ? inferTradeType(trade) : null, tier: null, allowance: true, sourcePriceItemId: p.id });
+  };
+  // Add a CUSTOM PC item (not in the catalogue) as an allowance line — the client
+  // sees only the sell price; the optional cost stays internal. Optionally save
+  // it to the PC price list so it can be reused from the catalogue picker.
+  const addCustomPcItem = async () => {
+    const name = customPc.name.trim();
+    const sell = Number(customPc.sell) || 0;
+    if (!name || sell <= 0) { setError("Give the custom PC item a name and a sell price."); return; }
+    setError("");
+    const cost = customPc.cost === "" ? null : Number(customPc.cost);
+    let sourceId: string | null = null;
+    if (customPc.save) {
+      const item: PriceItem = {
+        id: uid(), category: customPc.category.trim(), name, unit: "ea", unitPrice: sell,
+        notes: "", sortOrder: priceList.length, trade: null, kind: "pc",
+        costPrice: cost, markupPct: null, supplier: null, code: null, rrpInc: null,
+        widthMm: null, depthMm: null, heightMm: null, costTiers: null,
+      };
+      try { await upsertPriceItem(supabase, item); setPriceList((p) => [...p, item]); sourceId = item.id; }
+      catch (e: any) { setError(e?.message || "Couldn't save the item to your price list."); return; }
+    }
+    addItem({ description: name, detail: "", qty: 1, unit: "ea", unitPrice: sell, unitCost: cost, trade: null, tier: null, allowance: true, pcTier: customPc.tier, sourcePriceItemId: sourceId });
+    setNote(customPc.save ? "Custom PC item added and saved to your PC price list." : "Custom PC item added to this quote.");
+    setCustomPc(emptyCustomPc); setCustomPcOpen(false);
   };
   const allowanceItems = allowanceItemsOf(q.items);
   const allowanceSubtotal = computeTotals(allowanceItems, brand.gstRegistered, q.gstInclusive).total;
@@ -795,16 +832,21 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
 
             {pcGroups.length > 0 ? (
               <div className="mt-3 space-y-2">
-                <p className="text-[11px] text-slate-500">Pick a category, then tick the PC items &amp; tiles for this bathroom — each adds a priced allowance line (the client sees the sell price); untick to remove.</p>
+                <p className="text-[11px] text-slate-500">Pick a category, then tick the PC items &amp; tiles for this bathroom — each adds a priced allowance line (the client sees the sell price); untick to remove. Sorted cheapest-first so entry-level options sit up top and premium ones at the bottom.</p>
                 {/* Category-driven: choose a category and see only those items. */}
                 <div className="flex flex-wrap items-center gap-1.5">
                   <button type="button" onClick={() => setPcCat("")} className={`rounded-lg border px-2.5 py-1.5 text-xs transition ${pcCat === "" ? "border-amber-500/50 bg-amber-500/10 text-amber-200" : "border-slate-700 text-slate-400 hover:bg-slate-800"}`}>All</button>
-                  {pcGroups.map(([cat, list]) => (
+                  {pcGroupsSorted.map(([cat, list]) => (
                     <button key={cat} type="button" onClick={() => setPcCat(cat)} className={`rounded-lg border px-2.5 py-1.5 text-xs transition ${pcCat === cat ? "border-amber-500/50 bg-amber-500/10 text-amber-200" : "border-slate-700 text-slate-400 hover:bg-slate-800"}`}>{cat} <span className="text-slate-500">{list.length}</span></button>
                   ))}
+                  <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5">
+                    {([["price-asc", "$ ↑"], ["price-desc", "$ ↓"], ["name", "A–Z"]] as const).map(([v, l]) => (
+                      <button key={v} type="button" onClick={() => setPcSort(v)} title={v === "price-asc" ? "Cheapest first" : v === "price-desc" ? "Dearest first" : "By name"} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${pcSort === v ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}>{l}</button>
+                    ))}
+                  </div>
                 </div>
                 <div className="space-y-3 pt-1">
-                  {pcGroups.filter(([cat]) => pcCat === "" || cat === pcCat).map(([cat, list]) => (
+                  {pcGroupsSorted.filter(([cat]) => pcCat === "" || cat === pcCat).map(([cat, list]) => (
                     <div key={cat}>
                       <p className="mb-1 text-[11px] uppercase tracking-wider text-slate-500 font-display">{cat}</p>
                       <div className="flex flex-wrap gap-1.5">
@@ -822,8 +864,46 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
                 </div>
               </div>
             ) : (
-              <p className="mt-3 text-xs text-slate-500">Add PC items &amp; tiles in Branding &amp; Quotes &rarr; Price list (the &ldquo;PC items &amp; tiles&rdquo; section) to tick them on here. You can also flag any line in the table above as &ldquo;Allowance&rdquo;.</p>
+              <p className="mt-3 text-xs text-slate-500">Add PC items &amp; tiles in Branding &amp; Quotes &rarr; Price list (the &ldquo;PC items &amp; tiles&rdquo; section) to tick them on here — or add a custom one-off below.</p>
             )}
+
+            {/* Add a CUSTOM PC item — not in the catalogue (another supplier, a
+                one-off, a special order). Client sees the sell price only. */}
+            <div className="mt-3 border-t border-slate-800 pt-3">
+              {!customPcOpen ? (
+                <button type="button" onClick={() => setCustomPcOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-slate-800"><Plus className="h-4 w-4" /> Add custom PC item</button>
+              ) : (
+                <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-amber-200">Custom PC item — not in the catalogue</span>
+                    <button type="button" onClick={() => { setCustomPc(emptyCustomPc); setCustomPcOpen(false); setError(""); }} className="text-slate-400 hover:text-slate-200"><X className="h-4 w-4" /></button>
+                  </div>
+                  <input value={customPc.name} onChange={(e) => setCustomPc({ ...customPc, name: e.target.value })} placeholder="Item name / description (e.g. Feature stone basin)" className={inp} />
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    <input list="pc-cats-builder" value={customPc.category} onChange={(e) => setCustomPc({ ...customPc, category: e.target.value })} placeholder="Category (e.g. Basins)" className={inp} />
+                    <label className="flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/5 px-2"><span className="text-[10px] uppercase tracking-wide text-amber-300/80">Sell</span><input type="number" value={customPc.sell || ""} onChange={(e) => setCustomPc({ ...customPc, sell: Number(e.target.value) || 0 })} placeholder="0" className="w-full bg-transparent py-2 text-right font-data text-sm text-amber-100 focus:outline-none" /></label>
+                    <label className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950 px-2"><span className="text-[10px] uppercase tracking-wide text-slate-500">Cost</span><input type="number" value={customPc.cost} onChange={(e) => setCustomPc({ ...customPc, cost: e.target.value === "" ? "" : Number(e.target.value) })} placeholder="—" className="w-full bg-transparent py-2 text-right font-data text-sm text-slate-200 focus:outline-none" /></label>
+                  </div>
+                  {q.pcTiered && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[11px] text-slate-500">PC level:</span>
+                      <div className="flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5">
+                        <button type="button" onClick={() => setCustomPc({ ...customPc, tier: null })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${!customPc.tier ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}>Shared</button>
+                        {TIERS.map((t) => (
+                          <button key={t.key} type="button" onClick={() => setCustomPc({ ...customPc, tier: t.key })} className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${customPc.tier === t.key ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}>{pcTierName(q.pcTierNames, t.key)}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-400"><input type="checkbox" checked={customPc.save} onChange={(e) => setCustomPc({ ...customPc, save: e.target.checked })} className="accent-amber-500" /> Also save to my PC price list (reuse later)</label>
+                    <button type="button" onClick={addCustomPcItem} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-medium text-slate-950 transition hover:bg-amber-400"><Plus className="h-4 w-4" /> Add to quote</button>
+                  </div>
+                  <p className="text-[10px] text-slate-500">The client sees only the sell price. Cost (optional) is internal, for your margin.</p>
+                </div>
+              )}
+              <datalist id="pc-cats-builder">{pcGroups.map(([c]) => <option key={c} value={c} />)}</datalist>
+            </div>
 
             {allowanceItems.length > 0 && (
               <div className="mt-3 border-t border-slate-800 pt-3">

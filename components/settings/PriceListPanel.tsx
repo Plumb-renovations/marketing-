@@ -124,7 +124,13 @@ export default function PriceListPanel() {
   };
 
   const section = (kind: PriceKind, title: string, blurb: string, rows: { it: PriceItem; i: number }[]) => {
-    const groups = groupRows(rows);
+    // Show PC items cheapest-first within each category (entry-level up top,
+    // premium at the bottom) — matches the quote builder's PC picker order. The
+    // stored sort_order is unaffected (save re-indexes by array position).
+    const grouped = groupRows(rows);
+    const groups = kind === "pc"
+      ? grouped.map(([cat, gr]) => [cat, [...gr].sort((a, b) => a.it.unitPrice - b.it.unitPrice)] as const)
+      : grouped;
     return (
       <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/20 p-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
