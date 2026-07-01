@@ -12,7 +12,7 @@ import { DEFAULT_TRADES } from "@/lib/quotes/trades";
 
 const uid = () => crypto.randomUUID();
 // Blank supplier-import fields for manually-added rows (not from an import).
-const EMPTY_SUPPLIER = { supplier: null, code: null, rrpInc: null, widthMm: null, depthMm: null, heightMm: null } as const;
+const EMPTY_SUPPLIER = { supplier: null, code: null, rrpInc: null, widthMm: null, depthMm: null, heightMm: null, costTiers: null } as const;
 const cls = "w-full rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50";
 const money = (n: number, ccy = "AUD") => { try { return new Intl.NumberFormat("en-AU", { style: "currency", currency: ccy }).format(Number(n) || 0); } catch { return "$" + (Number(n) || 0).toFixed(2); } };
 

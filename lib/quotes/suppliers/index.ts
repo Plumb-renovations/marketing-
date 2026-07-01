@@ -1,5 +1,6 @@
 import type { SupplierConfig } from "./types";
 import { NAGA } from "./naga";
+import { MILLENNIUM } from "./millennium";
 
 // The supplier registry. Add a new supplier by writing its config (column
 // mapping / category rule / pricing rule live inside the config's parse() +
@@ -8,7 +9,7 @@ import { NAGA } from "./naga";
 // Example next supplier (Millennium / tapware): a config with
 // derivesCostFromRrp:false whose parse() reads RRP + a cost tier column and
 // returns costEx per row, with Tapware/Showers categories.
-export const SUPPLIERS: SupplierConfig[] = [NAGA];
+export const SUPPLIERS: SupplierConfig[] = [NAGA, MILLENNIUM];
 
 export function getSupplier(id: string): SupplierConfig | undefined {
   return SUPPLIERS.find((s) => s.id === id);

@@ -5,8 +5,8 @@ import { Loader2, Save, CheckCircle2, AlertTriangle, FileSpreadsheet, Upload } f
 import { Panel } from "@/components/ui/primitives";
 import { createClient } from "@/lib/supabase/client";
 import { SUPPLIERS, getSupplier, parseGrid, priceProducts, FLAG_META, MARGIN_FLOOR_PCT, type ParsedProduct, type PricedProduct } from "@/lib/quotes/suppliers";
-import { fetchPriceList, importPriceItems, recomputeSupplierCosts, type PriceItem } from "@/lib/data/priceList";
-import { fetchSupplierDiscounts, saveSupplierDiscount } from "@/lib/data/supplierSettings";
+import { fetchPriceList, importPriceItems, recomputeSupplierCosts, recomputeSupplierTier, type PriceItem } from "@/lib/data/priceList";
+import { fetchSupplierDiscounts, saveSupplierDiscount, fetchSupplierTiers, saveSupplierActiveTier } from "@/lib/data/supplierSettings";
 
 const uid = () => crypto.randomUUID();
 const money = (n: number, ccy = "AUD") => { try { return new Intl.NumberFormat("en-AU", { style: "currency", currency: ccy }).format(Number(n) || 0); } catch { return "$" + (Number(n) || 0).toFixed(2); } };
@@ -21,6 +21,8 @@ export default function SupplierImportPanel() {
   const [supplierId, setSupplierId] = useState(SUPPLIERS[0]?.id || "");
   const [discount, setDiscount] = useState<number>(SUPPLIERS[0]?.defaultTradeDiscountPct || 0);
   const [discounts, setDiscounts] = useState<Record<string, number>>({});
+  const [tiers, setTiers] = useState<Record<string, string>>({});
+  const [activeTier, setActiveTier] = useState<string>("");
   const [existing, setExisting] = useState<PriceItem[]>([]);
   const [parsed, setParsed] = useState<ParsedProduct[] | null>(null);
   const [fileName, setFileName] = useState("");
@@ -33,19 +35,29 @@ export default function SupplierImportPanel() {
 
   useEffect(() => {
     (async () => {
-      const [list, d] = await Promise.all([fetchPriceList(supabase).catch(() => []), fetchSupplierDiscounts(supabase).catch(() => ({}))]);
+      const [list, d, t] = await Promise.all([
+        fetchPriceList(supabase).catch(() => []),
+        fetchSupplierDiscounts(supabase).catch(() => ({})),
+        fetchSupplierTiers(supabase).catch(() => ({})),
+      ]);
       setExisting(list);
       setDiscounts(d);
+      setTiers(t);
     })();
   }, [supabase]);
 
-  // When the supplier (or loaded settings) changes, seed the discount from the
-  // saved setting, falling back to the config's placeholder default.
+  // When the supplier (or loaded settings) changes, seed the trade discount and
+  // active cost tier from the saved settings, falling back to config defaults.
   useEffect(() => {
     const cfg = getSupplier(supplierId);
-    if (cfg) setDiscount(discounts[supplierId] ?? cfg.defaultTradeDiscountPct);
+    if (cfg) {
+      setDiscount(discounts[supplierId] ?? cfg.defaultTradeDiscountPct);
+      setActiveTier(tiers[supplierId] ?? cfg.defaultTier ?? cfg.tierLabels?.[0] ?? "");
+    }
     setParsed(null); setFileName(""); setNote(""); setError("");
-  }, [supplierId, discounts]);
+  }, [supplierId, discounts, tiers]);
+
+  const multiTier = !!config?.tierLabels?.length;
 
   const onFile = async (file: File | null) => {
     if (!file || !config) return;
@@ -88,9 +100,23 @@ export default function SupplierImportPanel() {
     return m;
   }, [importable]);
 
+  // The tier this uploaded file represents (multi-tier suppliers) — read from the
+  // parsed rows, falling back to the config default.
+  const fileTier = (parsed?.find((p) => p.tier)?.tier || config?.defaultTier || "") as string;
+
   const toPriceItem = (p: PricedProduct, sort: number): PriceItem => {
     const ex = existingByCode.get(p.code);
     const size = dims(p);
+    // Multi-tier: merge this file's tier cost into any tiers already stored for
+    // the item (so importing the -46 then -49 file keeps BOTH), and set the live
+    // cost_price from the active tier (falling back to this file's cost).
+    let costTiers: Record<string, number> | null = null;
+    let costPrice = p.cost;
+    if (multiTier) {
+      const pTier = p.tier || fileTier;
+      costTiers = { ...(ex?.costTiers || {}), ...(pTier ? { [pTier]: p.cost } : {}) };
+      costPrice = (activeTier && costTiers[activeTier] != null ? costTiers[activeTier] : p.cost);
+    }
     return {
       id: ex?.id ?? uid(),
       category: p.category,
@@ -101,12 +127,13 @@ export default function SupplierImportPanel() {
       sortOrder: sort,
       trade: null,
       kind: "pc",
-      costPrice: p.cost, // INTERNAL
+      costPrice, // INTERNAL
       markupPct: null,
       supplier: supplierId,
       code: p.code,
       rrpInc: p.rrpInc,
       widthMm: p.widthMm, depthMm: p.depthMm, heightMm: p.heightMm,
+      costTiers,
     };
   };
 
@@ -117,14 +144,15 @@ export default function SupplierImportPanel() {
       const startSort = existing.reduce((mx, x) => Math.max(mx, x.sortOrder), 0) + 1;
       const items = importable.map((p, i) => toPriceItem(p, startSort + i));
       await importPriceItems(supabase, items);
-      await saveSupplierDiscount(supabase, supplierId, discount);
+      // Persist the relevant supplier setting (active tier / trade discount).
+      if (multiTier) { await saveSupplierActiveTier(supabase, supplierId, activeTier); setTiers((t) => ({ ...t, [supplierId]: activeTier })); }
+      else { await saveSupplierDiscount(supabase, supplierId, discount); setDiscounts((d) => ({ ...d, [supplierId]: discount })); }
       const fresh = await fetchPriceList(supabase).catch(() => existing);
       setExisting(fresh);
-      setDiscounts((d) => ({ ...d, [supplierId]: discount }));
-      setNote(`Imported ${items.length} ${config?.name || ""} products — ${creates} new, ${updates} updated. They're in your PC items list under their categories.`);
+      setNote(`Imported ${items.length} ${config?.name || ""} products — ${creates} new, ${updates} updated.${multiTier ? ` Tier ${fileTier} costs stored; active tier ${activeTier}.` : ""} They're in your PC items list under their categories.`);
       setParsed(null); setFileName("");
     } catch (e: any) {
-      setError(e?.message || "Import failed. If you haven't run migration 0042 yet, do that first.");
+      setError(e?.message || "Import failed. If you haven't run migrations 0042/0043 yet, do that first.");
     } finally {
       setBusy("");
     }
@@ -141,6 +169,24 @@ export default function SupplierImportPanel() {
       setNote(n > 0 ? `Saved — recalculated cost & margin on ${n} existing ${config?.name || ""} item${n === 1 ? "" : "s"} (no re-import needed).` : "Saved the trade discount.");
     } catch (e: any) {
       setError(e?.message || "Couldn't save / recalculate.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  // Flip the active cost tier (Millennium 46/49) and recompute cost from the
+  // stored tiers — no re-import.
+  const saveTierAndRecalc = async () => {
+    setBusy("recalc"); setError(""); setNote("");
+    try {
+      await saveSupplierActiveTier(supabase, supplierId, activeTier);
+      const n = await recomputeSupplierTier(supabase, supplierId, activeTier);
+      const fresh = await fetchPriceList(supabase).catch(() => existing);
+      setExisting(fresh);
+      setTiers((t) => ({ ...t, [supplierId]: activeTier }));
+      setNote(n > 0 ? `Active tier set to ${activeTier} — recalculated cost & margin on ${n} ${config?.name || ""} item${n === 1 ? "" : "s"} (no re-import).` : `Saved active tier ${activeTier}. Import a file to populate costs.`);
+    } catch (e: any) {
+      setError(e?.message || "Couldn't save / recalculate the tier.");
     } finally {
       setBusy("");
     }
@@ -182,6 +228,20 @@ export default function SupplierImportPanel() {
             <p className="mt-1 text-[11px] text-amber-300/80">Cost = RRP (ex GST) × (1 − discount). Placeholder until confirmed — change it any time to recalculate all {config.name} costs &amp; margins without re-importing.</p>
           </label>
         )}
+        {multiTier && config && (
+          <label className="block">
+            <span className="text-xs font-medium text-slate-400">{config.name} active cost tier</span>
+            <div className="mt-1 flex items-center gap-2">
+              <select value={activeTier} onChange={(e) => setActiveTier(e.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-sm text-slate-200 focus:border-cyan-500/50">
+                {config.tierLabels!.map((t) => <option key={t} value={t}>-{t} (disc 0.{t})</option>)}
+              </select>
+              <button onClick={saveTierAndRecalc} disabled={busy !== ""} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition hover:bg-slate-800 disabled:opacity-50">
+                {busy === "recalc" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save &amp; recalc{existingForSupplier > 0 ? ` (${existingForSupplier})` : ""}
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] text-slate-500">Real NETT cost comes from the file. Import both the -{config.tierLabels![0]} and -{config.tierLabels![config.tierLabels!.length - 1]} files to store both tiers, then flip the live one here — a one-click change, no re-import.</p>
+          </label>
+        )}
       </div>
 
       {/* Upload */}
@@ -211,6 +271,7 @@ export default function SupplierImportPanel() {
           <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
             {(["push", "ok", "thin", "below"] as const).map((f) => <span key={f} className={`rounded-md border px-2 py-0.5 ${FLAG_META[f].cls}`}>{FLAG_META[f].label} {flagCounts[f]}</span>)}
             {config?.derivesCostFromRrp && <span className="text-amber-300/80">· margins provisional — based on the placeholder {config.name} trade discount ({discount}%), not final until confirmed. Floor {MARGIN_FLOOR_PCT}%.</span>}
+            {multiTier && <span className="text-slate-400">· this file is the -{fileTier || "?"} tier (real NETT cost — margins are final). Active tier {activeTier}. Floor {MARGIN_FLOOR_PCT}%.</span>}
           </div>
 
           <div className="mt-3 max-h-80 overflow-auto rounded-lg border border-slate-800">
