@@ -7,7 +7,7 @@ import { Panel, SectionHeader } from "@/components/ui/primitives";
 import { createClient } from "@/lib/supabase/client";
 import { listQuotes, deleteQuote } from "@/lib/data/quotes";
 import { fetchBrandSettings } from "@/lib/data/brand";
-import { money, type Quote } from "@/lib/quotes/model";
+import { money, formatAuDateTime, type Quote } from "@/lib/quotes/model";
 import { DEFAULT_BRAND } from "@/lib/business/brand";
 
 const STATUS_CLS: Record<string, string> = {
@@ -115,12 +115,13 @@ export default function QuotesScreen() {
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 text-right font-medium">Total</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Client opens</th>
                 <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">
               {visible.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">No {active.label.toLowerCase()} quotes.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">No {active.label.toLowerCase()} quotes.</td></tr>
               )}
               {visible.map((q) => {
                 const iconBtn = "inline-flex items-center justify-center rounded-md border border-slate-700 p-2 text-slate-400 transition hover:bg-slate-800 hover:text-slate-200";
@@ -132,8 +133,17 @@ export default function QuotesScreen() {
                   <td className="px-4 py-3 text-right font-data text-slate-200">{money(q.total, currency)}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize ${STATUS_CLS[q.status] || STATUS_CLS.draft}`}>{q.status}</span>
-                    {q.status !== "draft" && q.viewCount > 0 && (
-                      <span className="ml-2 inline-flex items-center gap-1 text-[11px] text-slate-500"><Eye className="h-3 w-3" /> {q.viewCount}</span>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {q.status === "draft" ? (
+                      <span className="text-[11px] text-slate-600">—</span>
+                    ) : q.viewCount > 0 ? (
+                      <span title={q.viewedAt ? `First opened ${formatAuDateTime(q.viewedAt)}` : undefined}>
+                        <span className="inline-flex items-center gap-1 text-[12px] font-medium text-emerald-300"><Eye className="h-3.5 w-3.5" /> Opened {q.viewCount}×</span>
+                        <span className="block text-[11px] text-slate-500">last opened {formatAuDateTime(q.lastViewedAt || q.viewedAt)}</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-500"><Eye className="h-3 w-3" /> Not opened yet</span>
                     )}
                   </td>
                   <td className="px-4 py-3">

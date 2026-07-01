@@ -79,11 +79,17 @@ export async function logQuoteView(
     .maybeSingle();
   if (!q) return;
 
-  const patch: Record<string, any> = { view_count: (Number((q as any).view_count) || 0) + 1 };
-  if (!(q as any).viewed_at) patch.viewed_at = new Date().toISOString();
+  const nowIso = new Date().toISOString();
+  const patch: Record<string, any> = { view_count: (Number((q as any).view_count) || 0) + 1, last_viewed_at: nowIso };
+  if (!(q as any).viewed_at) patch.viewed_at = nowIso; // FIRST open
   if ((q as any).status === "sent") patch.status = "viewed";
 
-  await admin.from("quote_docs").update(patch).eq("id", (q as any).id);
+  let { error: upErr } = await admin.from("quote_docs").update(patch).eq("id", (q as any).id);
+  // Tolerate 0044 not being applied yet — drop last_viewed_at and retry.
+  if (upErr && (upErr.code === "42703" || /column .* does not exist|could not find/i.test(upErr.message || ""))) {
+    const { last_viewed_at, ...legacy } = patch;
+    await admin.from("quote_docs").update(legacy).eq("id", (q as any).id);
+  }
   await admin.from("quote_views").insert({
     org_id: (q as any).org_id,
     quote_id: (q as any).id,
@@ -159,6 +165,8 @@ function mapPublicQuote(row: any): Quote {
     sentAt: row.sent_at ?? null,
     viewedAt: row.viewed_at ?? null,
     viewCount: row.view_count ?? 0,
+    lastViewedAt: row.last_viewed_at ?? null, // not selected publicly; owner-only display
+
     acceptedAt: row.accepted_at ?? null,
     publicToken: row.public_token ?? null,
     tiered: row.tiered ?? false,
