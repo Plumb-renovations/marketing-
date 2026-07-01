@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchQuote, saveQuote } from "@/lib/data/quotes";
+import { publicQuoteUrl } from "@/lib/quotes/publicUrl";
 import { fetchBrandSettings, saveBrandSettings } from "@/lib/data/brand";
 import { fetchBusinessProfile } from "@/lib/data/businessProfile";
 import { fetchSavedItems, type SavedItem } from "@/lib/data/savedItems";
@@ -425,7 +426,7 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
 
   const inp = "w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50";
   const lbl = "text-[11px] uppercase tracking-wider text-slate-500 font-display";
-  const publicLink = q.publicToken && typeof window !== "undefined" ? `${window.location.origin}/q/${q.publicToken}` : "";
+  const publicLink = q.publicToken ? publicQuoteUrl(q.publicToken) : "";
 
   return (
     <div className="space-y-5">
