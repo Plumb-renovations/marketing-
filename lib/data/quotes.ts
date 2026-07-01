@@ -86,6 +86,7 @@ function mapQuote(row: any): Quote {
     sentAt: row.sent_at ?? null,
     viewedAt: row.viewed_at ?? null,
     viewCount: row.view_count ?? 0,
+    lastViewedAt: row.last_viewed_at ?? null,
     acceptedAt: row.accepted_at ?? null,
     publicToken: row.public_token ?? null,
     tiered: row.tiered ?? false,
@@ -119,6 +120,21 @@ export async function fetchQuote(supabase: SupabaseClient, id: string): Promise<
   const { data, error } = await supabase.from("quote_docs").select(SELECT).eq("id", id).maybeSingle();
   if (error) throw error;
   return data ? mapQuote(data) : null;
+}
+
+// Each CLIENT open of a quote (via the public link), newest first — for the
+// owner-facing open-activity view. Owner/authenticated views were excluded when
+// the row was (or wasn't) written, so this reflects genuine client interest.
+// RLS (is_member) scopes to the org; tolerant if the table isn't present yet.
+export interface QuoteOpen { viewedAt: string; userAgent: string | null; referer: string | null }
+export async function fetchQuoteOpens(supabase: SupabaseClient, quoteId: string): Promise<QuoteOpen[]> {
+  const { data, error } = await supabase
+    .from("quote_views")
+    .select("viewed_at, user_agent, referer")
+    .eq("quote_id", quoteId)
+    .order("viewed_at", { ascending: false });
+  if (error) { console.error("[quotes] opens:", error.message); return []; }
+  return (data || []).map((r: any) => ({ viewedAt: r.viewed_at, userAgent: r.user_agent ?? null, referer: r.referer ?? null }));
 }
 
 // Upsert the quote + fully replace its sections/items/stages (recomputing totals

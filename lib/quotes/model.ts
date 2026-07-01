@@ -137,8 +137,9 @@ export interface Quote {
   gstAmount: number;
   total: number;
   sentAt: string | null;
-  viewedAt: string | null;
-  viewCount: number;
+  viewedAt: string | null; // FIRST client open
+  viewCount: number; // number of CLIENT opens (owner views excluded)
+  lastViewedAt: string | null; // most recent client open
   acceptedAt: string | null;
   publicToken: string | null;
   tiered: boolean; // Good/Better/Best mode (off = normal single-price quote)
@@ -154,6 +155,19 @@ export interface Quote {
   sections: QuoteSection[];
   items: QuoteItem[];
   stages: QuoteStage[];
+}
+
+// Australian date/time for open-activity display, e.g. "2 Jul 2026, 4:15pm".
+// Deterministic (ICU-independent) and in the viewer's local time.
+const AU_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function formatAuDateTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  let h = d.getHours();
+  const ampm = h >= 12 ? "pm" : "am";
+  h = h % 12 || 12;
+  return `${d.getDate()} ${AU_MONTHS[d.getMonth()]} ${d.getFullYear()}, ${h}:${String(d.getMinutes()).padStart(2, "0")}${ampm}`;
 }
 
 export const GST_RATE = 0.1;
@@ -259,6 +273,7 @@ export function emptyQuote(id: string): Quote {
     sentAt: null,
     viewedAt: null,
     viewCount: 0,
+    lastViewedAt: null,
     acceptedAt: null,
     publicToken: null,
     tiered: false,

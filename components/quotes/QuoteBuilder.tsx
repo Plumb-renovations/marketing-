@@ -6,7 +6,7 @@ import {
   Eye, Pencil, Save, Send, Loader2, Plus, Trash2, GripVertical, Columns3, Copy, RefreshCw, AlertTriangle, ArrowLeft, CheckCircle2, Printer, Tags, BookmarkPlus, LayoutTemplate, X, Sparkles, TrendingDown, TrendingUp, ShieldCheck, ScanSearch, MessageSquareQuote, Lightbulb, Wand2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { fetchQuote, saveQuote } from "@/lib/data/quotes";
+import { fetchQuote, saveQuote, fetchQuoteOpens, type QuoteOpen } from "@/lib/data/quotes";
 import { publicQuoteUrl } from "@/lib/quotes/publicUrl";
 import { fetchBrandSettings, saveBrandSettings } from "@/lib/data/brand";
 import { fetchBusinessProfile } from "@/lib/data/businessProfile";
@@ -17,7 +17,7 @@ import { fetchLeads } from "@/lib/data/leads";
 import { DEFAULT_BRAND, type BrandSettings } from "@/lib/business/brand";
 import {
   emptyQuote, computeTotals, computeStageAmounts, stagePercentSum, money, tierTotals, pcTierTotals, TIERS, tierName, pcTierName,
-  priceableItems, DEFAULT_ALLOWANCE_NOTE, DEFAULT_CONFIGURATOR_INTRO, DEFAULT_COMFORT_QUESTION, DEFAULT_JOURNEY, allowanceItemsOf,
+  priceableItems, DEFAULT_ALLOWANCE_NOTE, DEFAULT_CONFIGURATOR_INTRO, DEFAULT_COMFORT_QUESTION, DEFAULT_JOURNEY, allowanceItemsOf, formatAuDateTime,
   type Quote, type QuoteItem, type QuoteStage, type TierKey,
 } from "@/lib/quotes/model";
 import { DEFAULT_TRADES, inferTradeType, TRADE_TYPE_LABEL, type TradeType } from "@/lib/quotes/trades";
@@ -40,6 +40,8 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
   const isNew = id === "new";
 
   const [q, setQ] = useState<Quote | null>(null);
+  const [opens, setOpens] = useState<QuoteOpen[]>([]); // each CLIENT open (newest first)
+  const [showOpens, setShowOpens] = useState(false);
   const [brand, setBrand] = useState<BrandSettings>(DEFAULT_BRAND);
   const [businessName, setBusinessName] = useState("");
   const [saved, setSavedItems] = useState<SavedItem[]>([]);
@@ -111,6 +113,8 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
         if (!qq.comfortQuestion) qq.comfortQuestion = b.defaultComfortQuestion || DEFAULT_COMFORT_QUESTION;
         if (!qq.journey?.length) qq.journey = DEFAULT_JOURNEY.map((s) => ({ ...s }));
         setQ(qq);
+        // Load the client open activity (each open with its timestamp).
+        if (qq.status !== "draft") fetchQuoteOpens(supabase, id).then(setOpens).catch(() => {});
       }
     })();
   }, [supabase, id, isNew, leadPrefill]);
@@ -563,16 +567,40 @@ export default function QuoteBuilder({ id, leadPrefill }: { id: string; leadPref
         </div>
       )}
 
-      {/* Sent status — the tracked client link + open tracking. */}
+      {/* Sent status — the tracked client link + CLIENT open activity (owner
+          views are excluded upstream, so counts reflect genuine interest). */}
       {q.status !== "draft" && q.publicToken && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-sm">
-          <span className="inline-flex items-center gap-1.5 text-emerald-300"><Send className="h-3.5 w-3.5" /> {q.sentAt ? `Sent ${new Date(q.sentAt).toLocaleDateString()}` : "Sent"}</span>
-          <span className="inline-flex items-center gap-1.5 text-slate-400"><Eye className="h-3.5 w-3.5" /> {q.viewCount > 0 ? `Viewed ${q.viewCount}×${q.viewedAt ? ` · last ${new Date(q.viewedAt).toLocaleDateString()}` : ""}` : "Not viewed yet"}</span>
-          <div className="ml-auto flex items-center gap-2">
-            <input readOnly value={publicLink} onFocus={(e) => e.currentTarget.select()} className="w-56 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 font-data text-xs text-slate-300" />
-            <button onClick={() => { navigator.clipboard?.writeText(publicLink); setNote("Link copied"); }} className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800">Copy link</button>
-            <a href={publicLink} target="_blank" rel="noreferrer" className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-cyan-300 transition hover:bg-slate-800">Open</a>
+        <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 text-emerald-300"><Send className="h-3.5 w-3.5" /> {q.sentAt ? `Sent ${formatAuDateTime(q.sentAt)}` : "Sent"}</span>
+            {q.viewCount > 0 ? (
+              <button type="button" onClick={() => setShowOpens((v) => !v)} className="inline-flex items-center gap-1.5 rounded-md text-emerald-300 hover:text-emerald-200" title="Show each open">
+                <Eye className="h-3.5 w-3.5" /> Opened {q.viewCount}× · last {formatAuDateTime(q.lastViewedAt || q.viewedAt)}
+                {opens.length > 0 && <span className="text-[11px] text-slate-500">({showOpens ? "hide" : "details"})</span>}
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-slate-400"><Eye className="h-3.5 w-3.5" /> Not opened by the client yet</span>
+            )}
+            <div className="ml-auto flex items-center gap-2">
+              <input readOnly value={publicLink} onFocus={(e) => e.currentTarget.select()} className="w-56 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 font-data text-xs text-slate-300" />
+              <button onClick={() => { navigator.clipboard?.writeText(publicLink); setNote("Link copied"); }} className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800">Copy link</button>
+              <a href={publicLink} target="_blank" rel="noreferrer" className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-cyan-300 transition hover:bg-slate-800">Open</a>
+            </div>
           </div>
+          {showOpens && opens.length > 0 && (
+            <div className="mt-2.5 border-t border-slate-800 pt-2.5">
+              <p className="mb-1 text-[11px] uppercase tracking-wider text-slate-500 font-display">Client opens ({opens.length})</p>
+              <ul className="space-y-0.5">
+                {opens.map((o, i) => (
+                  <li key={i} className="flex items-center gap-2 text-[12px] text-slate-400">
+                    <Eye className="h-3 w-3 text-slate-600" /> <span className="font-data">{formatAuDateTime(o.viewedAt)}</span>
+                    {i === 0 && <span className="text-[10px] text-emerald-400/70">most recent</span>}
+                    {i === opens.length - 1 && opens.length > 1 && <span className="text-[10px] text-slate-600">first open</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
