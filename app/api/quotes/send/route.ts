@@ -5,6 +5,7 @@ import { getOrgId } from "@/lib/data/org";
 import { rowToBrand } from "@/lib/business/brand";
 import { emailConfigured, sendEmail } from "@/lib/email/send";
 import { buildQuoteEmail } from "@/lib/quotes/email";
+import { publicQuoteUrl } from "@/lib/quotes/publicUrl";
 
 // Send a quote end-to-end: assign its number, mint a public token for the
 // tracked link, mark it Sent (+ sent_at), then email the client the branded
@@ -60,10 +61,9 @@ export async function POST(req: Request) {
     .eq("id", id);
   if (upErr) return NextResponse.json({ error: "update_failed", message: upErr.message }, { status: 502 });
 
-  // Build the tracked client link. Prefer the configured app URL; fall back to
-  // the request origin so it's correct on any deployment.
-  const base = (process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin).replace(/\/$/, "");
-  const link = `${base}/q/${publicToken}`;
+  // Build the tracked client link on the branded domain (NEXT_PUBLIC_APP_URL),
+  // falling back to the request origin so it's correct on any deployment.
+  const link = publicQuoteUrl(publicToken, new URL(req.url).origin);
 
   // Email the client the branded link (best-effort; never blocks the send).
   let emailed = false;
