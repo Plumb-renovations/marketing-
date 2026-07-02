@@ -272,6 +272,38 @@ Return ONLY valid JSON:
 {"ads":[{"angle":string,"hook":string,"primaryText":string,"headline":string,"cta":string,"sayItOutLoud":string}],"voiceNote":string}`;
 }
 
+// Per-CREATIVE performance read. Deterministic flags (frequency/CPL/rank) are
+// already computed for each ad — the model turns them into a plain-English
+// diagnosis + a specific recommendation, and says WHAT is working so the user
+// can repeat it. It must NOT invent numbers; only interpret what's given.
+export interface CreativeAnalysisContext {
+  setName: string;
+  currency: string;
+  targets: { healthyCpl: number; concerningCpl: number };
+  ads: { id: string; name: string; flag: string; rank: number | null; isTop: boolean; isWorst: boolean; spend: number; impressions: number; reach: number; frequency: number; ctr: number; leads: number; cpl: number | null }[];
+}
+export function creativeAnalysisPrompt(p: BusinessProfile, ctx: CreativeAnalysisContext) {
+  const t = ctx.targets || { healthyCpl: 150, concerningCpl: 350 };
+  const rows = (ctx.ads || [])
+    .map((a) => `- id=${a.id} | "${a.name}" | flag=${a.flag}${a.isTop ? " (TOP)" : ""}${a.isWorst ? " (WORST)" : ""} | spend=${Math.round(a.spend)} | impressions=${a.impressions} | reach=${a.reach} | frequency=${a.frequency.toFixed(1)} | ctr=${a.ctr.toFixed(2)}% | leads=${a.leads} | costPerLead=${a.cpl != null ? Math.round(a.cpl) : "n/a"}`)
+    .join("\n");
+  return `Task: you are a top media buyer reviewing the individual ads (creatives) INSIDE the ad set "${ctx.setName}" for ${businessName(p)}. All money is in ${ctx.currency} (AUD). Healthy cost per lead ~${t.healthyCpl}, concerning ~${t.concerningCpl}. Frequency above 3 means the audience is over-served (fatigue); above ~4.5 it's burnt.
+
+The ads (metrics + a deterministic flag already computed for each — respect it):
+${rows || "(no ads)"}
+
+For EACH ad, write:
+- diagnosis: one or two plain, specific sentences on what's happening (name the real number — its cost per lead, its frequency, whether it's the best/worst in the set). Talk like a sharp media buyer to a tradie, not a report.
+- recommendation: ONE clear action — keep, scale, refresh (new cut/audience), rework the hook, or pause — matching its flag.
+- working: if it's a winner/scaling, say WHAT is working (the hook/angle/style) so they can make more like it; otherwise "".
+- change: if it's underperforming, what to change; otherwise "".
+Then a one-line summary naming the winner(s) to double down on and the loser(s) to cut.
+
+Rules: interpret ONLY the numbers given — never invent metrics. Australian English. Be specific to each creative, not generic. Ground every call in the frequency + cost-per-lead shown.
+
+Return ONLY valid JSON: {"items":[{"id":string,"diagnosis":string,"recommendation":string,"working":string,"change":string}],"summary":string}`;
+}
+
 export function googleAdPrompt(p: BusinessProfile, goal: string, leads: Lead[], withAssets: boolean, opts?: CopyContext) {
   return `Task: create Google Ads copy for this business. Goal: ${goal}.
 Business + ad-performance context: ${adContext(p, leads)}${copyContext(opts)}

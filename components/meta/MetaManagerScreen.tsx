@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Panel, SectionHeader, Chip } from "@/components/ui/primitives";
 import CoachPanel from "@/components/coach/CoachPanel";
+import CreativeBreakdown from "@/components/meta/CreativeBreakdown";
 import { createClient } from "@/lib/supabase/client";
 import { money } from "@/lib/quotes/model";
 import { fetchAdTargets, saveAdTargets } from "@/lib/data/adTargets";
@@ -160,6 +161,8 @@ export default function MetaManagerScreen() {
                         <VerdictBar v={v} busy={busyId === s.id} onAct={(cf) => setConfirm(cf)} node={s} currency={currency} />
                         {expanded.has(s.id) && (
                           <div className="border-t border-slate-800 bg-slate-950/40 px-2 py-1.5">
+                            {/* Per-CREATIVE analysis: which ad is winning / overexposed / to cut. */}
+                            <CreativeBreakdown adset={s} targets={targets} currency={currency} account={{ spend: tree.account?.spend || 0, leads: tree.account?.leads || 0, costPerWon: data?.accountCostPerWon ?? null }} overrides={overrides} />
                             {s.ads.length === 0 && <p className="px-2 py-2 text-xs text-slate-600">No ads.</p>}
                             {s.ads.map((a: any) => {
                               const av = verdictFor(toInput(a, "ad"), targets);
