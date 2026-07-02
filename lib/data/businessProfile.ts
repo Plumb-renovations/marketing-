@@ -26,3 +26,19 @@ export async function saveBusinessProfile(
   if (error) throw error;
   return data ? rowToProfile(data) : profile;
 }
+
+// Targeted save for the ad brand-voice: the tone + example ads only, as a
+// column-scoped upsert so it never disturbs the rest of the profile row. Owned
+// by the ad interview panel (separate from the main profile form). Tolerates
+// the ad_examples column (0045) being absent.
+export async function saveAdVoice(supabase: SupabaseClient, tone: string, examples: string[]): Promise<void> {
+  const orgId = await getOrgId(supabase);
+  const clean = (examples || []).map((s) => (s || "").trim()).filter(Boolean).slice(0, 3);
+  const row: Record<string, any> = { org_id: orgId, tone: (tone || "").trim(), ad_examples: clean.length ? clean : null };
+  let { error } = await supabase.from("business_profiles").upsert(row, { onConflict: "org_id" });
+  if (error && (error.code === "42703" || /column .* does not exist|could not find/i.test(error.message || ""))) {
+    const { ad_examples, ...legacy } = row;
+    ({ error } = await supabase.from("business_profiles").upsert(legacy, { onConflict: "org_id" }));
+  }
+  if (error) throw error;
+}

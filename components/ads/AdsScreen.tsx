@@ -10,6 +10,7 @@ import { takeAdDraft } from "@/lib/content/handoff";
 import { useData } from "@/components/DataProvider";
 import LaunchAdModal from "@/components/ads/LaunchAdModal";
 import CreativeReviewer, { type SelectedMedia } from "@/components/ads/CreativeReviewer";
+import ProjectAdStudio from "@/components/ads/ProjectAdStudio";
 import type { Ad } from "@/lib/domain/types";
 
 /* --- Meta paid ad studio --- */
@@ -257,7 +258,7 @@ function AdViewer({
 /* --- Ad Creator view --- */
 export default function AdsScreen() {
   const { ads, setAds, leads } = useData();
-  const [studio, setStudio] = useState<"meta" | "google" | null>(null);
+  const [studio, setStudio] = useState<"meta" | "google" | "project" | null>(null);
   const [adSeed, setAdSeed] = useState<string | null>(null);
   const [viewing, setViewing] = useState<Ad | null>(null);
   const [launching, setLaunching] = useState<Ad | null>(null);
@@ -280,10 +281,11 @@ export default function AdsScreen() {
     <div className="space-y-6">
       <SectionHeader icon={Megaphone} title="Ad Creator" desc="AI writes ready-to-use paid ad copy, built to turn clicks into enquiries. Generate, save, then launch to Meta or Google." />
       <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => setStudio("project")} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-sm text-cyan-200 transition hover:bg-cyan-500/20"><Sparkles className="h-4 w-4" /> Write from a real job (interview)</button>
         <button onClick={() => setStudio("meta")} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-sm text-cyan-200 transition hover:bg-cyan-500/20"><Wand2 className="h-4 w-4" /> Create Meta ad with AI</button>
         <button onClick={() => setStudio("google")} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-sm text-cyan-200 transition hover:bg-cyan-500/20"><Wand2 className="h-4 w-4" /> Create Google ad with AI</button>
       </div>
-      <p className="-mt-3 text-[11px] text-slate-500">Each opens an AI ad writer — pick a goal and an optional photo, generate the copy, then save and launch. If AI is unavailable you’ll see the reason (not a silent template).</p>
+      <p className="-mt-3 text-[11px] text-slate-500"><b className="text-slate-400">Write from a real job</b> interviews you about a finished project, then writes a human-sounding ad set from your answers. Or generate a Meta/Google ad directly. If AI is unavailable you’ll see the reason (not a silent template).</p>
 
       <div>
         <Eyebrow icon={Wand2}>Ad drafts</Eyebrow>
@@ -308,6 +310,7 @@ export default function AdsScreen() {
 
       <div className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-3 text-[11px] text-slate-500"><PlugZap className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-400" />Generating the copy works now — paste it into Meta Ads Manager or Google Ads. Later (in Claude Code): push campaigns and pull performance via the Meta Marketing and Google Ads APIs.</div>
 
+      {studio === "project" && <ProjectAdStudio onClose={() => setStudio(null)} onUseInMeta={(text) => { setAdSeed(text); setStudio("meta"); }} />}
       {studio === "meta" && <MetaAdStudio leads={leads} seedPrimaryText={adSeed} onClose={() => { setStudio(null); setAdSeed(null); }} onSave={saveAd} />}
       {studio === "google" && <GoogleAdStudio leads={leads} onClose={() => setStudio(null)} onSave={saveAd} />}
       {viewing && <AdViewer ad={viewing} onClose={() => setViewing(null)} onStatus={setStatus} onDelete={delAd} onLaunch={(a) => { setViewing(null); setLaunching(a); }} />}

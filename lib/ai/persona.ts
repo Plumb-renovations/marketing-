@@ -217,6 +217,61 @@ Produce 2-3 distinct variations to A/B test, each a different angle — grounded
 Return ONLY valid JSON: {"variations":[{"primaryText":string,"headline":string,"description":string,"cta":string}]}`;
 }
 
+// Interview → ad SET. Hazel has already asked the user about a real, finished
+// job; `project` holds their own words. Write a top-class BUT authentically
+// human ad set from those real details — the craft of a great direct-response
+// marketer, in the honest voice of a real local tradie. NOT generic AI copy.
+export interface ProjectAnswers {
+  project?: string; // what the job was (full bathroom reno, ensuite, laundry…)
+  before?: string; // the before state / the client's problem
+  features?: string; // key features of the finished result
+  suburb?: string; // location, for local relevance
+  cared?: string; // what the client cared about / worried about
+  special?: string; // anything special (finished early, tricky fix, their reaction)
+  result?: string; // real outcome or a client quote
+}
+export function projectAdPrompt(p: BusinessProfile, project: ProjectAnswers, opts?: { voice?: string; examples?: string[] }) {
+  const a = project || {};
+  const field = (label: string, v?: string) => (v && v.trim() ? `- ${label}: ${v.trim()}\n` : "");
+  const brief =
+    field("The project", a.project) +
+    field("Before / the problem", a.before) +
+    field("Key features of the finished result", a.features) +
+    field("Suburb", a.suburb) +
+    field("What the client cared about / worried about", a.cared) +
+    field("Anything special about how it went", a.special) +
+    field("Real result or client quote", a.result);
+  const voice = (opts?.voice || p.tone || "").trim();
+  const examples = (opts?.examples || p.adExamples || []).map((s) => (s || "").trim()).filter(Boolean).slice(0, 3);
+  const examplesBlock = examples.length
+    ? `\nMATCH THIS BUSINESS'S VOICE. Here are ${examples.length} ad(s) they like — copy the rhythm, vocabulary and level of formality, NOT the content:\n${examples.map((e, i) => `Example ${i + 1}: """${e}"""`).join("\n")}\n`
+    : "";
+
+  return `Task: write a Facebook/Instagram ad SET for ${businessName(p)} from a REAL finished job the owner just told you about. This is the difference between a great ad and generic AI copy: you are turning THEIR real story + details into world-class direct-response copy that still sounds like them.
+
+The job (the owner's own words${a.suburb ? "" : " — some fields may be blank, work only with what's given"}):
+${brief || "- (little detail given — keep it honest and specific to what a local reno client cares about; do NOT invent facts, features, suburbs or results)"}
+Business context: ${adContext(p, [])}${voice ? `\nBrand voice/tone: ${voice}` : ""}${examplesBlock}
+
+Write 3 distinct variations, each a DIFFERENT angle on the same job:
+1. "Story-led" — first person, "We just finished…" / "Last week in ${a.suburb || "[their suburb]"}…", tell the real mini-story.
+2. "Problem → solution" — open on the exact problem the client had, agitate it briefly, show how you solved it.
+3. "Before → after" — the transformation, painting the before vs the finished result.
+
+Non-negotiable rules (this is what makes it authentic, not AI slop):
+- Use ONLY the real details given. NEVER invent a suburb, feature, price, timeframe, guarantee or client quote that wasn't provided. If a detail is missing, write around it.
+- Ultra-specific over generic: name the real suburb, the real problem, the actual features. Specifics are what build trust and stop the scroll.
+- Talk to ONE person as "you". First person for the business ("we"). Conversational, the way a real tradie actually talks.
+- Australian English and spelling. No corporate buzzwords, no hype, nothing the owner wouldn't actually say out loud to a customer. Avoid AI tells (e.g. "elevate", "nestled", "look no further", "in today's world", em-dash pile-ups, three-adjective stacks).
+- Strong scroll-stopping first line (the hook), then a clear persuasive flow, then ONE natural, low-friction call to action.
+- Aim at SERIOUS, quality leads (people who want it done properly), not bargain hunters — lead with craftsmanship, care and trust, not "cheap".
+
+For each variation return: angle, hook (the first line), primaryText (the full ad body incl. the hook, a few short lines, ready to paste), headline (short, <=40 chars), cta (choose from exactly: ${META_CTAS.join(", ")}), and sayItOutLoud (empty string if it already sounds human; otherwise ONE short note flagging any phrase that sounds AI/unnatural and a more human rewrite).
+
+Return ONLY valid JSON:
+{"ads":[{"angle":string,"hook":string,"primaryText":string,"headline":string,"cta":string,"sayItOutLoud":string}],"voiceNote":string}`;
+}
+
 export function googleAdPrompt(p: BusinessProfile, goal: string, leads: Lead[], withAssets: boolean, opts?: CopyContext) {
   return `Task: create Google Ads copy for this business. Goal: ${goal}.
 Business + ad-performance context: ${adContext(p, leads)}${copyContext(opts)}

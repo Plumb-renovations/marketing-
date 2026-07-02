@@ -26,6 +26,7 @@ import {
   coachPrompt,
   coachAskPrompt,
   quoteReviewPrompt,
+  projectAdPrompt,
 } from "@/lib/ai/persona";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -130,6 +131,9 @@ interface Payload {
   engageItem?: EngageItem; // comment-reply: the comment/review to draft for
   journey?: Record<string, any>; // lead-journey prompts context
   quoteReview?: Record<string, any>; // quote-review context (line items, scope, briefing, deterministic flags)
+  project?: Record<string, any>; // project-ad: the interview answers about a finished job
+  adVoice?: string; // project-ad: brand voice/tone override (else profile.tone)
+  adExamples?: string[]; // project-ad: example ads to match (else profile.adExamples)
 }
 
 // Dispatch a generator by kind. The org's Business Profile drives the system
@@ -172,6 +176,8 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
         4000,
         sys,
       );
+    case "project-ad":
+      return callJSON(buildContent(projectAdPrompt(profile, (payload.project || {}) as any, { voice: payload.adVoice, examples: payload.adExamples })), 2200, sys, signal);
     case "meta-ad": {
       const opts = { strategy: payload.strategy, imageDescription: payload.imageDescription, imageKeyPoints: payload.imageKeyPoints };
       return callJSON(buildContent(metaAdPrompt(profile, payload.goal || "", leads, opts), payload.photoDataUrl), 1400, sys);
@@ -211,4 +217,4 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
   }
 }
 
-export const VALID_KINDS = ["post", "ideas", "content-plan", "comment-reply", "lead-extract", "pre-quote-brief", "loss-coach", "lead-message", "meta-ad", "google-ad", "strategy-ads", "competitor-beat", "campaign-plan", "creative-review", "coach", "coach-ask", "quote-review"];
+export const VALID_KINDS = ["post", "ideas", "content-plan", "comment-reply", "lead-extract", "pre-quote-brief", "loss-coach", "lead-message", "meta-ad", "google-ad", "strategy-ads", "competitor-beat", "campaign-plan", "creative-review", "coach", "coach-ask", "quote-review", "project-ad"];
