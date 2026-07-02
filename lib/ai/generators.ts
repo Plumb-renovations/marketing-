@@ -109,6 +109,41 @@ export async function generateMetaAd(args: {
   return { variations: (j.variations || []).slice(0, 3) };
 }
 
+// Interview → ad set. Hazel writes a human-sounding ad set from the user's real
+// answers about a finished job, in their saved brand voice.
+export interface ProjectAnswers {
+  project?: string; before?: string; features?: string; suburb?: string; cared?: string; special?: string; result?: string;
+}
+export interface ProjectAdVariation { angle: string; hook: string; primaryText: string; headline: string; cta: string; sayItOutLoud: string }
+export async function generateProjectAd(args: { project: ProjectAnswers; adVoice?: string; adExamples?: string[] }): Promise<{ ads: ProjectAdVariation[]; voiceNote: string }> {
+  const j = await callAi("project-ad", args);
+  return {
+    ads: (Array.isArray(j.ads) ? j.ads : []).slice(0, 3).map((a: any) => ({
+      angle: a.angle || "", hook: a.hook || "", primaryText: a.primaryText || "", headline: a.headline || "", cta: a.cta || "Send Message", sayItOutLoud: a.sayItOutLoud || "",
+    })),
+    voiceNote: j.voiceNote || "",
+  };
+}
+
+// Template fallback if live AI is unavailable — a basic honest ad from the
+// answers so the user still has a starting point to edit.
+export function fallbackProjectAd(project: ProjectAnswers): { ads: ProjectAdVariation[]; voiceNote: string } {
+  const where = (project.suburb || "").trim();
+  const job = (project.project || "renovation").trim();
+  const feat = (project.features || "").trim();
+  const before = (project.before || "").trim();
+  const loc = where ? ` in ${where}` : "";
+  const mk = (angle: string, primaryText: string, headline: string): ProjectAdVariation => ({ angle, hook: primaryText.split("\n")[0] || "", primaryText, headline, cta: "Send Message", sayItOutLoud: "This is a template — read it out loud and rewrite anything you wouldn't say to a customer." });
+  return {
+    ads: [
+      mk("Story-led", `We just wrapped a ${job}${loc}.\n${feat ? `${feat}.\n` : ""}If you're thinking about yours, send us a message — happy to talk it through.`, "Just finished nearby"),
+      mk("Problem → solution", `${before ? `${before}. ` : "Dated, tired bathroom? "}We sorted it${loc}${feat ? `: ${feat}` : ""}.\nWant the same? Get in touch for a chat.`, "We can sort that"),
+      mk("Before → after", `Before: ${before || "tired and dated"}.\nAfter: ${feat || "a fresh, quality finish"}${loc}.\nMessage us to start yours.`, "Before & after"),
+    ],
+    voiceNote: "Live AI was unavailable — these are editable templates built from your answers.",
+  };
+}
+
 // The coach's strategy brief + recommended angles, for the Ad Creator.
 export interface AdStrategy {
   brief: string;

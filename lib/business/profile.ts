@@ -11,9 +11,10 @@ export interface BusinessProfile {
   serviceAreaLng: number | null;
   serviceRadiusKm: number;
   sellingPoints: string[]; // key selling points / differentiators
-  tone: string; // tone of voice
+  tone: string; // tone of voice (brand voice)
   offer: string; // current offer / promo
   audienceInterests: string[]; // Meta detailed-targeting interest names
+  adExamples: string[]; // 1-3 example ads the business likes — steer Hazel's voice
 }
 
 // Generic fallback for an org that hasn't filled in its profile yet.
@@ -29,6 +30,7 @@ export const DEFAULT_PROFILE: BusinessProfile = {
   tone: "friendly, professional and trustworthy",
   offer: "",
   audienceInterests: [],
+  adExamples: [],
 };
 
 export function rowToProfile(row: any): BusinessProfile {
@@ -45,6 +47,8 @@ export function rowToProfile(row: any): BusinessProfile {
     tone: row.tone || DEFAULT_PROFILE.tone,
     offer: row.offer ?? "",
     audienceInterests: row.audience_interests ?? [],
+    // Tolerate 0045 not being applied yet — no ad_examples → empty.
+    adExamples: Array.isArray(row.ad_examples) ? row.ad_examples.filter((s: any) => typeof s === "string") : [],
   };
 }
 
