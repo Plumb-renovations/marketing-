@@ -9,6 +9,7 @@ import {
 import { Panel, SectionHeader, Chip } from "@/components/ui/primitives";
 import CoachPanel from "@/components/coach/CoachPanel";
 import CreativeBreakdown from "@/components/meta/CreativeBreakdown";
+import MetaAdsCoach from "@/components/meta/MetaAdsCoach";
 import { createClient } from "@/lib/supabase/client";
 import { money } from "@/lib/quotes/model";
 import { fetchAdTargets, saveAdTargets } from "@/lib/data/adTargets";
@@ -121,6 +122,9 @@ export default function MetaManagerScreen() {
 
       {/* Hazel's marketing coach for this account — the few moves that matter now. */}
       <CoachPanel limit={4} compact />
+
+      {/* Specialist Meta Ads Coach — ask anything, answered from the real ad data. */}
+      <MetaAdsCoach />
 
       {/* Hazel's current targets (auto-tuned) */}
       <Panel className="p-4">

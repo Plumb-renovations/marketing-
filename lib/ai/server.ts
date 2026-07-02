@@ -28,6 +28,8 @@ import {
   quoteReviewPrompt,
   projectAdPrompt,
   creativeAnalysisPrompt,
+  metaAdsCoachSystemPrompt,
+  metaAdsCoachPrompt,
 } from "@/lib/ai/persona";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -136,6 +138,7 @@ interface Payload {
   adVoice?: string; // project-ad: brand voice/tone override (else profile.tone)
   adExamples?: string[]; // project-ad: example ads to match (else profile.adExamples)
   creatives?: Record<string, any>; // creative-analysis: per-ad metrics + deterministic flags
+  history?: { q: string; a: string }[]; // meta-coach: recent conversation for context
 }
 
 // Dispatch a generator by kind. The org's Business Profile drives the system
@@ -144,8 +147,10 @@ interface Payload {
 export async function runGenerator(kind: string, payload: Payload, profile: BusinessProfile, signal?: AbortSignal) {
   const leads = payload.leads || [];
   const isCoach = kind === "coach" || kind === "coach-ask" || kind === "quote-review";
-  const sys = isCoach ? coachSystemPrompt(profile) : adPersona(profile);
+  const sys = kind === "meta-coach" ? metaAdsCoachSystemPrompt(profile) : isCoach ? coachSystemPrompt(profile) : adPersona(profile);
   switch (kind) {
+    case "meta-coach":
+      return callJSON(buildContent(metaAdsCoachPrompt(profile, payload.dataBlock || "", payload.question || "", payload.history)), 1600, sys, signal);
     case "quote-review":
       return callJSON(buildContent(quoteReviewPrompt(profile, (payload.quoteReview || {}) as any)), 1200, sys, signal);
     case "coach":
@@ -221,4 +226,4 @@ export async function runGenerator(kind: string, payload: Payload, profile: Busi
   }
 }
 
-export const VALID_KINDS = ["post", "ideas", "content-plan", "comment-reply", "lead-extract", "pre-quote-brief", "loss-coach", "lead-message", "meta-ad", "google-ad", "strategy-ads", "competitor-beat", "campaign-plan", "creative-review", "coach", "coach-ask", "quote-review", "project-ad", "creative-analysis"];
+export const VALID_KINDS = ["post", "ideas", "content-plan", "comment-reply", "lead-extract", "pre-quote-brief", "loss-coach", "lead-message", "meta-ad", "google-ad", "strategy-ads", "competitor-beat", "campaign-plan", "creative-review", "coach", "coach-ask", "quote-review", "project-ad", "creative-analysis", "meta-coach"];
